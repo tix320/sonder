@@ -23,7 +23,7 @@ abstract class Holder {
 		this.signatures = createSignatures(services);
 	}
 
-	public Collection<Class<?>> getServices() {
+	Collection<Class<?>> getServices() {
 		return services;
 	}
 

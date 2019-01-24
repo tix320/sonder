@@ -11,7 +11,9 @@ import java.util.concurrent.Executors;
 
 import io.titix.kiwi.check.Try;
 import io.titix.kiwi.util.Threads;
+import io.titix.sonder.internal.Boot;
 import io.titix.sonder.internal.Communicator;
+import io.titix.sonder.internal.Config;
 
 
 /**
@@ -20,6 +22,8 @@ import io.titix.sonder.internal.Communicator;
 public final class Server {
 
 	private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(Threads::daemon);
+
+	private static final Boot boot = new Boot(Config.getServerBootPackages());
 
 	private final ServerSocket serverSocket;
 
@@ -58,7 +62,7 @@ public final class Server {
 					Socket socket = serverSocket.accept();
 
 					Threads.runAsync(() -> {
-						Communicator communicator = new Communicator(socket);
+						Communicator communicator = new Communicator(socket, boot);
 						communicators.put(communicator.id(), communicator);
 					}, EXECUTOR);
 				}

@@ -31,7 +31,7 @@ public final class Communicator {
 
 	private static final IdGenerator comIdGenerator = new IdGenerator();
 
-	private static final Boot boot = new Boot();
+	private final Boot boot;
 
 	private final Long id;
 
@@ -47,8 +47,9 @@ public final class Communicator {
 
 	private final Map<String, Supplier<Object>> extraArgsResolver;
 
-	public Communicator(Socket socket) {
+	public Communicator(Socket socket, Boot boot) {
 		this.id = comIdGenerator.next();
+		this.boot = boot;
 		this.extraArgsResolver = createExtraArgsResolver();
 		this.transmitter = new Transmitter(socket);
 		this.callbacks = new ConcurrentHashMap<>();

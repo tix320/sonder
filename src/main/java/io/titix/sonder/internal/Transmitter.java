@@ -46,7 +46,14 @@ final class Transmitter {
 		try {
 			transfer = (Transfer) reader.readObject();
 		}
-		catch (IOException | ClassNotFoundException e) {
+		catch (IOException e) {
+			String message = e.getMessage();
+			if(message.contains("Connection reset")){
+
+			}
+			throw new TransmitterException("Failed to receive transfer", e);
+		}
+		catch (ClassNotFoundException e) {
 			throw new TransmitterException("Failed to receive transfer", e);
 		}
 		return transfer;
