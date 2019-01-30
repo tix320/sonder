@@ -164,23 +164,12 @@ public final class Communicator {
 		return Map.of("client-id", this::id);
 	}
 
-	private static final Method TO_STRING = Try.success(() -> Object.class.getDeclaredMethod("toString")).get();
-	private static final Method HASHCODE = Try.success(() -> Object.class.getDeclaredMethod("hashCode")).get();
-	private static final Method EQUALS = Try.success(() -> Object.class.getDeclaredMethod("equals", Object.class))
-			.get();
-
 	private final class OriginHandler implements InvocationHandler {
 
 		@Override
 		public Object invoke(Object proxy, Method method, Object[] args) {
-			if (method.equals(TO_STRING)) {
-				return "";
-			}
-			if (method.equals(HASHCODE)) {
-				return 0;
-			}
-			if (method.equals(EQUALS)) {
-				return false;
+			if (method.getDeclaringClass() == Object.class) {
+				throw new UnsupportedOperationException();
 			}
 
 			String path = boot.getOrigin(method).path;

@@ -44,7 +44,16 @@ final class OriginHolder extends Holder {
 
 	@Override
 	boolean isServiceMethod(Method method) {
-		return method.isAnnotationPresent(Origin.class);
+		boolean annotationPresent = method.isAnnotationPresent(Origin.class);
+		if (annotationPresent) {
+			return true;
+		}
+		else if (Modifier.isAbstract(method.getModifiers())) {
+			throw new BootException("Abstract method '" + method.getName() + "' in " + method.getDeclaringClass() + " must be origin");
+		}
+		else {
+			return false;
+		}
 	}
 
 	@Override
