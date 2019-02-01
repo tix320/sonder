@@ -5,6 +5,8 @@ import java.util.Map;
 
 public final class Headers implements Serializable {
 
+	private static final long serialVersionUID = -1328960499870271557L;
+
 	private final Map<String, Object> values;
 
 	private Headers(Map<String, Object> values) {
