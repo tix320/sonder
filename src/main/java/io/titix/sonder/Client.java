@@ -16,7 +16,7 @@ public final class Client {
 
 	private final Communicator communicator;
 
-	public Client(String host, int port) throws MagicException {
+	public Client(String host, int port) {
 		communicator = new Communicator(createSocket(host, port), boot);
 	}
 
@@ -34,8 +34,8 @@ public final class Client {
 		}
 	}
 
-	private Socket createSocket(String host, int port) throws MagicException {
+	private Socket createSocket(String host, int port) {
 		return Try.supply(() -> new Socket(host, port))
-				.getOrElseThrow(throwable -> new MagicException("Cannot connect to server " + host + ":" + port));
+				.getOrElseThrow(throwable -> new InternalException("Cannot connect to server " + host + ":" + port));
 	}
 }

@@ -50,7 +50,7 @@ public final class Server {
 			serverSocket.close();
 		}
 		catch (IOException e) {
-			throw new MagicException("Cannot close server socket.", e);
+			throw new InternalException("Cannot close server socket.", e);
 		}
 	}
 
@@ -73,10 +73,10 @@ public final class Server {
 		}));
 	}
 
-	private MagicException resolveMagicError(Throwable throwable, int port) {
+	private InternalException resolveMagicError(Throwable throwable, int port) {
 		if (throwable instanceof BindException) {
 			if (throwable.getMessage().contains("Address already in use")) {
-				return new MagicException("Port " + port + "already in use");
+				return new InternalException("Port " + port + " already in use");
 			}
 		}
 		throw new IllegalStateException("Cover this exception", throwable);
