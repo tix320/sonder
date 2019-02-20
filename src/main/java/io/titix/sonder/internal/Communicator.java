@@ -5,11 +5,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.Socket;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -18,7 +18,6 @@ import io.titix.kiwi.check.Try;
 import io.titix.kiwi.util.IdGenerator;
 import io.titix.kiwi.util.Pool;
 import io.titix.kiwi.util.Threads;
-import io.titix.sonder.Callback;
 
 /**
  * @author Tigran.Sargsyan on 26-Dec-18
@@ -41,7 +40,7 @@ public final class Communicator {
 
 	private final Transmitter transmitter;
 
-	private final Map<Long, Callback<Object>> callbacks;
+	private final Map<Long, SynchronousQueue<Object>> exchangers;
 
 	private final IdGenerator transferIdGenerator;
 
@@ -52,7 +51,7 @@ public final class Communicator {
 		this.boot = boot;
 		this.extraArgsResolver = createExtraArgsResolver();
 		this.transmitter = new Transmitter(socket);
-		this.callbacks = new ConcurrentHashMap<>();
+		this.exchangers = new ConcurrentHashMap<>();
 		this.transferIdGenerator = new IdGenerator();
 		this.origins = proxyPool.getProxies(this::createOriginProxies);
 		this.endpoints = createEndpointInstances(boot.getEndpointServices());
@@ -84,24 +83,33 @@ public final class Communicator {
 		Threads.handleFutureEx(future);
 	}
 
-	private void send(String path, Object[] args, Callback<Object> callback) {
+	private CompletableFuture<Object> send(String path, Object[] args, boolean needResponse) {
 		Long transferKey = transferIdGenerator.next();
-		boolean needResponse = callback != null;
+
 		Headers headers = Headers.builder().path(path).id(transferKey).needResponse(needResponse).build();
 		Transfer transfer = new Transfer(headers, args);
+
+		CompletableFuture<Object> result;
 		if (needResponse) {
-			callbacks.put(transferKey, callback);
+			SynchronousQueue<Object> exchanger = new SynchronousQueue<>();
+			result = CompletableFuture.supplyAsync(() -> Try.supplyChecked(exchanger::take, IllegalStateException::new), EXECUTOR);
+			exchangers.put(transferKey, exchanger);
+		}
+		else {
+			result = CompletableFuture.completedFuture(null);
 		}
 		this.transmitter.send(transfer);
+		return result;
 	}
 
 	private void unboxTransfer(Transfer transfer) {
 		Headers headers = transfer.headers;
 		Long id = headers.getId();
 		if (headers.isResponse()) {
-			Callback<Object> callback = callbacks.get(id);
-			callback.call(transfer.content);
-			callbacks.remove(id);
+			SynchronousQueue<Object> exchanger = exchangers.get(id);
+			Try.runChecked(() -> exchanger.put(transfer.content), IllegalStateException::new);
+
+			exchangers.remove(id);
 			transferIdGenerator.detach(id);
 		}
 		else {
@@ -117,7 +125,7 @@ public final class Communicator {
 		if (signature == null) {
 			throw new BootException("Endpoint with path '" + path + "' not found");
 		}
-		Object[] allArgs = resolveArgs(signature.params, args);
+		Object[] allArgs = resolveArgs(signature, args);
 		try {
 			return signature.method.invoke(endpoints.get(signature.clazz), allArgs);
 		}
@@ -132,12 +140,18 @@ public final class Communicator {
 		}
 	}
 
-	private Object[] resolveArgs(List<Param> params, Object[] realArgs) {
-		Object[] allArgs = new Object[params.size()];
+	private Object[] resolveArgs(Signature signature, Object[] realArgs) {
+		if (signature.params.stream().filter(param -> !param.isExtra).count() != realArgs.length) {
+			throw new BootException("Illegal signature of method '" + signature.method.getName() + "' in " + signature.clazz + ". Expected following parameters "
+					+ Arrays.stream(realArgs)
+					.map(arg -> arg.getClass().getSimpleName())
+					.collect(Collectors.joining(",", "[", "]")));
+		}
+		Object[] allArgs = new Object[signature.params.size()];
 		int raIndex = 0;
 		for (int i = 0; i < allArgs.length; i++) {
-			Param param = params.get(i);
-			allArgs[i] = param.isExtra ? extraArgsResolver.get(param.key).get() : realArgs[raIndex];
+			Param param = signature.params.get(i);
+			allArgs[i] = param.isExtra ? extraArgsResolver.get(param.key).get() : realArgs[raIndex++];
 		}
 		return allArgs;
 	}
@@ -174,29 +188,19 @@ public final class Communicator {
 
 			String path = boot.getOrigin(method).path;
 
-			Future<?> future = EXECUTOR.submit(() -> {
-				if (args == null) {
-					send(path, new Object[0], null);
-					return;
-				}
-				Object lastArg = args[args.length - 1];
-				if (lastArg instanceof Callback) {
-					@SuppressWarnings("unchecked")
-					Callback<Object> callBack = (Callback<Object>) lastArg;
-					send(path, getRealArgs(args), callBack);
-				}
-				else {
-					send(path, args, null);
-				}
-			});
-			Threads.handleFutureEx(future);
-			return null;
-		}
+			boolean needResponse = method.getReturnType() == CompletableFuture.class;
 
-		private Object[] getRealArgs(Object[] args) {
-			Object[] realArgs = new Object[args.length - 1];
-			System.arraycopy(args, 0, realArgs, 0, realArgs.length);
-			return realArgs;
+			if (args == null) {
+				args = new Object[0];
+			}
+
+			if (needResponse) {
+				return send(path, args, true);
+			}
+			else {
+				send(path, args, false);
+				return null;
+			}
 		}
 	}
 

@@ -11,7 +11,8 @@ public class ClientTest {
 		Client client = new Client("localhost", 777);
 
 		A service = client.getService(A.class);
-		service.foo();
+
+		service.foo().thenAccept(integer -> System.out.println(integer));
 		Thread.sleep(2000000000000000L);
 	}
 }

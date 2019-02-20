@@ -5,9 +5,9 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Collection;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
-import io.titix.sonder.Callback;
 import io.titix.sonder.Origin;
 import io.titix.sonder.Response;
 
@@ -60,8 +60,8 @@ final class OriginHolder extends Holder {
 	void checkMethod(Method method) {
 		BootException.checkAndThrow("Failed to resolve origin method '" + method.getName() + "' in " + method.getDeclaringClass()
 						.getName() + ", there are the following errors.",
-				check(() -> method.getReturnType() != void.class, "Return type must be void"),
-				check(() -> needResponse(method) ^ hasAsyncParam(method), "Last parameter must be Callback, when response is needed"),
+				check(() -> method.getReturnType() != void.class && !isReturnsFuture(method), "Return type must be void or CompletableFuture"),
+				check(() -> needResponse(method) ^ isReturnsFuture(method), "Return type must be CompletableFuture, when response is needed"),
 				check(() -> !Modifier.isPublic(method.getModifiers()), "Must be public"),
 				check(() -> Modifier.isStatic(method.getModifiers()), "Must be non static"));
 	}
@@ -77,9 +77,8 @@ final class OriginHolder extends Holder {
 		return signatures.stream().collect(Collectors.toMap(signature -> signature.method, signature -> signature));
 	}
 
-	private boolean hasAsyncParam(Method method) {
-		Class<?>[] parameterTypes = method.getParameterTypes();
-		return parameterTypes.length != 0 && parameterTypes[parameterTypes.length - 1] == Callback.class;
+	private boolean isReturnsFuture(Method method) {
+		return method.getReturnType() == CompletableFuture.class;
 	}
 
 	private boolean needResponse(Method method) {
