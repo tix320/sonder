@@ -1,5 +1,6 @@
 package client;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import io.titix.sonder.Origin;
@@ -13,5 +14,5 @@ public interface A {
 
 	@Origin("lol")
 	@Response(true)
-	CompletableFuture<Integer> foo();
+	CompletableFuture<Integer> foo(List<?> dsd);
 }

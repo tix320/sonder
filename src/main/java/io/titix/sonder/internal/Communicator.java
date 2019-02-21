@@ -98,7 +98,8 @@ public final class Communicator {
 		else {
 			result = CompletableFuture.completedFuture(null);
 		}
-		this.transmitter.send(transfer);
+		EXECUTOR.execute(() -> this.transmitter.send(transfer));
+
 		return result;
 	}
 
