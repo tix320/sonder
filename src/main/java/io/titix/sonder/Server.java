@@ -14,6 +14,7 @@ import io.titix.kiwi.util.Threads;
 import io.titix.sonder.internal.Boot;
 import io.titix.sonder.internal.Communicator;
 import io.titix.sonder.internal.Config;
+import io.titix.sonder.internal.SonderException;
 
 
 /**
@@ -50,7 +51,7 @@ public final class Server {
 			serverSocket.close();
 		}
 		catch (IOException e) {
-			throw new InternalException("Cannot close server socket.", e);
+			throw new SonderException("Cannot close server socket.", e);
 		}
 	}
 
@@ -73,13 +74,13 @@ public final class Server {
 		}));
 	}
 
-	private InternalException resolveMagicError(Throwable throwable, int port) {
+	private SonderException resolveMagicError(Throwable throwable, int port) {
 		if (throwable instanceof BindException) {
 			if (throwable.getMessage().contains("Address already in use")) {
-				return new InternalException("Port " + port + " already in use");
+				return new SonderException("Port " + port + " already in use");
 			}
 		}
-		throw new IllegalStateException("Cover this exception", throwable);
+		throw new SonderException("Cover this exception", throwable);
 	}
 
 }

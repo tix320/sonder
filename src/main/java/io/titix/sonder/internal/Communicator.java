@@ -40,7 +40,7 @@ public final class Communicator {
 
 	private final Transmitter transmitter;
 
-	private final Map<Long, SynchronousQueue<Object>> exchangers;
+	private final Map<Long, Exchanger<Object>> exchangers;
 
 	private final IdGenerator transferIdGenerator;
 
@@ -91,8 +91,8 @@ public final class Communicator {
 
 		CompletableFuture<Object> result;
 		if (needResponse) {
-			SynchronousQueue<Object> exchanger = new SynchronousQueue<>();
-			result = CompletableFuture.supplyAsync(() -> Try.supplyChecked(exchanger::take, IllegalStateException::new), EXECUTOR);
+			Exchanger<Object> exchanger = new Exchanger<>();
+			result = CompletableFuture.supplyAsync(() -> Try.supplyChecked(() -> exchanger.exchange(null), IllegalStateException::new), EXECUTOR);
 			exchangers.put(transferKey, exchanger);
 		}
 		else {
@@ -106,8 +106,8 @@ public final class Communicator {
 		Headers headers = transfer.headers;
 		Long id = headers.getId();
 		if (headers.isResponse()) {
-			SynchronousQueue<Object> exchanger = exchangers.get(id);
-			Try.runChecked(() -> exchanger.put(transfer.content), IllegalStateException::new);
+			Exchanger<Object> exchanger = exchangers.get(id);
+			Try.runChecked(() -> exchanger.exchange(transfer.content), IllegalStateException::new);
 
 			exchangers.remove(id);
 			transferIdGenerator.detach(id);
@@ -130,7 +130,7 @@ public final class Communicator {
 			return signature.method.invoke(endpoints.get(signature.clazz), allArgs);
 		}
 		catch (IllegalAccessException | InvocationTargetException e) {
-			throw new IllegalStateException("Cannot invoke method " + signature.method, e);
+			throw new InternalException("Cannot invoke method " + signature.method, e);
 		}
 		catch (IllegalArgumentException e) {
 			throw new BootException("Illegal signature of method '" + signature.method.getName() + "' in " + signature.clazz + ". Expected following parameters " + Arrays

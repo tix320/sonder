@@ -6,6 +6,7 @@ import io.titix.kiwi.check.Try;
 import io.titix.sonder.internal.Boot;
 import io.titix.sonder.internal.Communicator;
 import io.titix.sonder.internal.Config;
+import io.titix.sonder.internal.SonderException;
 
 /**
  * @author tix32 on 20-Dec-18
@@ -36,6 +37,6 @@ public final class Client {
 
 	private Socket createSocket(String host, int port) {
 		return Try.supply(() -> new Socket(host, port))
-				.getOrElseThrow(throwable -> new InternalException("Cannot connect to server " + host + ":" + port));
+				.getOrElseThrow(throwable -> new SonderException("Cannot connect to server " + host + ":" + port));
 	}
 }
