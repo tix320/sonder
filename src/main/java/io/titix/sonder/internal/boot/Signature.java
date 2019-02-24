@@ -1,4 +1,4 @@
-package io.titix.sonder.internal;
+package io.titix.sonder.internal.boot;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -6,15 +6,15 @@ import java.util.List;
 /**
  * @author Tigran.Sargsyan on 12-Dec-18
  */
-final class Signature {
+abstract class Signature {
 
-	final String path;
+	public final String path;
 
-	final Class<?> clazz;
+	public final Class<?> clazz;
 
-	final Method method;
+	public final Method method;
 
-	final List<Param> params;
+	public final List<Param> params;
 
 	Signature(String path, Class<?> clazz, Method method, List<Param> params) {
 		this.path = path;

@@ -3,21 +3,20 @@ package io.titix.sonder.internal;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.net.Socket;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import io.titix.kiwi.check.CheckedFunction;
 import io.titix.kiwi.check.Try;
+import io.titix.kiwi.rx.Observable;
+import io.titix.kiwi.rx.Subject;
 import io.titix.kiwi.util.IdGenerator;
-import io.titix.kiwi.util.Pool;
+import io.titix.kiwi.util.PostPool;
 import io.titix.kiwi.util.Threads;
+import io.titix.sonder.internal.boot.*;
 
 /**
  * @author Tigran.Sargsyan on 26-Dec-18
@@ -26,35 +25,45 @@ public final class Communicator {
 
 	private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(Threads::daemon);
 
-	private static final Pool<Map<Class<?>, Object>> proxyPool = new Pool<>();
-
 	private static final IdGenerator comIdGenerator = new IdGenerator();
 
-	private final Boot boot;
+	private static final PostPool<Map<Class<?>, Object>> originsPool = new PostPool<>();
+
+	private static final PostPool<Map<Class<?>, Object>> endpointsPool = new PostPool<>();
 
 	private final Long id;
 
-	private final Map<Class<?>, Object> endpoints;
+	private final Transmitter transmitter;
+
+	private final Map<Method, OriginSignature> originsByMethods;
+
+	private final Map<String, EndpointSignature> endpointsByPaths;
 
 	private final Map<Class<?>, Object> origins;
 
-	private final Transmitter transmitter;
-
-	private final Map<Long, Exchanger<Object>> exchangers;
+	private final Map<Class<?>, Object> endpoints;
 
 	private final IdGenerator transferIdGenerator;
 
+	private final Map<Long, Exchanger<Object>> exchangers;
+
 	private final Map<String, Supplier<Object>> extraArgsResolver;
 
-	public Communicator(Socket socket, Boot boot) {
+	public Communicator(Socket socket, OriginBoot originBoot, EndpointBoot endpointBoot) {
+
 		this.id = comIdGenerator.next();
-		this.boot = boot;
 		this.extraArgsResolver = createExtraArgsResolver();
 		this.transmitter = new Transmitter(socket);
 		this.exchangers = new ConcurrentHashMap<>();
 		this.transferIdGenerator = new IdGenerator();
-		this.origins = proxyPool.getProxies(this::createOriginProxies);
-		this.endpoints = createEndpointInstances(boot.getEndpointServices());
+		this.originsByMethods = originBoot.getSignatures()
+				.stream()
+				.collect(Collectors.toMap(signature -> signature.method, signature -> signature));
+		this.endpointsByPaths = endpointBoot.getSignatures()
+				.stream()
+				.collect(Collectors.toMap(signature -> signature.path, signature -> signature));
+		this.origins = originsPool.get(() -> originBoot.createServices(new OriginHandler()));
+		this.endpoints = endpointsPool.get(endpointBoot::createServices);
 		runReceiver();
 	}
 
@@ -68,9 +77,10 @@ public final class Communicator {
 	}
 
 	public void close() {
-		proxyPool.release(origins);
+		originsPool.release(origins);
+		endpointsPool.release(endpoints);
 		transmitter.close();
-		comIdGenerator.detach(id);
+		comIdGenerator.free(id);
 	}
 
 	private void runReceiver() {
@@ -83,24 +93,21 @@ public final class Communicator {
 		Threads.handleFutureEx(future);
 	}
 
-	private CompletableFuture<Object> send(String path, Object[] args, boolean needResponse) {
+	private Observable<Object> send(String path, Object[] args, boolean needResponse) {
 		Long transferKey = transferIdGenerator.next();
 
 		Headers headers = Headers.builder().path(path).id(transferKey).needResponse(needResponse).build();
 		Transfer transfer = new Transfer(headers, args);
 
-		CompletableFuture<Object> result;
+		Subject<Object> result = Subject.concurrentSingle();
 		if (needResponse) {
 			Exchanger<Object> exchanger = new Exchanger<>();
-			result = CompletableFuture.supplyAsync(() -> Try.supplyChecked(() -> exchanger.exchange(null), IllegalStateException::new), EXECUTOR);
+			EXECUTOR.submit(() -> result.next(Try.supplyChecked(() -> exchanger.exchange(null), InternalException::new)));
 			exchangers.put(transferKey, exchanger);
-		}
-		else {
-			result = CompletableFuture.completedFuture(null);
 		}
 		EXECUTOR.execute(() -> this.transmitter.send(transfer));
 
-		return result;
+		return result.asObservable().one();
 	}
 
 	private void unboxTransfer(Transfer transfer) {
@@ -108,10 +115,10 @@ public final class Communicator {
 		Long id = headers.getId();
 		if (headers.isResponse()) {
 			Exchanger<Object> exchanger = exchangers.get(id);
-			Try.runChecked(() -> exchanger.exchange(transfer.content), IllegalStateException::new);
+			Try.runChecked(() -> exchanger.exchange(transfer.content), InternalException::new);
 
 			exchangers.remove(id);
-			transferIdGenerator.detach(id);
+			transferIdGenerator.free(id);
 		}
 		else {
 			Object result = invokeEndpoint(headers.getPath(), (Object[]) transfer.content);
@@ -122,7 +129,7 @@ public final class Communicator {
 	}
 
 	private Object invokeEndpoint(String path, Object[] args) {
-		Signature signature = boot.getEndpoint(path);
+		EndpointSignature signature = endpointsByPaths.get(path);
 		if (signature == null) {
 			throw new BootException("Endpoint with path '" + path + "' not found");
 		}
@@ -134,19 +141,13 @@ public final class Communicator {
 			throw new InternalException("Cannot invoke method " + signature.method, e);
 		}
 		catch (IllegalArgumentException e) {
-			throw new BootException("Illegal signature of method '" + signature.method.getName() + "' in " + signature.clazz + ". Expected following parameters " + Arrays
-					.stream(allArgs)
-					.map(arg -> arg.getClass().getSimpleName())
-					.collect(Collectors.joining(",", "[", "]")));
+			throw illegalEndpointSignature(signature, allArgs);
 		}
 	}
 
-	private Object[] resolveArgs(Signature signature, Object[] realArgs) {
+	private Object[] resolveArgs(EndpointSignature signature, Object[] realArgs) {
 		if (signature.params.stream().filter(param -> !param.isExtra).count() != realArgs.length) {
-			throw new BootException("Illegal signature of method '" + signature.method.getName() + "' in " + signature.clazz + ". Expected following parameters "
-					+ Arrays.stream(realArgs)
-					.map(arg -> arg.getClass().getSimpleName())
-					.collect(Collectors.joining(",", "[", "]")));
+			throw illegalEndpointSignature(signature, realArgs);
 		}
 		Object[] allArgs = new Object[signature.params.size()];
 		int raIndex = 0;
@@ -157,22 +158,11 @@ public final class Communicator {
 		return allArgs;
 	}
 
-	private Map<Class<?>, Object> createEndpointInstances(Collection<Class<?>> services) {
-		return services.stream()
-				.collect(Collectors.toMap(
-						service -> service,
-						service -> Try.supply(() -> service.getConstructor()
-								.newInstance())
-								.getOrElseThrow((CheckedFunction<Throwable, IllegalStateException>) IllegalStateException::new)));
-	}
-
-	private Map<Class<?>, Object> createOriginProxies() {
-		Map<Class<?>, Object> proxies = new HashMap<>();
-		OriginHandler originHandler = new OriginHandler();
-		for (Class<?> clazz : boot.getOriginServices()) {
-			proxies.put(clazz, Proxy.newProxyInstance(clazz.getClassLoader(), new Class[]{clazz}, originHandler));
-		}
-		return proxies;
+	private BootException illegalEndpointSignature(EndpointSignature signature, Object[] args) {
+		return new BootException("Illegal signature of method '" + signature.method.getName() + "' in " + signature.clazz + ". Expected following parameters "
+				+ Arrays.stream(args)
+				.map(arg -> arg.getClass().getSimpleName())
+				.collect(Collectors.joining(",", "[", "]")));
 	}
 
 	private Map<String, Supplier<Object>> createExtraArgsResolver() {
@@ -184,25 +174,22 @@ public final class Communicator {
 		@Override
 		public Object invoke(Object proxy, Method method, Object[] args) {
 			if (method.getDeclaringClass() == Object.class) {
-				throw new UnsupportedOperationException();
+				throw new UnsupportedOperationException("This method does not allowed on services");
 			}
 
-			String path = boot.getOrigin(method).path;
-
-			boolean needResponse = method.getReturnType() == CompletableFuture.class;
+			OriginSignature signature = originsByMethods.get(method);
 
 			if (args == null) {
 				args = new Object[0];
 			}
 
-			if (needResponse) {
-				return send(path, args, true);
+			if (signature.needResponse) {
+				return send(signature.path, args, true);
 			}
 			else {
-				send(path, args, false);
+				send(signature.path, args, false);
 				return null;
 			}
 		}
 	}
-
 }

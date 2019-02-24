@@ -1,4 +1,4 @@
-package io.titix.sonder.internal;
+package io.titix.sonder.internal.boot;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
@@ -8,36 +8,37 @@ import java.util.stream.Collectors;
 
 import io.titix.sonder.Endpoint;
 import io.titix.sonder.Origin;
+import io.titix.sonder.internal.ExtraParam;
 
 /**
  * @author Tigran.Sargsyan on 13-Dec-18
  */
-abstract class Holder {
+public abstract class Boot<T extends Signature> {
 
-	private final Collection<Class<?>> services;
+	final Collection<Class<?>> services;
 
-	final Collection<Signature> signatures;
+	private final Collection<T> signatures;
 
-	Holder(Collection<Class<?>> services) {
+	Boot(Collection<Class<?>> services) {
 		this.services = services;
 		this.signatures = createSignatures(services);
 	}
 
-	Collection<Class<?>> getServices() {
-		return services;
+	public final Collection<T> getSignatures() {
+		return signatures;
 	}
 
-	private Collection<Signature> createSignatures(Collection<Class<?>> services) {
+	private Collection<T> createSignatures(Collection<Class<?>> services) {
 		Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams = getAllowedExtraParams();
-		List<Signature> signatures = services.stream()
+		List<T> signatures = services.stream()
 				.peek(this::checkService)
 				.flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
 				.filter(this::isServiceMethod)
 				.peek(this::checkMethod)
 				.peek(method -> checkExtraParam(method, allowedExtraParams))
-				.map(method -> new Signature(getPath(method), method.getDeclaringClass(), method, getParams(method, allowedExtraParams)))
+				.map(this::createSignature)
 				.peek(signature -> checkSignaturePaths(signature.path))
-				.collect(Collectors.toList());
+				.collect(Collectors.toUnmodifiableList());
 		checkDuplicatePaths(signatures);
 		return signatures;
 	}
@@ -72,7 +73,7 @@ abstract class Holder {
 
 	abstract String getPath(Method method);
 
-	private List<Param> getParams(Method method, Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams) {
+	List<Param> getParams(Method method, Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams) {
 		List<Param> params = new ArrayList<>();
 		Parameter[] parameters = method.getParameters();
 
@@ -94,13 +95,15 @@ abstract class Holder {
 		return params;
 	}
 
+	abstract T createSignature(Method method);
+
 	private void checkSignaturePaths(String path) {
 		if (path.equals("")) {
 			throw new BootException("path value of @" + Origin.class.getSimpleName() + " or @" + Endpoint.class.getSimpleName() + " must be non empty");
 		}
 	}
 
-	private void checkDuplicatePaths(Collection<Signature> signatures) {
+	private void checkDuplicatePaths(Collection<T> signatures) {
 		Map<String, Signature> uniqueSignatures = new HashMap<>();
 		for (Signature signature : signatures) {
 			if (uniqueSignatures.containsKey(signature.path)) {

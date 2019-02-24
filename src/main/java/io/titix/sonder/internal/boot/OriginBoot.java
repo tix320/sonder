@@ -1,37 +1,33 @@
-package io.titix.sonder.internal;
+package io.titix.sonder.internal.boot;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.Collection;
+import java.lang.reflect.Proxy;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+import io.titix.kiwi.rx.Observable;
 import io.titix.sonder.Origin;
 import io.titix.sonder.Response;
+import io.titix.sonder.internal.Config;
 
-import static io.titix.sonder.internal.BootException.check;
+import static io.titix.sonder.internal.boot.BootException.check;
 import static java.util.Objects.isNull;
 
 /**
- * @author Tigran.Sargsyan on 13-Dec-18
+ * @author tix32 on 24-Feb-19
  */
-final class OriginHolder extends Holder {
+public final class OriginBoot extends Boot<OriginSignature> {
 
-	private final Map<Method, Signature> signatureByMethods;
-
-	OriginHolder(Collection<Class<?>> services) {
-		super(services);
-		signatureByMethods = createSignaturesByMethods(signatures);
-	}
-
-	Signature getSignature(Method s) {
-		return signatureByMethods.get(s);
+	public OriginBoot(String[] packages) {
+		super(Config.getPackageClasses(packages).stream()
+				.filter(clazz -> clazz.isAnnotationPresent(Origin.class)).collect(Collectors.toList()));
 	}
 
 	@Override
-	Map<Class<? extends Annotation>, ExtraParamInfo> getAllowedExtraParams() {
+	Map<Class<? extends Annotation>, Boot.ExtraParamInfo> getAllowedExtraParams() {
 		return Map.of();
 	}
 
@@ -60,8 +56,8 @@ final class OriginHolder extends Holder {
 	void checkMethod(Method method) {
 		BootException.checkAndThrow("Failed to resolve origin method '" + method.getName() + "' in " + method.getDeclaringClass()
 						.getName() + ", there are the following errors.",
-				check(() -> method.getReturnType() != void.class && !isReturnsFuture(method), "Return type must be void or CompletableFuture"),
-				check(() -> needResponse(method) ^ isReturnsFuture(method), "Return type must be CompletableFuture, when response is needed"),
+				check(() -> method.getReturnType() != void.class && !isReturnsObservable(method), "Return type must be void or Observable"),
+				check(() -> needResponse(method) ^ isReturnsObservable(method), "Return type must be Observable, when response is needed"),
 				check(() -> !Modifier.isPublic(method.getModifiers()), "Must be public"),
 				check(() -> Modifier.isStatic(method.getModifiers()), "Must be non static"));
 	}
@@ -73,12 +69,20 @@ final class OriginHolder extends Holder {
 				+ method.getAnnotation(Origin.class).value();
 	}
 
-	private Map<Method, Signature> createSignaturesByMethods(Collection<Signature> signatures) {
-		return signatures.stream().collect(Collectors.toMap(signature -> signature.method, signature -> signature));
+	@Override
+	OriginSignature createSignature(Method method) {
+		return new OriginSignature(getPath(method), method.getDeclaringClass(), method, getParams(method, getAllowedExtraParams()), needResponse(method));
 	}
 
-	private boolean isReturnsFuture(Method method) {
-		return method.getReturnType() == CompletableFuture.class;
+	public Map<Class<?>, Object> createServices(InvocationHandler invocationHandler) {
+		return services.stream()
+				.collect(Collectors.toMap(
+						service -> service,
+						service -> Proxy.newProxyInstance(service.getClassLoader(), new Class[]{service}, invocationHandler)));
+	}
+
+	private boolean isReturnsObservable(Method method) {
+		return method.getReturnType() == Observable.class;
 	}
 
 	private boolean needResponse(Method method) {

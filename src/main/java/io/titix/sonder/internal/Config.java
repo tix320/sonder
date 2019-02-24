@@ -10,6 +10,8 @@ import java.util.Properties;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import io.titix.sonder.internal.boot.BootException;
+
 /**
  * @author Tigran.Sargsyan on 24-Jan-19
  */
@@ -33,7 +35,6 @@ public class Config {
 				throw new BootException(BOOT_CONFIG_FILE + " file not found");
 			}
 			properties.load(resource);
-
 		}
 		catch (IOException e) {
 			throw new BootException("Cannot read " + BOOT_CONFIG_FILE + " file");
@@ -48,7 +49,7 @@ public class Config {
 		return splitPackages(getConfigValue(SERVER_BOOT_KEY));
 	}
 
-	static List<Class<?>> getPackageClasses(String[] packageNames) {
+	public static List<Class<?>> getPackageClasses(String[] packageNames) {
 		return Arrays.stream(packageNames)
 				.flatMap(packageName -> getPackageClasses(packageName).stream())
 				.collect(Collectors.toList());
@@ -103,7 +104,7 @@ public class Config {
 							.substring(0, file.getName().length() - 6)));
 				}
 				catch (ClassNotFoundException e) {
-					throw new BootException(e);
+					throw new InternalException(e);
 				}
 			}
 		}

@@ -1,13 +1,13 @@
-package io.titix.sonder.internal;
+package io.titix.sonder.internal.boot;
 
 /**
  * @author Tigran.Sargsyan on 08-Jan-19
  */
-final class Param {
+public final class Param {
 
-	final String key;
+	public final String key;
 
-	final boolean isExtra;
+	public final boolean isExtra;
 
 	Param(String key, boolean isExtra) {
 		this.key = key;

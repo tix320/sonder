@@ -1,4 +1,4 @@
-package io.titix.sonder.internal;
+package io.titix.sonder.internal.boot;
 
 import java.util.Arrays;
 import java.util.function.Supplier;
@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
  */
 public final class BootException extends RuntimeException {
 
-	BootException(String message) {
+	public BootException(String message) {
 		super(message);
 	}
 

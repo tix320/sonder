@@ -1,8 +1,6 @@
 package client;
 
-import java.util.ArrayList;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.List;
 
 import io.titix.sonder.Client;
 
@@ -16,8 +14,7 @@ public class ClientTest {
 
 		A service = client.getService(A.class);
 
-		service.foo(Stream.generate(() -> new ArrayList()).limit(100000).collect(Collectors.toList()))
-				.thenAccept(integer -> System.out.println(integer));
+		service.foo(List.of()).subscribe(System.out::println);
 		System.out.println("lol");
 		Thread.sleep(2000000000000000L);
 	}

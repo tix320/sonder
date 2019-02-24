@@ -1,32 +1,27 @@
-package io.titix.sonder.internal;
+package io.titix.sonder.internal.boot;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.Collection;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import io.titix.kiwi.check.Try;
 import io.titix.sonder.Endpoint;
 import io.titix.sonder.OriginId;
+import io.titix.sonder.internal.Config;
+import io.titix.sonder.internal.InternalException;
 
-import static io.titix.sonder.internal.BootException.check;
+import static io.titix.sonder.internal.boot.BootException.check;
 
 /**
- * @author Tigran.Sargsyan on 13-Dec-18
+ * @author tix32 on 24-Feb-19
  */
-final class EndpointHolder extends Holder {
+public final class EndpointBoot extends Boot<EndpointSignature> {
 
-	private final Map<String, Signature> signatureByPaths;
-
-	EndpointHolder(Collection<Class<?>> services) {
-		super(services);
-		signatureByPaths = createSignaturesByPaths(signatures);
-	}
-
-	Signature getSignature(String s) {
-		return signatureByPaths.get(s);
+	public EndpointBoot(String[] packages) {
+		super(Config.getPackageClasses(packages).stream()
+				.filter(clazz -> clazz.isAnnotationPresent(Endpoint.class)).collect(Collectors.toList()));
 	}
 
 	@Override
@@ -65,7 +60,16 @@ final class EndpointHolder extends Holder {
 		return Map.of(OriginId.class, new ExtraParamInfo(Long.class, "client-id"));
 	}
 
-	private Map<String, Signature> createSignaturesByPaths(Collection<Signature> signatures) {
-		return signatures.stream().collect(Collectors.toMap(signature -> signature.path, signature -> signature));
+	@Override
+	EndpointSignature createSignature(Method method) {
+		return new EndpointSignature(getPath(method), method.getDeclaringClass(), method, getParams(method, getAllowedExtraParams()));
+	}
+
+	public Map<Class<?>, Object> createServices() {
+		return services.stream()
+				.collect(Collectors.toMap(
+						service -> service,
+						service -> Try.supply(() -> service.getConstructor().newInstance())
+								.getOrElseThrow(InternalException::new)));
 	}
 }

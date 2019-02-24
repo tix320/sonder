@@ -11,10 +11,11 @@ import java.util.concurrent.Executors;
 
 import io.titix.kiwi.check.Try;
 import io.titix.kiwi.util.Threads;
-import io.titix.sonder.internal.Boot;
 import io.titix.sonder.internal.Communicator;
 import io.titix.sonder.internal.Config;
 import io.titix.sonder.internal.SonderException;
+import io.titix.sonder.internal.boot.EndpointBoot;
+import io.titix.sonder.internal.boot.OriginBoot;
 
 
 /**
@@ -24,7 +25,9 @@ public final class Server {
 
 	private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(Threads::daemon);
 
-	private static final Boot boot = new Boot(Config.getServerBootPackages());
+	private static final OriginBoot originBoot = new OriginBoot(Config.getServerBootPackages());
+
+	private static final EndpointBoot endpointBoot = new EndpointBoot(Config.getServerBootPackages());
 
 	private final ServerSocket serverSocket;
 
@@ -63,13 +66,13 @@ public final class Server {
 					Socket socket = serverSocket.accept();
 
 					Threads.runAsync(() -> {
-						Communicator communicator = new Communicator(socket, boot);
+						Communicator communicator = new Communicator(socket, originBoot, endpointBoot);
 						communicators.put(communicator.id(), communicator);
 					}, EXECUTOR);
 				}
 			}
 			catch (IOException e) {
-				throw new RuntimeException("Cannot accept socket", e);
+				throw new SonderException("Cannot accept socket", e);
 			}
 		}));
 	}

@@ -1,8 +1,8 @@
 package client;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
+import io.titix.kiwi.rx.Observable;
 import io.titix.sonder.Origin;
 import io.titix.sonder.Response;
 
@@ -14,5 +14,5 @@ public interface A {
 
 	@Origin("lol")
 	@Response(true)
-	CompletableFuture<Integer> foo(List<?> dsd);
+	Observable<Integer> foo(List<?> dsd);
 }
