@@ -40,6 +40,6 @@ public final class Client {
 
 	private Socket createSocket(String host, int port) {
 		return Try.supply(() -> new Socket(host, port))
-				.getOrElseThrow(throwable -> new SonderException("Cannot connect to server " + host + ":" + port));
+				.getOrElseThrow(exception -> new SonderException("Cannot connect to server " + host + ":" + port, exception));
 	}
 }

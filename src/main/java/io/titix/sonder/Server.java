@@ -23,11 +23,11 @@ import io.titix.sonder.internal.boot.OriginBoot;
  */
 public final class Server {
 
-	private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(Threads::daemon);
-
 	private static final OriginBoot originBoot = new OriginBoot(Config.getServerBootPackages());
 
 	private static final EndpointBoot endpointBoot = new EndpointBoot(Config.getServerBootPackages());
+
+	private final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
 
 	private final ServerSocket serverSocket;
 
@@ -41,8 +41,11 @@ public final class Server {
 	}
 
 	public <T> T getService(Long originId, Class<T> clazz) {
-		T service = communicators.get(originId).getService(clazz);
-
+		Communicator communicator = communicators.get(originId);
+		if (communicator == null) {
+			throw new IllegalArgumentException("Origin by id " + originId + " not found");
+		}
+		T service = communicator.getService(clazz);
 		if (service == null) {
 			throw new IllegalArgumentException("Instance of service " + clazz + " not found");
 		}
@@ -51,6 +54,7 @@ public final class Server {
 
 	public void stop() {
 		try {
+			EXECUTOR.shutdownNow();
 			serverSocket.close();
 		}
 		catch (IOException e) {
@@ -59,7 +63,7 @@ public final class Server {
 	}
 
 	private void start() {
-		Threads.runDaemon((() -> {
+		Threads.runAsync(() -> {
 			try {
 				//noinspection InfiniteLoopStatement
 				while (true) {
@@ -74,7 +78,7 @@ public final class Server {
 			catch (IOException e) {
 				throw new SonderException("Cannot accept socket", e);
 			}
-		}));
+		}, EXECUTOR);
 	}
 
 	private SonderException resolveMagicError(Throwable throwable, int port) {

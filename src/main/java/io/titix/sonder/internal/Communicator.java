@@ -47,10 +47,9 @@ public final class Communicator {
 
 	private final Map<Long, Exchanger<Object>> exchangers;
 
-	private final Map<String, Supplier<Object>> extraArgsResolver;
+	private final Map<String, Supplier<?>> extraArgsResolver;
 
 	public Communicator(Socket socket, OriginBoot originBoot, EndpointBoot endpointBoot) {
-
 		this.id = comIdGenerator.next();
 		this.extraArgsResolver = createExtraArgsResolver();
 		this.transmitter = new Transmitter(socket);
@@ -93,19 +92,19 @@ public final class Communicator {
 		Threads.handleFutureEx(future);
 	}
 
-	private Observable<Object> send(String path, Object[] args, boolean needResponse) {
+	private Observable<?> send(String path, Object[] args, boolean needResponse) {
 		Long transferKey = transferIdGenerator.next();
 
 		Headers headers = Headers.builder().path(path).id(transferKey).needResponse(needResponse).build();
 		Transfer transfer = new Transfer(headers, args);
 
-		Subject<Object> result = Subject.concurrentSingle();
+		Subject<Object> result = Subject.single();
 		if (needResponse) {
 			Exchanger<Object> exchanger = new Exchanger<>();
-			EXECUTOR.submit(() -> result.next(Try.supplyChecked(() -> exchanger.exchange(null), InternalException::new)));
+			Threads.runAsync(() -> result.next(exchanger.exchange(null)), EXECUTOR);
 			exchangers.put(transferKey, exchanger);
 		}
-		EXECUTOR.execute(() -> this.transmitter.send(transfer));
+		Threads.runAsync(() -> this.transmitter.send(transfer), EXECUTOR);
 
 		return result.asObservable().one();
 	}
@@ -115,7 +114,7 @@ public final class Communicator {
 		Long id = headers.getId();
 		if (headers.isResponse()) {
 			Exchanger<Object> exchanger = exchangers.get(id);
-			Try.runChecked(() -> exchanger.exchange(transfer.content), InternalException::new);
+			Try.run(() -> exchanger.exchange(transfer.content)).rethrow(InternalException::new);
 
 			exchangers.remove(id);
 			transferIdGenerator.free(id);
@@ -165,7 +164,7 @@ public final class Communicator {
 				.collect(Collectors.joining(",", "[", "]")));
 	}
 
-	private Map<String, Supplier<Object>> createExtraArgsResolver() {
+	private Map<String, Supplier<?>> createExtraArgsResolver() {
 		return Map.of("client-id", this::id);
 	}
 

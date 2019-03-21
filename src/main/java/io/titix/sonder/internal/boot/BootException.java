@@ -1,7 +1,7 @@
 package io.titix.sonder.internal.boot;
 
 import java.util.Arrays;
-import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 
 /**
@@ -34,8 +34,8 @@ public final class BootException extends RuntimeException {
 		throw new BootException(message);
 	}
 
-	public static Check check(Supplier<Boolean> predicate, String message) {
-		return new Check(predicate.get(), message);
+	public static Check check(BooleanSupplier predicate, String message) {
+		return new Check(predicate.getAsBoolean(), message);
 	}
 
 	@SuppressWarnings("WeakerAccess")
