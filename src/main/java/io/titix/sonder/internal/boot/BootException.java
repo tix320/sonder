@@ -1,8 +1,8 @@
 package io.titix.sonder.internal.boot;
 
-import java.util.Arrays;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * @author Tigran.Sargsyan on 18-Dec-18
@@ -18,12 +18,9 @@ public final class BootException extends RuntimeException {
 	}
 
 	static void checkAndThrow(String rootMessage, Check... checks) {
-		var index = new Object() {
-			int i = 0;
-		};
-		String checksMessage = Arrays.stream(checks)
-				.filter(check -> check.isInvalid)
-				.map(check -> ++index.i + ": " + check.message)
+		String checksMessage = IntStream.range(0, checks.length)
+				.filter(index -> checks[index].isInvalid)
+				.mapToObj(index -> index + ": " + checks[index].message)
 				.collect(Collectors.joining("\n"));
 		if (checksMessage.isEmpty()) {
 			return;

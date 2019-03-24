@@ -4,7 +4,6 @@ import java.util.List;
 
 import io.titix.kiwi.rx.Observable;
 import io.titix.sonder.Origin;
-import io.titix.sonder.Response;
 
 /**
  * @author Tigran.Sargsyan on 30-Jan-19
@@ -13,6 +12,5 @@ import io.titix.sonder.Response;
 public interface A {
 
 	@Origin("lol")
-	@Response(true)
 	Observable<Integer> foo(List<?> dsd);
 }

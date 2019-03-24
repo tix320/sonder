@@ -7,6 +7,7 @@ import java.net.Socket;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -17,6 +18,8 @@ import io.titix.kiwi.util.IdGenerator;
 import io.titix.kiwi.util.PostPool;
 import io.titix.kiwi.util.Threads;
 import io.titix.sonder.internal.boot.*;
+
+import static java.util.function.Function.identity;
 
 /**
  * @author Tigran.Sargsyan on 26-Dec-18
@@ -57,10 +60,10 @@ public final class Communicator {
 		this.transferIdGenerator = new IdGenerator();
 		this.originsByMethods = originBoot.getSignatures()
 				.stream()
-				.collect(Collectors.toMap(signature -> signature.method, signature -> signature));
+				.collect(Collectors.toMap(signature -> signature.method, identity()));
 		this.endpointsByPaths = endpointBoot.getSignatures()
 				.stream()
-				.collect(Collectors.toMap(signature -> signature.path, signature -> signature));
+				.collect(Collectors.toMap(signature -> signature.path, identity()));
 		this.origins = originsPool.get(() -> originBoot.createServices(new OriginHandler()));
 		this.endpoints = endpointsPool.get(endpointBoot::createServices);
 		runReceiver();

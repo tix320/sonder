@@ -4,6 +4,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import io.titix.kiwi.check.Try;
@@ -13,6 +14,7 @@ import io.titix.sonder.internal.Config;
 import io.titix.sonder.internal.InternalException;
 
 import static io.titix.sonder.internal.boot.BootException.check;
+import static java.util.function.Function.identity;
 
 /**
  * @author tix32 on 24-Feb-19
@@ -68,7 +70,7 @@ public final class EndpointBoot extends Boot<EndpointSignature> {
 	public Map<Class<?>, Object> createServices() {
 		return services.stream()
 				.collect(Collectors.toMap(
-						service -> service,
+						identity(),
 						service -> Try.supply(() -> service.getConstructor().newInstance())
 								.getOrElseThrow(InternalException::new)));
 	}
