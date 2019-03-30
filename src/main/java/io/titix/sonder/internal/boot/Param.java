@@ -5,9 +5,9 @@ package io.titix.sonder.internal.boot;
  */
 public final class Param {
 
-	public final String key;
+	final String key;
 
-	public final boolean isExtra;
+	final boolean isExtra;
 
 	Param(String key, boolean isExtra) {
 		this.key = key;
@@ -16,9 +16,6 @@ public final class Param {
 
 	@Override
 	public String toString() {
-		return "Param{" +
-				"key='" + key + '\'' +
-				", isExtra=" + isExtra +
-				'}';
+		return "Param{" + "key='" + key + '\'' + ", isExtra=" + isExtra + '}';
 	}
 }

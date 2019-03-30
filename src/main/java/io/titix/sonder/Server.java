@@ -5,6 +5,7 @@ import java.net.BindException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -14,8 +15,11 @@ import io.titix.kiwi.util.Threads;
 import io.titix.sonder.internal.Communicator;
 import io.titix.sonder.internal.Config;
 import io.titix.sonder.internal.SonderException;
+import io.titix.sonder.internal.Transmitter;
 import io.titix.sonder.internal.boot.EndpointBoot;
+import io.titix.sonder.internal.boot.EndpointSignature;
 import io.titix.sonder.internal.boot.OriginBoot;
+import io.titix.sonder.internal.boot.OriginSignature;
 
 
 /**
@@ -70,7 +74,9 @@ public final class Server {
 					Socket socket = serverSocket.accept();
 
 					Threads.runAsync(() -> {
-						Communicator communicator = new Communicator(socket, originBoot, endpointBoot);
+						List<OriginSignature> origins = originBoot.getSignatures();
+						List<EndpointSignature> endpoints = endpointBoot.getSignatures();
+						Communicator communicator = new Communicator(new Transmitter(socket), origins, endpoints);
 						communicators.put(communicator.id(), communicator);
 					}, EXECUTOR);
 				}

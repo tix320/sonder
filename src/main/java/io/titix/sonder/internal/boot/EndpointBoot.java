@@ -4,17 +4,14 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import io.titix.kiwi.check.Try;
 import io.titix.sonder.Endpoint;
 import io.titix.sonder.OriginId;
 import io.titix.sonder.internal.Config;
-import io.titix.sonder.internal.InternalException;
 
-import static io.titix.sonder.internal.boot.BootException.check;
-import static java.util.function.Function.identity;
+import static io.titix.sonder.internal.boot.BootException.throwWhen;
 
 /**
  * @author tix32 on 24-Feb-19
@@ -22,19 +19,22 @@ import static java.util.function.Function.identity;
 public final class EndpointBoot extends Boot<EndpointSignature> {
 
 	public EndpointBoot(String[] packages) {
-		super(Config.getPackageClasses(packages).stream()
-				.filter(clazz -> clazz.isAnnotationPresent(Endpoint.class)).collect(Collectors.toList()));
+		super(Config.getPackageClasses(packages)
+				.stream()
+				.filter(clazz -> clazz.isAnnotationPresent(Endpoint.class))
+				.collect(Collectors.toList()));
 	}
 
 	@Override
 	void checkService(Class<?> clazz) {
-		BootException.checkAndThrow("Failed to resolve endpoint service " + clazz.getSimpleName() + ", there are the following errors.",
-				check(clazz::isInterface, "Must be a non abstract class"),
-				check(clazz::isEnum, "Must be a non abstract class"),
-				check(() -> Modifier.isAbstract(clazz.getModifiers()), "Must be a concrete class"),
-				check(() -> (clazz.isMemberClass() && !Modifier.isStatic(clazz.getModifiers())), "Must be static, when is a member class"),
-				check(() -> !Modifier.isPublic(clazz.getModifiers()), "Must be public"),
-				check(() -> Try.supply(clazz::getConstructor)
+		BootException.checkAndThrow(clazz,
+				aClass -> "Failed to resolve endpoint service " + aClass.getSimpleName() + ", there are the following errors.",
+				throwWhen(aClass -> aClass.isInterface() || aClass.isEnum(), "Must be a non abstract class"),
+				throwWhen(aClass -> Modifier.isAbstract(clazz.getModifiers()), "Must be a concrete class"),
+				throwWhen(aClass -> (clazz.isMemberClass() && !Modifier.isStatic(clazz.getModifiers())),
+						"Must be static, when is a member class"),
+				throwWhen(aClass -> !Modifier.isPublic(clazz.getModifiers()), "Must be public"),
+				throwWhen(aClass -> Try.supply(clazz::getConstructor)
 						.filter(constructor -> Modifier.isPublic(constructor.getModifiers()))
 						.isUseless(), "Must have public no-args constructor"));
 	}
@@ -46,15 +46,15 @@ public final class EndpointBoot extends Boot<EndpointSignature> {
 
 	@Override
 	void checkMethod(Method method) {
-		BootException.checkAndThrow("Failed to resolve endpoint method '" + method.getName() + "' in " + method.getDeclaringClass() + ", there are the following errors.",
-				check(() -> !Modifier.isPublic(method.getModifiers()), "Must be public"));
+		BootException.checkAndThrow(method,
+				m -> "Failed to resolve endpoint method '" + method.getName() + "' in " + method.getDeclaringClass() + ", there are the following errors.",
+				throwWhen(m -> !Modifier.isPublic(method.getModifiers()), "Must be public"));
 	}
 
 	@Override
 	String getPath(Method method) {
-		return method.getDeclaringClass().getAnnotation(Endpoint.class).value()
-				+ ":"
-				+ method.getAnnotation(Endpoint.class).value();
+		return method.getDeclaringClass().getAnnotation(Endpoint.class).value() + ":" + method.getAnnotation(
+				Endpoint.class).value();
 	}
 
 	@Override
@@ -64,14 +64,7 @@ public final class EndpointBoot extends Boot<EndpointSignature> {
 
 	@Override
 	EndpointSignature createSignature(Method method) {
-		return new EndpointSignature(getPath(method), method.getDeclaringClass(), method, getParams(method, getAllowedExtraParams()));
-	}
-
-	public Map<Class<?>, Object> createServices() {
-		return services.stream()
-				.collect(Collectors.toMap(
-						identity(),
-						service -> Try.supply(() -> service.getConstructor().newInstance())
-								.getOrElseThrow(InternalException::new)));
+		return new EndpointSignature(getPath(method), method.getDeclaringClass(), method,
+				getParams(method, getAllowedExtraParams()));
 	}
 }

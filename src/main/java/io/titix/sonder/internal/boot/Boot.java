@@ -15,20 +15,17 @@ import io.titix.sonder.internal.ExtraParam;
  */
 public abstract class Boot<T extends Signature> {
 
-	final Collection<Class<?>> services;
-
-	private final Collection<T> signatures;
+	private final List<T> signatures;
 
 	Boot(Collection<Class<?>> services) {
-		this.services = services;
 		this.signatures = createSignatures(services);
 	}
 
-	public final Collection<T> getSignatures() {
+	public final List<T> getSignatures() {
 		return signatures;
 	}
 
-	private Collection<T> createSignatures(Collection<Class<?>> services) {
+	private List<T> createSignatures(Collection<Class<?>> services) {
 		Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams = getAllowedExtraParams();
 		List<T> signatures = services.stream()
 				.peek(this::checkService)
@@ -62,8 +59,8 @@ public abstract class Boot<T extends Signature> {
 								.getSimpleName() + " is not allowed in method " + method.getName() + " of " + method.getDeclaringClass());
 					}
 					if (extraParamExists) {
-						throw new BootException("Method '" + method.getName() + "' parameter '" + parameter + "' in " + method
-								.getDeclaringClass() + " must have only one extra param annotation");
+						throw new BootException(
+								"Method '" + method.getName() + "' parameter '" + parameter + "' in " + method.getDeclaringClass() + " must have only one extra param annotation");
 					}
 					extraParamExists = true;
 				}
@@ -99,7 +96,8 @@ public abstract class Boot<T extends Signature> {
 
 	private void checkSignaturePaths(String path) {
 		if (path.equals("")) {
-			throw new BootException("path value of @" + Origin.class.getSimpleName() + " or @" + Endpoint.class.getSimpleName() + " must be non empty");
+			throw new BootException(
+					"path value of @" + Origin.class.getSimpleName() + " or @" + Endpoint.class.getSimpleName() + " must be non empty");
 		}
 	}
 
@@ -108,9 +106,9 @@ public abstract class Boot<T extends Signature> {
 		for (Signature signature : signatures) {
 			if (uniqueSignatures.containsKey(signature.path)) {
 				Signature presentSignature = uniqueSignatures.get(signature.path);
-				throw new BootException("Path of following methods are the same + '" + signature.path + "'\n'"
-						+ signature.method.getName() + "' in " + signature.clazz + " and '" + presentSignature.method
-						.getName() + "' in " + presentSignature.clazz);
+				throw new BootException(
+						"Path of following methods are the same + '" + signature.path + "'\n'" + signature.method.getName() + "' in " + signature.clazz + " and '" + presentSignature.method
+								.getName() + "' in " + presentSignature.clazz);
 			}
 			uniqueSignatures.put(signature.path, signature);
 		}

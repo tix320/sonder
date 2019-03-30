@@ -29,10 +29,8 @@ abstract class Signature {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		Signature signature = (Signature) o;
-		return Objects.equals(path, signature.path) &&
-				Objects.equals(clazz, signature.clazz) &&
-				Objects.equals(method, signature.method) &&
-				Objects.equals(params, signature.params);
+		return Objects.equals(path, signature.path) && Objects.equals(clazz, signature.clazz) && Objects.equals(method,
+				signature.method) && Objects.equals(params, signature.params);
 	}
 
 	@Override
@@ -42,11 +40,6 @@ abstract class Signature {
 
 	@Override
 	public String toString() {
-		return "Signature{" +
-				"path='" + path + '\'' +
-				", clazz=" + clazz +
-				", method=" + method +
-				", params=" + params +
-				'}';
+		return "Signature{" + "path='" + path + '\'' + ", clazz=" + clazz + ", method=" + method + ", params=" + params + '}';
 	}
 }

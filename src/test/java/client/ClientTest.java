@@ -7,7 +7,7 @@ import io.titix.sonder.Client;
 /**
  * @author Tigran.Sargsyan on 24-Jan-19
  */
-public class ClientTest {
+public final class ClientTest {
 
 	public static void main(String[] args) throws InterruptedException {
 		Client client = new Client("localhost", 777);

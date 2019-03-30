@@ -1,6 +1,7 @@
 package io.titix.sonder.internal.boot;
 
-import java.util.function.BooleanSupplier;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -17,34 +18,35 @@ public final class BootException extends RuntimeException {
 		super(cause);
 	}
 
-	static void checkAndThrow(String rootMessage, Check... checks) {
+	@SafeVarargs
+	static <T> void checkAndThrow(T value, Function<T, String> rootMessage, Check<T>... checks) {
 		String checksMessage = IntStream.range(0, checks.length)
-				.filter(index -> checks[index].isInvalid)
-				.mapToObj(index -> index + ": " + checks[index].message)
+				.filter(index -> checks[index].predicate.test(value))
+				.mapToObj(index -> index + ": " + checks[index].errorMessage)
 				.collect(Collectors.joining("\n"));
 		if (checksMessage.isEmpty()) {
 			return;
 		}
 
-		String message = (rootMessage + "\n" + checksMessage);
+		String message = (rootMessage.apply(value) + '\n' + checksMessage);
 
 		throw new BootException(message);
 	}
 
-	public static Check check(BooleanSupplier predicate, String message) {
-		return new Check(predicate.getAsBoolean(), message);
+	static <T> Check<T> throwWhen(Predicate<T> predicate, String errorMessage) {
+		return new Check<>(predicate, errorMessage);
 	}
 
 	@SuppressWarnings("WeakerAccess")
-	static final class Check {
+	static final class Check<T> {
 
-		private final boolean isInvalid;
+		private final Predicate<T> predicate;
 
-		private final String message;
+		private final String errorMessage;
 
-		private Check(boolean isInvalid, String message) {
-			this.isInvalid = isInvalid;
-			this.message = message;
+		private Check(Predicate<T> predicate, String errorMessage) {
+			this.predicate = predicate;
+			this.errorMessage = errorMessage;
 		}
 	}
 }
