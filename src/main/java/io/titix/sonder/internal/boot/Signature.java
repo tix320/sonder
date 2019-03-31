@@ -13,9 +13,9 @@ abstract class Signature {
 
 	public final Class<?> clazz;
 
-	public final Method method;
+	final Method method;
 
-	public final List<Param> params;
+	final List<Param> params;
 
 	Signature(String path, Class<?> clazz, Method method, List<Param> params) {
 		this.path = path;

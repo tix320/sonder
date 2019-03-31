@@ -8,10 +8,6 @@ public final class InternalException extends RuntimeException {
 	private static final long serialVersionUID = -922010576856979068L;
 
 	public InternalException(Throwable cause) {
-		super(cause);
-	}
-
-	public InternalException(String message, Throwable cause) {
-		super(message, cause);
+		super("If you see this exception, please contact us.", cause);
 	}
 }

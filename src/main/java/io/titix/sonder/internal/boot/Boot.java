@@ -26,13 +26,11 @@ public abstract class Boot<T extends Signature> {
 	}
 
 	private List<T> createSignatures(Collection<Class<?>> services) {
-		Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams = getAllowedExtraParams();
 		List<T> signatures = services.stream()
 				.peek(this::checkService)
 				.flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
 				.filter(this::isServiceMethod)
-				.peek(this::checkMethod)
-				.peek(method -> checkExtraParam(method, allowedExtraParams))
+				.peek(this::checkMethod).peek(method -> checkExtraParam(method, getAllowedExtraParams()))
 				.map(this::createSignature)
 				.peek(signature -> checkSignaturePaths(signature.path))
 				.collect(Collectors.toUnmodifiableList());
@@ -55,12 +53,14 @@ public abstract class Boot<T extends Signature> {
 			for (Annotation annotation : parameter.getAnnotations()) {
 				if (annotation.annotationType().isAnnotationPresent(ExtraParam.class)) {
 					if (!allowedExtraParams.containsKey(annotation.annotationType())) {
-						throw new BootException("Extra param @" + annotation.annotationType()
-								.getSimpleName() + " is not allowed in method " + method.getName() + " of " + method.getDeclaringClass());
+						throw new BootException(String.format("Extra param @%s is not allowed in method %s(%s)",
+								annotation.annotationType().getSimpleName(), method.getName(),
+								method.getDeclaringClass()));
 					}
 					if (extraParamExists) {
-						throw new BootException(
-								"Method '" + method.getName() + "' parameter '" + parameter + "' in " + method.getDeclaringClass() + " must have only one extra param annotation");
+						throw new BootException(String.format(
+								"Parameter '%s' in method %s(%s) must have only one extra param annotation",
+								parameter.getName(), method.getName(), method.getDeclaringClass().getName()));
 					}
 					extraParamExists = true;
 				}
@@ -80,8 +80,8 @@ public abstract class Boot<T extends Signature> {
 				if (allowedExtraParams.containsKey(annotation.annotationType())) {
 					ExtraParamInfo extraParamInfo = allowedExtraParams.get(annotation.annotationType());
 					if (!(extraParamInfo.requiredType == parameter.getType())) {
-						throw new BootException("Extra param @" + annotation.annotationType()
-								.getSimpleName() + " must have type " + extraParamInfo.requiredType);
+						throw new BootException(String.format("Extra param @%s must have type %s",
+								annotation.annotationType().getSimpleName(), extraParamInfo.requiredType.getName()));
 					}
 					params.add(new Param(extraParamInfo.key, true));
 					continue eachParam;
@@ -97,7 +97,8 @@ public abstract class Boot<T extends Signature> {
 	private void checkSignaturePaths(String path) {
 		if (path.equals("")) {
 			throw new BootException(
-					"path value of @" + Origin.class.getSimpleName() + " or @" + Endpoint.class.getSimpleName() + " must be non empty");
+					String.format("Path value of @%s or @%s must be non empty", Origin.class.getSimpleName(),
+							Endpoint.class.getSimpleName()));
 		}
 	}
 
@@ -106,9 +107,10 @@ public abstract class Boot<T extends Signature> {
 		for (Signature signature : signatures) {
 			if (uniqueSignatures.containsKey(signature.path)) {
 				Signature presentSignature = uniqueSignatures.get(signature.path);
-				throw new BootException(
-						"Path of following methods are the same + '" + signature.path + "'\n'" + signature.method.getName() + "' in " + signature.clazz + " and '" + presentSignature.method
-								.getName() + "' in " + presentSignature.clazz);
+				throw new DuplicatePathException(
+						String.format("Methods %s(%s) and %s(%s) has same path", signature.method.getName(),
+								signature.clazz.getName(), presentSignature.method.getName(),
+								presentSignature.clazz.getName()));
 			}
 			uniqueSignatures.put(signature.path, signature);
 		}

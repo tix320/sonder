@@ -24,7 +24,7 @@ public final class EndpointSignature extends Signature {
 			return method.invoke(instance, allArgs);
 		}
 		catch (IllegalAccessException | InvocationTargetException e) {
-			throw new InternalException("Cannot invoke method " + method, e);
+			throw new InternalException(e);
 		}
 		catch (IllegalArgumentException e) {
 			throw illegalEndpointSignature(allArgs);

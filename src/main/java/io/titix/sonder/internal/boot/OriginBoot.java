@@ -1,14 +1,14 @@
 package io.titix.sonder.internal.boot;
 
-import io.titix.kiwi.rx.Observable;
-import io.titix.sonder.Origin;
-import io.titix.sonder.internal.Config;
-
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import io.titix.kiwi.rx.Observable;
+import io.titix.sonder.Origin;
+import io.titix.sonder.internal.Config;
 
 import static io.titix.sonder.internal.boot.BootException.throwWhen;
 import static java.util.function.Predicate.not;
@@ -56,8 +56,8 @@ public final class OriginBoot extends Boot<OriginSignature> {
 	@Override
 	void checkMethod(Method method) {
 		BootException.checkAndThrow(method,
-				m -> "Failed to resolve origin method '" + m.getName() + "' in " + m.getDeclaringClass()
-						.getName() + ", there are the following errors.",
+				m -> String.format("Failed to resolve endpoint method '%s'(%s), there are the following errors. ",
+						m.getName(), m.getDeclaringClass()),
 				throwWhen(m -> m.getReturnType() != void.class && m.getReturnType() != Observable.class,
 						"Return type must be void or Observable"),
 				throwWhen(not(m -> Modifier.isPublic(m.getModifiers())), "Must be public"),

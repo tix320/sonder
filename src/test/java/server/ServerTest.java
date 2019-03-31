@@ -8,8 +8,13 @@ import io.titix.sonder.Server;
 public final class ServerTest {
 
 	public static void main(String[] args) throws InterruptedException {
-		new Server(777);
+		Server server = Server.run(777, new String[]{"server"});
+
 
 		Thread.sleep(2000000000000000L);
+		Runnable service = server.getService(342L, Runnable.class);
+		service.run();
+
+		server.stop();
 	}
 }

@@ -8,14 +8,10 @@ import java.util.stream.IntStream;
 /**
  * @author Tigran.Sargsyan on 18-Dec-18
  */
-public final class BootException extends RuntimeException {
+final class BootException extends RuntimeException {
 
-	public BootException(String message) {
+	BootException(String message) {
 		super(message);
-	}
-
-	public BootException(Throwable cause) {
-		super(cause);
 	}
 
 	@SafeVarargs

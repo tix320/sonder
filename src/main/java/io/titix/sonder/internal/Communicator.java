@@ -16,7 +16,6 @@ import io.titix.kiwi.rx.Observable;
 import io.titix.kiwi.rx.Subject;
 import io.titix.kiwi.util.IdGenerator;
 import io.titix.kiwi.util.Threads;
-import io.titix.sonder.internal.boot.BootException;
 import io.titix.sonder.internal.boot.EndpointSignature;
 import io.titix.sonder.internal.boot.OriginSignature;
 
@@ -37,9 +36,9 @@ public final class Communicator {
 
 	private final Map<Class<?>, Object> originInstances;
 
-	private final Map<String, EndpointSignature> endpointsByPaths;
-
 	private final Map<Class<?>, Object> endpointInstances;
+
+	private final Map<String, EndpointSignature> endpointsByPaths;
 
 	private final IdGenerator transferIdGenerator;
 
@@ -149,7 +148,7 @@ public final class Communicator {
 		String path = headers.getPath();
 		EndpointSignature endpoint = endpointsByPaths.get(path);
 		if (endpoint == null) {
-			throw new BootException("Endpoint with path '" + path + "' not found");
+			throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
 		}
 		Object[] args = (Object[]) transfer.content;
 		Object instance = endpointInstances.get(endpoint.clazz);

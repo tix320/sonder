@@ -4,16 +4,15 @@ import java.io.IOException;
 import java.net.BindException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import io.titix.kiwi.check.Try;
 import io.titix.kiwi.util.Threads;
 import io.titix.sonder.internal.Communicator;
-import io.titix.sonder.internal.Config;
 import io.titix.sonder.internal.SonderException;
 import io.titix.sonder.internal.Transmitter;
 import io.titix.sonder.internal.boot.EndpointBoot;
@@ -27,31 +26,40 @@ import io.titix.sonder.internal.boot.OriginSignature;
  */
 public final class Server {
 
-	private static final OriginBoot originBoot = new OriginBoot(Config.getServerBootPackages());
-
-	private static final EndpointBoot endpointBoot = new EndpointBoot(Config.getServerBootPackages());
-
 	private final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
+
+	private final OriginBoot originBoot;
+
+	private final EndpointBoot endpointBoot;
 
 	private final ServerSocket serverSocket;
 
 	private final Map<Long, Communicator> communicators;
 
-	public Server(int port) {
-		this.serverSocket = Try.supply(() -> new ServerSocket(port))
+	public static Server run(int port, String[] servicePackages) {
+		ServerSocket serverSocket = Try.supply(() -> new ServerSocket(port))
 				.getOrElseThrow((throwable) -> resolveMagicError(throwable, port));
-		this.communicators = new HashMap<>();
+		OriginBoot originBoot = new OriginBoot(servicePackages);
+		EndpointBoot endpointBoot = new EndpointBoot(servicePackages);
+		return new Server(serverSocket, originBoot, endpointBoot);
+	}
+
+	private Server(ServerSocket serverSocket, OriginBoot originBoot, EndpointBoot endpointBoot) {
+		this.originBoot = originBoot;
+		this.endpointBoot = endpointBoot;
+		this.serverSocket = serverSocket;
+		this.communicators = new ConcurrentHashMap<>();
 		start();
 	}
 
-	public <T> T getService(Long originId, Class<T> clazz) {
-		Communicator communicator = communicators.get(originId);
+	public <T> T getService(Long clientId, Class<T> clazz) {
+		Communicator communicator = communicators.get(clientId);
 		if (communicator == null) {
-			throw new IllegalArgumentException("Origin by id " + originId + " not found");
+			throw new IllegalArgumentException("Client by id " + clientId + " not found");
 		}
 		T service = communicator.getService(clazz);
 		if (service == null) {
-			throw new IllegalArgumentException("Instance of service " + clazz + " not found");
+			throw new IllegalArgumentException("Service of " + clazz + " not found");
 		}
 		return service;
 	}
@@ -87,7 +95,7 @@ public final class Server {
 		}, EXECUTOR);
 	}
 
-	private SonderException resolveMagicError(Throwable throwable, int port) {
+	private static SonderException resolveMagicError(Throwable throwable, int port) {
 		if (throwable instanceof BindException) {
 			if (throwable.getMessage().contains("Address already in use")) {
 				return new SonderException("Port " + port + " already in use");

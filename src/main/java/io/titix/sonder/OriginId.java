@@ -13,5 +13,4 @@ import io.titix.sonder.internal.ExtraParam;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.PARAMETER)
 @ExtraParam
-public @interface OriginId {
-}
+public @interface OriginId {}

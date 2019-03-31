@@ -32,12 +32,6 @@ public final class OriginSignature extends Signature {
 
 	@Override
 	public String toString() {
-		return "OriginSignature{" +
-				"needResponse=" + needResponse +
-				", path='" + path + '\'' +
-				", clazz=" + clazz +
-				", method=" + method +
-				", params=" + params +
-				'}';
+		return "OriginSignature{" + "needResponse=" + needResponse + ", path='" + path + '\'' + ", clazz=" + clazz + ", method=" + method + ", params=" + params + '}';
 	}
 }
