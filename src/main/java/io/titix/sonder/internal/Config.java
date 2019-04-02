@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 /**
  * @author Tigran.Sargsyan on 24-Jan-19
  */
-public class Config {
+public final class Config {
 
 	private static final Pattern packagePattern = Pattern.compile(
 			"^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)*[0-9a-zA-Z_]$");

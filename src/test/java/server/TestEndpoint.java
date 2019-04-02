@@ -12,7 +12,7 @@ import io.titix.sonder.OriginId;
 public class TestEndpoint {
 
 	@Endpoint("lol")
-	public int foo(List<?> list, @OriginId String a) {
+	public int foo(List<?> list, @OriginId long a) {
 		System.out.println(list.size());
 		return 34;
 	}

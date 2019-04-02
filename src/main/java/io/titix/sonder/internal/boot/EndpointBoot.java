@@ -60,7 +60,7 @@ public final class EndpointBoot extends Boot<EndpointSignature> {
 
 	@Override
 	Map<Class<? extends Annotation>, ExtraParamInfo> getAllowedExtraParams() {
-		return Map.of(OriginId.class, new ExtraParamInfo(Long.class, "client-id"));
+		return Map.of(OriginId.class, new ExtraParamInfo(long.class, "client-id"));
 	}
 
 	@Override
