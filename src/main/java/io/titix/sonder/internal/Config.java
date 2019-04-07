@@ -2,7 +2,6 @@ package io.titix.sonder.internal;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -15,8 +14,8 @@ public final class Config {
 	private static final Pattern packagePattern = Pattern.compile(
 			"^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)*[0-9a-zA-Z_]$");
 
-	public static List<Class<?>> getPackageClasses(String[] packageNames) {
-		return Arrays.stream(packageNames)
+	public static List<Class<?>> getPackageClasses(List<String> packageNames) {
+		return packageNames.stream()
 				.flatMap(packageName -> getPackageClasses(packageName).stream())
 				.collect(Collectors.toList());
 	}

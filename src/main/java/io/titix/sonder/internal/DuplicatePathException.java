@@ -1,4 +1,4 @@
-package io.titix.sonder.internal.boot;
+package io.titix.sonder.internal;
 
 final class DuplicatePathException extends RuntimeException {
 

@@ -1,4 +1,4 @@
-package io.titix.sonder.internal.boot;
+package io.titix.sonder.internal;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -7,15 +7,13 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import io.titix.sonder.internal.InternalException;
-
 /**
  * @author tix32 on 24-Feb-19
  */
-public final class EndpointSignature extends Signature {
+public final class EndpointMethod extends ServiceMethod {
 
-	EndpointSignature(String path, Class<?> clazz, Method method, List<Param> params) {
-		super(path, clazz, method, params);
+	EndpointMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams, List<ExtraParam> extraParams) {
+		super(path, clazz, method, simpleParams, extraParams);
 	}
 
 	public Object invoke(Object instance, Object[] args, Function<String, Object> extraArgResolver) {
@@ -31,17 +29,26 @@ public final class EndpointSignature extends Signature {
 		}
 	}
 
-	private Object[] appendExtraArgs(Object[] realArgs, Function<String, Object> extraArgResolver) {
-		List<Param> parameters = params;
-		if (parameters.stream().filter(param -> !param.isExtra).count() != realArgs.length) {
-			throw illegalEndpointSignature(realArgs);
+	private Object[] appendExtraArgs(Object[] simpleArgs, Function<String, Object> extraArgResolver) {
+		List<Param> simpleParams = this.simpleParams;
+		List<ExtraParam> extraParams = this.extraParams;
+
+		int simpleArgsLength = simpleArgs.length;
+
+		if (simpleParams.size() != simpleArgsLength) {
+			throw illegalEndpointSignature(simpleArgs);
 		}
-		Object[] allArgs = new Object[parameters.size()];
-		int realArgIndex = 0;
-		for (int i = 0; i < allArgs.length; i++) {
-			Param param = parameters.get(i);
-			allArgs[i] = param.isExtra ? extraArgResolver.apply(param.key) : realArgs[realArgIndex++];
+
+		Object[] allArgs = new Object[simpleParams.size() + extraParams.size()];
+
+		System.arraycopy(simpleArgs, 0, allArgs, 0, simpleArgsLength); // fill simple args
+
+		int extraArgIndex = simpleArgsLength;
+
+		for (ExtraParam extraParam : extraParams) {
+			allArgs[extraArgIndex++] = extraArgResolver.apply(extraParam.key);
 		}
+
 		return allArgs;
 	}
 

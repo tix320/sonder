@@ -1,164 +1,104 @@
 package io.titix.sonder.internal;
 
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Proxy;
-import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Exchanger;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
+import java.util.function.BiFunction;
 
 import io.titix.kiwi.check.Try;
 import io.titix.kiwi.rx.Observable;
 import io.titix.kiwi.rx.Subject;
-import io.titix.kiwi.util.IdGenerator;
-import io.titix.kiwi.util.Threads;
-import io.titix.sonder.internal.boot.EndpointSignature;
-import io.titix.sonder.internal.boot.OriginSignature;
-
-import static java.util.function.Function.identity;
+import io.titix.kiwi.util.IDGenerator;
 
 /**
  * @author Tigran.Sargsyan on 26-Dec-18
  */
 public final class Communicator {
 
-	private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(Threads::daemon);
-
-	private static final IdGenerator comIdGenerator = new IdGenerator();
-
-	private final long id;
-
 	private final Transmitter transmitter;
 
-	private final Map<Class<?>, Object> originInstances;
-
-	private final Map<Class<?>, Object> endpointInstances;
-
-	private final Map<String, EndpointSignature> endpointsByPaths;
-
-	private final IdGenerator transferIdGenerator;
+	private final IDGenerator transferIdGenerator;
 
 	private final Map<Long, Exchanger<Object>> exchangers;
 
-	private final Map<String, Supplier<?>> extraArgResolvers;
+	private final BiFunction<Headers, Object[], Object> requestHandler;
 
-	public Communicator(Transmitter transmitter, List<OriginSignature> origins, List<EndpointSignature> endpoints) {
-		this.id = comIdGenerator.next();
-		this.extraArgResolvers = createExtraArgsResolver();
+	public Communicator(Transmitter transmitter, BiFunction<Headers, Object[], Object> requestHandler) {
 		this.transmitter = transmitter;
 		this.exchangers = new ConcurrentHashMap<>();
-		this.transferIdGenerator = new IdGenerator();
-		this.originInstances = origins.stream()
-				.collect(Collectors.toMap(signature -> signature.clazz, this::createOriginInstance));
-		this.endpointInstances = endpoints.stream()
-				.collect(Collectors.toMap(signature -> signature.clazz, this::creatEndpointInstance));
-		this.endpointsByPaths = endpoints.stream().collect(Collectors.toMap(signature -> signature.path, identity()));
-		transmitter.transfers().subscribe(this::resolveTransfer);
+		this.transferIdGenerator = new IDGenerator();
+		this.requestHandler = requestHandler;
+		handleIncomingRequests();
 	}
 
-	public long id() {
-		return id;
-	}
-
-	@SuppressWarnings("unchecked")
-	public <T> T getService(Class<T> clazz) {
-		return (T) originInstances.get(clazz);
-	}
-
-	public void close() {
-		comIdGenerator.release(id);
-		transmitter.close();
-	}
-
-	private Object createOriginInstance(OriginSignature signature) {
-		InvocationHandler invocationHandler = (proxy, method, args) -> {
-			if (method.getDeclaringClass() == Object.class) {
-				throw new UnsupportedOperationException("This method does not allowed on origin services");
-			}
-
-			if (args == null) {
-				args = new Object[0];
-			}
-
-			if (signature.needResponse) {
-				return sendWithResponse(signature.path, args);
-			}
-			else {
-				sendWithoutResponse(signature.path, args);
-				return null;
-			}
-		};
-
-		return Proxy.newProxyInstance(signature.clazz.getClassLoader(), new Class[]{signature.clazz},
-				invocationHandler);
-	}
-
-	private Object creatEndpointInstance(EndpointSignature signature) {
-		return Try.supply(() -> signature.clazz.getConstructor().newInstance()).getOrElseThrow(InternalException::new);
-	}
-
-	private void sendWithoutResponse(String path, Object[] args) {
+	public Observable<?> sendRequest(Headers headers, Object[] content) {
 		long transferKey = transferIdGenerator.next();
 
-		Headers headers = new Headers(transferKey, path, false, false);
-		Transfer transfer = new Transfer(headers, args);
-
-		Threads.runAsync(() -> this.transmitter.send(transfer), EXECUTOR);
-	}
-
-	private Observable<?> sendWithResponse(String path, Object[] args) {
-		long transferKey = transferIdGenerator.next();
-
-		Headers headers = new Headers(transferKey, path, false, true);
-		Transfer transfer = new Transfer(headers, args);
+		headers = headers.compose(
+				Headers.builder().header("transfer-key", transferKey).header("need-response", true).build());
+		Transfer transfer = new Transfer(headers, content);
 
 		Subject<Object> result = Subject.single();
 		Exchanger<Object> exchanger = new Exchanger<>();
 		exchangers.put(transferKey, exchanger);
-		Threads.runAsync(() -> result.next(exchanger.exchange(null)), EXECUTOR);
-		Threads.runAsync(() -> this.transmitter.send(transfer), EXECUTOR);
+		CompletableFuture.runAsync(
+				() -> Try.run(() -> result.next(exchanger.exchange(null))).rethrow(InternalException::new));
+		CompletableFuture.runAsync(() -> this.transmitter.send(transfer));
 
 		return result.asObservable();
 	}
 
+	public void sendUnresponsiveRequest(Headers headers, Object[] content) {
+		headers = headers.compose(Headers.builder().header("need-response", false).build());
+
+		Transfer transfer = new Transfer(headers, content);
+
+		CompletableFuture.runAsync(() -> this.transmitter.send(transfer));
+	}
+
+	public void close() {
+		transmitter.close();
+	}
+
+	private void handleIncomingRequests() {
+		transmitter.transfers().subscribe(this::resolveTransfer);
+	}
+
 	private void resolveTransfer(Transfer transfer) {
 		Headers headers = transfer.headers;
-		if (headers.isResponse()) {
-			handleResponse(transfer);
+		boolean isResponse = Objects.requireNonNullElse(headers.getBoolean("is-response"), false);
+		if (isResponse) {
+			processResponse(transfer);
 		}
 		else {
-			handleRequest(transfer);
+			processRequest(transfer);
 		}
 	}
 
-	private void handleResponse(Transfer transfer) {
-		Exchanger<Object> exchanger = exchangers.get(transfer.headers.getId());
-		Try.run(() -> exchanger.exchange(transfer.content)).rethrow(InternalException::new);
-
-		exchangers.remove(id);
-		transferIdGenerator.release(id);
-	}
-
-	private void handleRequest(Transfer transfer) {
+	private void processRequest(Transfer transfer) {
 		Headers headers = transfer.headers;
-		String path = headers.getPath();
-		EndpointSignature endpoint = endpointsByPaths.get(path);
-		if (endpoint == null) {
-			throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
-		}
 		Object[] args = (Object[]) transfer.content;
-		Object instance = endpointInstances.get(endpoint.clazz);
-		Object result = endpoint.invoke(instance, args, key -> extraArgResolvers.get(key).get());
-		if (headers.needResponse()) {
-			this.transmitter.send(new Transfer(new Headers(headers.getId(), null, true, false), result));
+		Object result = requestHandler.apply(headers, args);
+
+		boolean needResponse = headers.getBoolean("need-response");
+		if (needResponse) {
+			Long transferKey = headers.getLong("transfer-key");
+			sendResponse(transferKey, result);
 		}
 	}
 
-	private Map<String, Supplier<?>> createExtraArgsResolver() {
-		return Map.of("client-id", this::id);
+	private void processResponse(Transfer transfer) {
+		Long transferKey = transfer.headers.getLong("transfer-key");
+		exchangers.computeIfPresent(transferKey, (key, exchanger) -> {
+			Try.run(() -> exchanger.exchange(transfer.content)).rethrow(InternalException::new);
+			return null;
+		});
+	}
+
+	private void sendResponse(Long transferKey, Object content) {
+		Headers headers = Headers.builder().header("transfer-key", transferKey).header("is-response", true).build();
+		this.transmitter.send(new Transfer(headers, content));
 	}
 }

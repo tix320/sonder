@@ -1,4 +1,4 @@
-package io.titix.sonder.internal.boot;
+package io.titix.sonder.internal;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
@@ -8,17 +8,16 @@ import java.util.stream.Collectors;
 
 import io.titix.sonder.Endpoint;
 import io.titix.sonder.Origin;
-import io.titix.sonder.internal.ExtraParam;
 
 /**
  * @author Tigran.Sargsyan on 13-Dec-18
  */
-public abstract class Boot<T extends Signature> {
+public abstract class Boot<T extends ServiceMethod> {
 
 	private final List<T> signatures;
 
-	Boot(Collection<Class<?>> services) {
-		this.signatures = createSignatures(services);
+	Boot(List<Class<?>> classes) {
+		this.signatures = createSignatures(classes);
 	}
 
 	public final List<T> getSignatures() {
@@ -30,7 +29,8 @@ public abstract class Boot<T extends Signature> {
 				.peek(this::checkService)
 				.flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
 				.filter(this::isServiceMethod)
-				.peek(this::checkMethod).peek(method -> checkExtraParam(method, getAllowedExtraParams()))
+				.peek(this::checkMethod)
+				.peek(method -> checkExtraParams(method, getAllowedExtraParams()))
 				.map(this::createSignature)
 				.peek(signature -> checkSignaturePaths(signature.path))
 				.collect(Collectors.toUnmodifiableList());
@@ -40,18 +40,18 @@ public abstract class Boot<T extends Signature> {
 
 	abstract Map<Class<? extends Annotation>, ExtraParamInfo> getAllowedExtraParams();
 
-	abstract void checkService(Class<?> clazz);
+	abstract void checkService(Class<?> clazz) throws BootException;
 
 	abstract boolean isServiceMethod(Method method);
 
 	abstract void checkMethod(Method method);
 
-	private void checkExtraParam(Method method, Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams) {
+	private void checkExtraParams(Method method, Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams) {
 		Parameter[] parameters = method.getParameters();
 		for (Parameter parameter : parameters) {
 			boolean extraParamExists = false;
 			for (Annotation annotation : parameter.getAnnotations()) {
-				if (annotation.annotationType().isAnnotationPresent(ExtraParam.class)) {
+				if (annotation.annotationType().isAnnotationPresent(ExtraParamQualifier.class)) {
 					if (!allowedExtraParams.containsKey(annotation.annotationType())) {
 						throw new BootException(String.format("Extra param @%s is not allowed in method %s(%s)",
 								annotation.annotationType().getSimpleName(), method.getName(),
@@ -70,25 +70,46 @@ public abstract class Boot<T extends Signature> {
 
 	abstract String getPath(Method method);
 
-	List<Param> getParams(Method method, Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams) {
+	List<Param> getSimpleParams(Method method) {
+		Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams = getAllowedExtraParams();
 		List<Param> params = new ArrayList<>();
 		Parameter[] parameters = method.getParameters();
 
 		eachParam:
-		for (Parameter parameter : parameters) {
+		for (int i = 0; i < parameters.length; i++) {
+			Parameter parameter = parameters[i];
 			for (Annotation annotation : parameter.getAnnotations()) {
 				if (allowedExtraParams.containsKey(annotation.annotationType())) {
-					ExtraParamInfo extraParamInfo = allowedExtraParams.get(annotation.annotationType());
-					if (!(extraParamInfo.requiredType == parameter.getType())) {
+					break eachParam;
+				}
+			}
+			params.add(new Param(i));
+		}
+		return params;
+	}
+
+	List<ExtraParam> getExtraParams(Method method) {
+		Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams = getAllowedExtraParams();
+		List<ExtraParam> params = new ArrayList<>();
+		Parameter[] parameters = method.getParameters();
+
+		for (int i = parameters.length - 1; i >= 0; i--) {
+			Parameter parameter = parameters[i];
+			for (Annotation annotation : parameter.getAnnotations()) {
+
+				ExtraParamInfo extraParamInfo = allowedExtraParams.get(annotation.annotationType());
+
+				if (extraParamInfo != null) {
+
+					if (extraParamInfo.requiredType != parameter.getType()) {
 						throw new BootException(String.format("Extra param @%s must have type %s",
 								annotation.annotationType().getSimpleName(), extraParamInfo.requiredType.getName()));
 					}
-					params.add(new Param(extraParamInfo.key, true));
-					continue eachParam;
+					params.add(new ExtraParam(i, extraParamInfo.key));
 				}
 			}
-			params.add(new Param(parameter.getName(), false));
 		}
+
 		return params;
 	}
 
@@ -103,16 +124,16 @@ public abstract class Boot<T extends Signature> {
 	}
 
 	private void checkDuplicatePaths(Collection<T> signatures) {
-		Map<String, Signature> uniqueSignatures = new HashMap<>();
-		for (Signature signature : signatures) {
-			if (uniqueSignatures.containsKey(signature.path)) {
-				Signature presentSignature = uniqueSignatures.get(signature.path);
+		Map<String, ServiceMethod> uniqueSignatures = new HashMap<>();
+		for (ServiceMethod serviceMethod : signatures) {
+			if (uniqueSignatures.containsKey(serviceMethod.path)) {
+				ServiceMethod presentServiceMethod = uniqueSignatures.get(serviceMethod.path);
 				throw new DuplicatePathException(
-						String.format("Methods %s(%s) and %s(%s) has same path", signature.method.getName(),
-								signature.clazz.getName(), presentSignature.method.getName(),
-								presentSignature.clazz.getName()));
+						String.format("Methods %s(%s) and %s(%s) has same path", serviceMethod.method.getName(),
+								serviceMethod.clazz.getName(), presentServiceMethod.method.getName(),
+								presentServiceMethod.clazz.getName()));
 			}
-			uniqueSignatures.put(signature.path, signature);
+			uniqueSignatures.put(serviceMethod.path, serviceMethod);
 		}
 	}
 

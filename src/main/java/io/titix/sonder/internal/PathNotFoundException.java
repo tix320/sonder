@@ -1,8 +1,8 @@
 package io.titix.sonder.internal;
 
-final class PathNotFoundException extends RuntimeException {
+public final class PathNotFoundException extends RuntimeException {
 
-	PathNotFoundException(String message) {
+	public PathNotFoundException(String message) {
 		super(message);
 	}
 }

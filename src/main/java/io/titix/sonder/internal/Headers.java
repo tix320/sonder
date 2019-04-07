@@ -1,39 +1,57 @@
 package io.titix.sonder.internal;
 
 import java.io.Serializable;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
-final class Headers implements Serializable {
+public final class Headers implements Serializable {
 
-	private static final long serialVersionUID = -1328960499870271557L;
+	public static final Headers EMPTY = new Headers(Map.of());
 
-	private final long id;
+	private final Map<String, Object> values;
 
-	private final String path;
-
-	private final boolean isResponse;
-
-	private final boolean needResponse;
-
-	Headers(long id, String path, boolean isResponse, boolean needResponse) {
-		this.id = id;
-		this.path = path;
-		this.isResponse = isResponse;
-		this.needResponse = needResponse;
+	private Headers(Map<String, Object> values) {
+		this.values = Collections.unmodifiableMap(values);
 	}
 
-	long getId() {
-		return id;
+	public <T> T get(String key, Class<T> type) {
+		return type.cast(values.get(key));
 	}
 
-	String getPath() {
-		return path;
+	public String getString(String key) {
+		return (String) values.get(key);
 	}
 
-	boolean isResponse() {
-		return isResponse;
+	public Boolean getBoolean(String key) {
+		return (Boolean) values.get(key);
 	}
 
-	boolean needResponse() {
-		return needResponse;
+	public Long getLong(String key) {
+		return (Long) values.get(key);
+	}
+
+	public Headers compose(Headers headers) {
+		Map<String, Object> newValues = new HashMap<>();
+		newValues.putAll(this.values);
+		newValues.putAll(headers.values);
+		return new Headers(newValues);
+	}
+
+	public static HeadersBuilder builder() {
+		return new HeadersBuilder();
+	}
+
+	public static final class HeadersBuilder {
+		private final Map<String, Object> values = new HashMap<>();
+
+		public HeadersBuilder header(String key, Object value) {
+			values.put(key, value);
+			return this;
+		}
+
+		public Headers build() {
+			return new Headers(values);
+		}
 	}
 }

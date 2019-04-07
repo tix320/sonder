@@ -1,4 +1,4 @@
-package io.titix.sonder.internal.boot;
+package io.titix.sonder.internal;
 
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -8,9 +8,9 @@ import java.util.stream.IntStream;
 /**
  * @author Tigran.Sargsyan on 18-Dec-18
  */
-final class BootException extends RuntimeException {
+public final class BootException extends RuntimeException {
 
-	BootException(String message) {
+	public BootException(String message) {
 		super(message);
 	}
 

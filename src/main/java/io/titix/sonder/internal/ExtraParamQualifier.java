@@ -1,16 +1,13 @@
-package io.titix.sonder;
+package io.titix.sonder.internal;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-import io.titix.sonder.internal.ExtraParam;
-
 /**
- * @author Tigran.Sargsyan on 04-Jan-19
+ * @author Tigran.Sargsyan on 10-Jan-19
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.PARAMETER)
-@ExtraParam
-public @interface OriginId {}
+@Target(ElementType.ANNOTATION_TYPE)
+public @interface ExtraParamQualifier {}

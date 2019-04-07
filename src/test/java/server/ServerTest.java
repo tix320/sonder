@@ -1,5 +1,7 @@
 package server;
 
+import java.util.List;
+
 import io.titix.sonder.Server;
 
 /**
@@ -8,11 +10,11 @@ import io.titix.sonder.Server;
 public final class ServerTest {
 
 	public static void main(String[] args) throws InterruptedException {
-		Server server = Server.run(777, new String[]{"server"});
+		Server server = Server.run(777, List.of("server"), List.of("server"));
 
 
 		Thread.sleep(2000000000000000L);
-		Runnable service = server.getService(342L, Runnable.class);
+		Runnable service = server.getService(Runnable.class);
 		service.run();
 
 		server.stop();

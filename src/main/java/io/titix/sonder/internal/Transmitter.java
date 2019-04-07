@@ -4,16 +4,20 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import io.titix.kiwi.check.Try;
 import io.titix.kiwi.rx.Observable;
 import io.titix.kiwi.rx.Subject;
-import io.titix.kiwi.util.Threads;
 
 public final class Transmitter {
 
 	private final Lock writeLock = new ReentrantLock();
+
+	private final AtomicBoolean started = new AtomicBoolean(false);
 
 	private final Socket socket;
 
@@ -33,10 +37,9 @@ public final class Transmitter {
 			throw new TransmitterException("Transmitter creating error.", e);
 		}
 		this.transfers = Subject.single();
-		listenTransfers();
 	}
 
-	void send(Transfer transfer) {
+	public void send(Transfer transfer) {
 		try {
 			writeLock.lock();
 			writer.writeObject(transfer);
@@ -50,21 +53,22 @@ public final class Transmitter {
 		}
 	}
 
-	Observable<Transfer> transfers() {
+	public Observable<Transfer> transfers() {
 		return transfers.asObservable();
 	}
 
-	private void listenTransfers() {
-		Threads.runDaemon(() -> {
+	public void handleIncomingTransfers() {
+		if (started.get()) {
+			throw new IllegalStateException("Transmitter already started handling");
+		}
+		started.set(true);
+		CompletableFuture.runAsync(() -> {
 			//noinspection InfiniteLoopStatement
 			while (true) {
 				Transfer transfer;
-				try {
-					transfer = (Transfer) reader.readObject();
-				}
-				catch (IOException | ClassNotFoundException e) {
-					throw new TransmitterException("Failed to receive transfer", e);
-				}
+
+				transfer = (Transfer) Try.supplyAndGet(reader::readObject);
+
 				transfers.next(transfer);
 			}
 		});

@@ -10,7 +10,7 @@ import io.titix.sonder.Client;
 public final class ClientTest {
 
 	public static void main(String[] args) throws InterruptedException {
-		Client client = Client.run("localhost", 777, new String[]{"client"});
+		Client client = Client.run("localhost", 777, List.of("client"), List.of("client"));
 
 		A service = client.getService(A.class);
 
