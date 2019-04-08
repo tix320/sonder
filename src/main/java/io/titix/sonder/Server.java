@@ -1,6 +1,7 @@
 package io.titix.sonder;
 
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -9,10 +10,12 @@ import java.net.Socket;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 import io.titix.kiwi.check.Try;
 import io.titix.kiwi.util.IDGenerator;
@@ -20,6 +23,7 @@ import io.titix.sonder.extra.ClientID;
 import io.titix.sonder.internal.*;
 
 import static java.util.function.Function.identity;
+import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toMap;
 
 
@@ -52,7 +56,10 @@ public final class Server {
 		EndpointBoot endpointBoot = new EndpointBoot(Config.getPackageClasses(endpointPackages));
 
 		Server server = new Server(serverSocket, originBoot, endpointBoot);
-		CompletableFuture.runAsync(server::start, EXECUTOR);
+		CompletableFuture.runAsync(server::start, EXECUTOR).exceptionallyAsync(throwable -> {
+			throwable.getCause().printStackTrace();
+			return null;
+		});
 		return server;
 	}
 
@@ -62,6 +69,7 @@ public final class Server {
 		InvocationHandler originInvocationHandler = createOriginInvocationHandler();
 		this.originServices = originBoot.getSignatures()
 				.stream()
+				.peek(this::checkOriginExtraParamTypes)
 				.peek(Server::checkDestination)
 				.map(signature -> signature.clazz)
 				.distinct()
@@ -118,19 +126,41 @@ public final class Server {
 				Communicator communicator = new Communicator(transmitter, (headers, args) -> {
 					String path = headers.get("path", String.class);
 
-					EndpointMethod endpoint = endpointsByPath.get(path);
-					if (endpoint == null) {
-						throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
+					Long sourceClientId = headers.getLong("source-client-id");
+					Map<Class<? extends Annotation>, Object> endpointExtraArgResolvers = Map.of(ClientID.class,
+							sourceClientId);
+
+					Long destinationClientId = headers.getLong("destination-client-id");
+					if (destinationClientId == null) { // for server
+						EndpointMethod endpoint = endpointsByPath.get(path);
+						if (endpoint == null) {
+							throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
+						}
+						Object serviceInstance = endpointServices.get(endpoint.clazz);
+						return endpoint.invoke(serviceInstance, args, endpointExtraArgResolvers::get);
 					}
-					Object serviceInstance = endpointServices.get(endpoint.clazz);
+					else {
+						Communicator destinationCommunicator = communicators.get(destinationClientId);
+						if (destinationCommunicator == null) {
+							throw new IllegalArgumentException(
+									String.format("Client by id %s not found", destinationClientId));
+						}
 
-					String sourceClientId = headers.get("source-client-id", String.class);
-					Map<String, Object> endpointExtraArgResolvers = Map.of("client-id", sourceClientId);
+						if (headers.getBoolean("need-response")) {
+							return destinationCommunicator.sendRequest(headers, args).get();
 
-					return endpoint.invoke(serviceInstance, args, endpointExtraArgResolvers::get);
+						}
+						else {
+							destinationCommunicator.sendUnresponsiveRequest(headers, args);
+							return null;
+						}
+					}
 				});
 				communicators.put(connectedClientID, communicator);
-			}, EXECUTOR);
+			}, EXECUTOR).exceptionallyAsync(throwable -> {
+				throwable.getCause().printStackTrace();
+				return null;
+			});
 		}
 	}
 
@@ -139,6 +169,37 @@ public final class Server {
 			throw new BootException(String.format(
 					"In Server environment origin method '%s' in '%s' must have parameter annotated by @'%s'",
 					signature.method, signature.clazz, ClientID.class.getSimpleName()));
+		}
+	}
+
+	private void checkOriginExtraParamTypes(OriginMethod originMethod) {
+		Map<Class<? extends Annotation>, Class<?>> requiredTypes = Map.of(ClientID.class, long.class);
+
+		Set<Class<? extends Annotation>> requiredExtraParams = Set.of(ClientID.class);
+
+		List<ExtraParam> extraParams = originMethod.extraParams;
+
+		Set<Class<? extends Annotation>> existingExtraParams = extraParams.stream()
+				.map(extraParam -> extraParam.annotation.annotationType())
+				.collect(Collectors.toSet());
+
+		String nonExistingRequiredExtraParams = requiredExtraParams.stream()
+				.filter(annotation -> !existingExtraParams.contains(annotation))
+				.map(annotation -> "@" + annotation.getSimpleName())
+				.collect(joining(",", "[", "]"));
+
+		if (nonExistingRequiredExtraParams.length() > 2) { // is empty
+			throw new BootException(
+					String.format("Extra params %s are required in %s", nonExistingRequiredExtraParams, originMethod));
+		}
+
+		for (ExtraParam extraParam : extraParams) {
+			Class<?> expectedType = requiredTypes.get(extraParam.annotation.annotationType());
+			if (extraParam.type != expectedType) {
+				throw new BootException(String.format("Extra param @%s must have type %s",
+						extraParam.annotation.annotationType().getSimpleName(), expectedType.getName()));
+			}
+
 		}
 	}
 
@@ -164,16 +225,16 @@ public final class Server {
 			Object[] simpleArgs = new Object[simpleParams.size()];
 			System.arraycopy(args, 0, simpleArgs, 0, simpleArgs.length); // fill simple args
 
-			Map<String, Object> extraArgs = new HashMap<>();
+			Map<Class<? extends Annotation>, Object> extraArgs = new HashMap<>();
 			int extraParamsIndex = 0;
 			int firstExtraIndex = simpleArgs.length;
 			for (int i = firstExtraIndex; i < args.length; i++) {
-				String key = extraParams.get(extraParamsIndex++).key;
+				Class<? extends Annotation> key = extraParams.get(extraParamsIndex++).annotation.annotationType();
 				Object value = args[i];
 				extraArgs.put(key, value);
 			}
 
-			long clientId = (long) extraArgs.get("to-client-id");
+			long clientId = (long) extraArgs.get(ClientID.class);
 
 			Communicator communicator = communicators.get(clientId);
 			Headers headers = Headers.builder().header("path", signature.path).build();

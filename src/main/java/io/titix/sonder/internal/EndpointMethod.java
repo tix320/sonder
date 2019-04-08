@@ -1,5 +1,6 @@
 package io.titix.sonder.internal;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -10,13 +11,14 @@ import java.util.stream.Collectors;
 /**
  * @author tix32 on 24-Feb-19
  */
-public final class EndpointMethod extends ServiceMethod {
+public final class EndpointMethod
+		extends ServiceMethod {
 
 	EndpointMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams, List<ExtraParam> extraParams) {
 		super(path, clazz, method, simpleParams, extraParams);
 	}
 
-	public Object invoke(Object instance, Object[] args, Function<String, Object> extraArgResolver) {
+	public Object invoke(Object instance, Object[] args, Function<Class<? extends Annotation>, Object> extraArgResolver) {
 		Object[] allArgs = appendExtraArgs(args, extraArgResolver);
 		try {
 			return method.invoke(instance, allArgs);
@@ -29,7 +31,7 @@ public final class EndpointMethod extends ServiceMethod {
 		}
 	}
 
-	private Object[] appendExtraArgs(Object[] simpleArgs, Function<String, Object> extraArgResolver) {
+	private Object[] appendExtraArgs(Object[] simpleArgs, Function<Class<? extends Annotation>, Object> extraArgResolver) {
 		List<Param> simpleParams = this.simpleParams;
 		List<ExtraParam> extraParams = this.extraParams;
 
@@ -46,7 +48,7 @@ public final class EndpointMethod extends ServiceMethod {
 		int extraArgIndex = simpleArgsLength;
 
 		for (ExtraParam extraParam : extraParams) {
-			allArgs[extraArgIndex++] = extraArgResolver.apply(extraParam.key);
+			allArgs[extraArgIndex++] = extraArgResolver.apply(extraParam.annotation.annotationType());
 		}
 
 		return allArgs;
@@ -58,5 +60,10 @@ public final class EndpointMethod extends ServiceMethod {
 						.stream(args)
 						.map(arg -> arg.getClass().getSimpleName())
 						.collect(Collectors.joining(",", "[", "]")));
+	}
+
+	@Override
+	public String toString() {
+		return "EndpointMethod { " +  clazz + ", method - " + method.getName() + ", @Path - " + path + " }";
 	}
 }

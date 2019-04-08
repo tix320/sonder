@@ -4,7 +4,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import io.titix.kiwi.rx.Observable;
@@ -17,19 +17,21 @@ import static java.util.function.Predicate.not;
 /**
  * @author tix32 on 24-Feb-19
  */
-public final class OriginBoot extends Boot<OriginMethod> {
+public final class OriginBoot
+		extends Boot<OriginMethod> {
 
 	public OriginBoot(List<Class<?>> classes) {
 		super(classes.stream().filter(clazz -> clazz.isAnnotationPresent(Origin.class)).collect(Collectors.toList()));
 	}
 
 	@Override
-	Map<Class<? extends Annotation>, Boot.ExtraParamInfo> getAllowedExtraParams() {
-		return Map.of(ClientID.class, new ExtraParamInfo(long.class, "to-client-id"));
+	Set<Class<? extends Annotation>> getAllowedExtraParams() {
+		return Set.of(ClientID.class);
 	}
 
 	@Override
-	void checkService(Class<?> clazz) throws BootException {
+	void checkService(Class<?> clazz)
+			throws BootException {
 		BootException.checkAndThrow(clazz,
 				aClass -> "Failed to resolve origin service " + aClass.getSimpleName() + ", there are the following errors.",
 				throwWhen(not(Class::isInterface), "Must be interface"),

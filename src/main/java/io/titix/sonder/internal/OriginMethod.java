@@ -7,7 +7,8 @@ import java.util.Objects;
 /**
  * @author tix32 on 24-Feb-19
  */
-public final class OriginMethod extends ServiceMethod {
+public final class OriginMethod
+		extends ServiceMethod {
 
 	public final boolean needResponse;
 
@@ -22,9 +23,12 @@ public final class OriginMethod extends ServiceMethod {
 
 	@Override
 	public boolean equals(Object o) {
-		if (this == o) return true;
-		if (o == null || getClass() != o.getClass()) return false;
-		if (!super.equals(o)) return false;
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
+		if (!super.equals(o))
+			return false;
 		OriginMethod that = (OriginMethod) o;
 		return needResponse == that.needResponse;
 	}
@@ -36,7 +40,7 @@ public final class OriginMethod extends ServiceMethod {
 
 	@Override
 	public String toString() {
-		return "OriginSignature{" + "needResponse=" + needResponse + ", path='" + path + '\'' + ", clazz=" + clazz + ", method=" + method + ", simpleParams=" + simpleParams + ", extraParams=" + extraParams + '}';
+		return "OriginMethod { " +  clazz + ", method - " + method.getName() + ", @Path - " + path + " }";
 	}
 
 	public enum Destination {

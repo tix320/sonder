@@ -7,10 +7,13 @@ import java.util.Objects;
  */
 public class Param {
 
-	private final int index;
+	public final int index;
+	
+	public final Class<?> type;
 
-	Param(int index) {
+	Param(int index, Class<?> type) {
 		this.index = index;
+		this.type = type;
 	}
 
 	@Override

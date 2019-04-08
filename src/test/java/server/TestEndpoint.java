@@ -12,8 +12,8 @@ import io.titix.sonder.extra.ClientID;
 public class TestEndpoint {
 
 	@Endpoint("lol")
-	public int foo(List<?> list, @ClientID long a) {
-		System.out.println(list.size());
+	public int foo(String list, @ClientID long a) {
+		System.out.println(a);
 		return 34;
 	}
 }

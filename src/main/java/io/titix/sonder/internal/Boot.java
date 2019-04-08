@@ -38,21 +38,22 @@ public abstract class Boot<T extends ServiceMethod> {
 		return signatures;
 	}
 
-	abstract Map<Class<? extends Annotation>, ExtraParamInfo> getAllowedExtraParams();
+	abstract Set<Class<? extends Annotation>> getAllowedExtraParams();
 
-	abstract void checkService(Class<?> clazz) throws BootException;
+	abstract void checkService(Class<?> clazz)
+			throws BootException;
 
 	abstract boolean isServiceMethod(Method method);
 
 	abstract void checkMethod(Method method);
 
-	private void checkExtraParams(Method method, Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams) {
+	private void checkExtraParams(Method method, Set<Class<? extends Annotation>> allowedExtraParams) {
 		Parameter[] parameters = method.getParameters();
 		for (Parameter parameter : parameters) {
 			boolean extraParamExists = false;
 			for (Annotation annotation : parameter.getAnnotations()) {
 				if (annotation.annotationType().isAnnotationPresent(ExtraParamQualifier.class)) {
-					if (!allowedExtraParams.containsKey(annotation.annotationType())) {
+					if (!allowedExtraParams.contains(annotation.annotationType())) {
 						throw new BootException(String.format("Extra param @%s is not allowed in method %s(%s)",
 								annotation.annotationType().getSimpleName(), method.getName(),
 								method.getDeclaringClass()));
@@ -71,7 +72,7 @@ public abstract class Boot<T extends ServiceMethod> {
 	abstract String getPath(Method method);
 
 	List<Param> getSimpleParams(Method method) {
-		Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams = getAllowedExtraParams();
+		Set<Class<? extends Annotation>> allowedExtraParams = getAllowedExtraParams();
 		List<Param> params = new ArrayList<>();
 		Parameter[] parameters = method.getParameters();
 
@@ -79,17 +80,17 @@ public abstract class Boot<T extends ServiceMethod> {
 		for (int i = 0; i < parameters.length; i++) {
 			Parameter parameter = parameters[i];
 			for (Annotation annotation : parameter.getAnnotations()) {
-				if (allowedExtraParams.containsKey(annotation.annotationType())) {
+				if (allowedExtraParams.contains(annotation.annotationType())) {
 					break eachParam;
 				}
 			}
-			params.add(new Param(i));
+			params.add(new Param(i, parameter.getType()));
 		}
 		return params;
 	}
 
 	List<ExtraParam> getExtraParams(Method method) {
-		Map<Class<? extends Annotation>, ExtraParamInfo> allowedExtraParams = getAllowedExtraParams();
+		Set<Class<? extends Annotation>> allowedExtraParams = getAllowedExtraParams();
 		List<ExtraParam> params = new ArrayList<>();
 		Parameter[] parameters = method.getParameters();
 
@@ -97,15 +98,8 @@ public abstract class Boot<T extends ServiceMethod> {
 			Parameter parameter = parameters[i];
 			for (Annotation annotation : parameter.getAnnotations()) {
 
-				ExtraParamInfo extraParamInfo = allowedExtraParams.get(annotation.annotationType());
-
-				if (extraParamInfo != null) {
-
-					if (extraParamInfo.requiredType != parameter.getType()) {
-						throw new BootException(String.format("Extra param @%s must have type %s",
-								annotation.annotationType().getSimpleName(), extraParamInfo.requiredType.getName()));
-					}
-					params.add(new ExtraParam(i, extraParamInfo.key));
+				if (allowedExtraParams.contains(annotation.annotationType())) {
+					params.add(new ExtraParam(i, parameter.getType(), annotation));
 				}
 			}
 		}
@@ -134,17 +128,6 @@ public abstract class Boot<T extends ServiceMethod> {
 								presentServiceMethod.clazz.getName()));
 			}
 			uniqueSignatures.put(serviceMethod.path, serviceMethod);
-		}
-	}
-
-	static final class ExtraParamInfo {
-		private final Class<?> requiredType;
-
-		private final String key;
-
-		ExtraParamInfo(Class<?> requiredType, String key) {
-			this.requiredType = requiredType;
-			this.key = key;
 		}
 	}
 }

@@ -4,7 +4,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import io.titix.kiwi.check.Try;
@@ -16,14 +16,16 @@ import static io.titix.sonder.internal.BootException.throwWhen;
 /**
  * @author tix32 on 24-Feb-19
  */
-public final class EndpointBoot extends Boot<EndpointMethod> {
+public final class EndpointBoot
+		extends Boot<EndpointMethod> {
 
 	public EndpointBoot(List<Class<?>> classes) {
 		super(classes.stream().filter(clazz -> clazz.isAnnotationPresent(Endpoint.class)).collect(Collectors.toList()));
 	}
 
 	@Override
-	void checkService(Class<?> clazz) throws BootException {
+	void checkService(Class<?> clazz)
+			throws BootException {
 		BootException.checkAndThrow(clazz,
 				aClass -> "Failed to resolve endpoint service " + aClass.getSimpleName() + ", there are the following errors.",
 				throwWhen(aClass -> aClass.isInterface() || aClass.isEnum(), "Must be a non abstract class"),
@@ -56,8 +58,8 @@ public final class EndpointBoot extends Boot<EndpointMethod> {
 	}
 
 	@Override
-	Map<Class<? extends Annotation>, ExtraParamInfo> getAllowedExtraParams() {
-		return Map.of(ClientID.class, new ExtraParamInfo(long.class, "client-id"));
+	Set<Class<? extends Annotation>> getAllowedExtraParams() {
+		return Set.of(ClientID.class);
 	}
 
 	@Override

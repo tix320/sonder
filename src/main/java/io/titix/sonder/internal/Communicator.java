@@ -43,9 +43,15 @@ public final class Communicator {
 		Subject<Object> result = Subject.single();
 		Exchanger<Object> exchanger = new Exchanger<>();
 		exchangers.put(transferKey, exchanger);
-		CompletableFuture.runAsync(
-				() -> Try.run(() -> result.next(exchanger.exchange(null))).rethrow(InternalException::new));
-		CompletableFuture.runAsync(() -> this.transmitter.send(transfer));
+		CompletableFuture.runAsync(() -> Try.runAndRethrow(() -> result.next(exchanger.exchange(null))))
+				.exceptionallyAsync(throwable -> {
+					throwable.getCause().printStackTrace();
+					return null;
+				});
+		CompletableFuture.runAsync(() -> this.transmitter.send(transfer)).exceptionallyAsync(throwable -> {
+			throwable.getCause().printStackTrace();
+			return null;
+		});
 
 		return result.asObservable();
 	}
@@ -55,7 +61,10 @@ public final class Communicator {
 
 		Transfer transfer = new Transfer(headers, content);
 
-		CompletableFuture.runAsync(() -> this.transmitter.send(transfer));
+		CompletableFuture.runAsync(() -> this.transmitter.send(transfer)).exceptionallyAsync(throwable -> {
+			throwable.getCause().printStackTrace();
+			return null;
+		});
 	}
 
 	public void close() {

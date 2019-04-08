@@ -1,5 +1,6 @@
 package io.titix.sonder;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -7,9 +8,10 @@ import java.net.Socket;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.Exchanger;
 
 import io.titix.kiwi.check.Try;
+import io.titix.sonder.extra.ClientID;
 import io.titix.sonder.internal.*;
 
 import static java.util.function.Function.identity;
@@ -65,11 +67,13 @@ public final class Client {
 
 
 		Transmitter transmitter = new Transmitter(socket);
-		AtomicLong clientIdHolder = new AtomicLong();
-		transmitter.transfers().one().subscribe(transfer -> clientIdHolder.set((long) transfer.content));
+		Exchanger<Long> clientIdExchanger = new Exchanger<>();
+		transmitter.transfers()
+				.one()
+				.subscribe(transfer -> Try.runAndRethrow(() -> clientIdExchanger.exchange((Long) transfer.content)));
 		transmitter.handleIncomingTransfers();
 
-		this.id = clientIdHolder.get();
+		this.id = Try.supplyAndGet(() -> clientIdExchanger.exchange(null));
 
 		communicator = new Communicator(transmitter, (headers, args) -> {
 			String path = headers.get("path", String.class);
@@ -80,8 +84,8 @@ public final class Client {
 			}
 			Object serviceInstance = endpointServices.get(endpoint.clazz);
 
-			String sourceClientId = headers.get("source-client-id", String.class);
-			Map<String, Object> endpointExtraArgResolvers = Map.of("client-id", sourceClientId);
+			Long sourceClientId = headers.getLong("source-client-id");
+			Map<Class<? extends Annotation>, Object> endpointExtraArgResolvers = Map.of(ClientID.class, sourceClientId);
 
 			return endpoint.invoke(serviceInstance, args, endpointExtraArgResolvers::get);
 		});
@@ -124,11 +128,11 @@ public final class Client {
 			Object[] simpleArgs = new Object[simpleParams.size()];
 			System.arraycopy(args, 0, simpleArgs, 0, simpleArgs.length); // fill simple args
 
-			Map<String, Object> extraArgs = new HashMap<>();
+			Map<Class<? extends Annotation>, Object> extraArgs = new HashMap<>();
 			int extraParamsIndex = 0;
 			int firstExtraIndex = simpleArgs.length;
 			for (int i = firstExtraIndex; i < args.length; i++) {
-				String key = extraParams.get(extraParamsIndex++).key;
+				Class<? extends Annotation> key = extraParams.get(extraParamsIndex++).annotation.annotationType();
 				Object value = args[i];
 				extraArgs.put(key, value);
 			}
@@ -140,7 +144,7 @@ public final class Client {
 					headers = Headers.builder().header("path", signature.path).header("source-client-id", id).build();
 					break;
 				case CLIENT:
-					Object clientId = extraArgs.get("to-client-id");
+					Object clientId = extraArgs.get(ClientID.class);
 					headers = Headers.builder()
 							.header("path", signature.path)
 							.header("source-client-id", id)

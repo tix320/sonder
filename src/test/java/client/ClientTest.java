@@ -14,7 +14,7 @@ public final class ClientTest {
 
 		A service = client.getService(A.class);
 
-		service.foo(List.of()).subscribe(System.out::println);
+		service.foo("barev client",-9223372036854775808L).subscribe(System.out::println);
 		System.out.println("lol");
 		Thread.sleep(2000000000000000L);
 

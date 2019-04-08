@@ -71,6 +71,9 @@ public final class Transmitter {
 
 				transfers.next(transfer);
 			}
+		}).exceptionallyAsync(throwable -> {
+			throwable.getCause().printStackTrace();
+			return null;
 		});
 
 	}
