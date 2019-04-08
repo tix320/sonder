@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public final class Headers implements Serializable {
+	private static final long serialVersionUID = 4379459480293747097L;
 
 	public static final Headers EMPTY = new Headers(Map.of());
 

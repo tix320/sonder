@@ -15,6 +15,7 @@ import io.titix.kiwi.util.IDGenerator;
 /**
  * @author Tigran.Sargsyan on 26-Dec-18
  */
+@SuppressWarnings("ALL")
 public final class Communicator {
 
 	private final Transmitter transmitter;
@@ -101,7 +102,7 @@ public final class Communicator {
 	private void processResponse(Transfer transfer) {
 		Long transferKey = transfer.headers.getLong("transfer-key");
 		exchangers.computeIfPresent(transferKey, (key, exchanger) -> {
-			Try.run(() -> exchanger.exchange(transfer.content)).rethrow(InternalException::new);
+			Try.runAndRethrow(() -> exchanger.exchange(transfer.content));
 			return null;
 		});
 	}

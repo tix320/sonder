@@ -9,6 +9,7 @@ import java.util.stream.IntStream;
  * @author Tigran.Sargsyan on 18-Dec-18
  */
 public final class BootException extends RuntimeException {
+	private static final long serialVersionUID = -4222792746745482561L;
 
 	public BootException(String message) {
 		super(message);

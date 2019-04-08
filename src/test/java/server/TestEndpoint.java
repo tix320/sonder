@@ -1,6 +1,5 @@
 package server;
 
-import java.util.List;
 
 import io.titix.sonder.Endpoint;
 import io.titix.sonder.extra.ClientID;
