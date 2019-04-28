@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import io.titix.kiwi.rx.Observable;
+import com.gitlab.tixtix320.kiwi.observable.Observable;
 import io.titix.sonder.Origin;
 import io.titix.sonder.extra.ClientID;
 
@@ -17,8 +17,7 @@ import static java.util.function.Predicate.not;
 /**
  * @author tix32 on 24-Feb-19
  */
-public final class OriginBoot
-		extends Boot<OriginMethod> {
+public final class OriginBoot extends Boot<OriginMethod> {
 
 	public OriginBoot(List<Class<?>> classes) {
 		super(classes.stream().filter(clazz -> clazz.isAnnotationPresent(Origin.class)).collect(Collectors.toList()));
@@ -30,8 +29,7 @@ public final class OriginBoot
 	}
 
 	@Override
-	void checkService(Class<?> clazz)
-			throws BootException {
+	void checkService(Class<?> clazz) {
 		BootException.checkAndThrow(clazz,
 				aClass -> "Failed to resolve origin service " + aClass.getSimpleName() + ", there are the following errors.",
 				throwWhen(not(Class::isInterface), "Must be interface"),

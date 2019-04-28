@@ -9,9 +9,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import io.titix.kiwi.check.Try;
-import io.titix.kiwi.rx.Observable;
-import io.titix.kiwi.rx.Subject;
+import com.gitlab.tixtix320.kiwi.check.Try;
+import com.gitlab.tixtix320.kiwi.observable.Observable;
+import com.gitlab.tixtix320.kiwi.observable.subject.Subject;
 
 public final class Transmitter {
 
@@ -78,7 +78,7 @@ public final class Transmitter {
 
 	}
 
-	void close() {
+	public void close() {
 		transfers.complete();
 		try {
 			socket.close();

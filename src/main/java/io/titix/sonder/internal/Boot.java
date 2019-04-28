@@ -40,8 +40,7 @@ public abstract class Boot<T extends ServiceMethod> {
 
 	abstract Set<Class<? extends Annotation>> getAllowedExtraParams();
 
-	abstract void checkService(Class<?> clazz)
-			throws BootException;
+	abstract void checkService(Class<?> clazz);
 
 	abstract boolean isServiceMethod(Method method);
 
@@ -99,7 +98,7 @@ public abstract class Boot<T extends ServiceMethod> {
 			for (Annotation annotation : parameter.getAnnotations()) {
 
 				if (allowedExtraParams.contains(annotation.annotationType())) {
-					params.add(new ExtraParam(i, parameter.getType(), annotation));
+					params.add(new ExtraParam(i, parameter.getType(), annotationType, annotation));
 				}
 			}
 		}

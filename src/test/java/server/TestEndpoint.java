@@ -11,7 +11,7 @@ import io.titix.sonder.extra.ClientID;
 public class TestEndpoint {
 
 	@Endpoint("lol")
-	public int foo(String list, @ClientID long a) {
+	public Object foo(String list, @ClientID long a) {
 		System.out.println(a);
 		return 34;
 	}

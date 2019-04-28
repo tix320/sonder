@@ -1,13 +1,24 @@
 package io.titix.sonder.internal;
 
+import java.lang.annotation.Annotation;
+
 public final class ExtraArg {
 
-	public final String key;
+	private final Object value;
 
-	public final Object value;
+	private final Annotation annotation;
 
-	public ExtraArg(String key, Object value) {
-		this.key = key;
+	public ExtraArg(Object value, Annotation annotation) {
 		this.value = value;
+		this.annotation = annotation;
+	}
+
+	public Object getValue() {
+		return value;
+	}
+
+	@SuppressWarnings("unchecked")
+	public <T extends Annotation> T getAnnotation(Class<T> annotationType) {
+		return (T) annotation;
 	}
 }

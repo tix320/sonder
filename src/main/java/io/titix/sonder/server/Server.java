@@ -1,13 +1,13 @@
-package io.titix.sonder;
+package io.titix.sonder.server;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,8 +17,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
-import io.titix.kiwi.check.Try;
-import io.titix.kiwi.util.IDGenerator;
+import com.gitlab.tixtix320.kiwi.check.Try;
+import com.gitlab.tixtix320.kiwi.util.IDGenerator;
+import io.titix.sonder.client.OriginInvocationHandler;
 import io.titix.sonder.extra.ClientID;
 import io.titix.sonder.internal.*;
 
@@ -45,9 +46,11 @@ public final class Server {
 
 	private final Map<String, EndpointMethod> endpointsByPath;
 
-	private final IDGenerator communicatorIdGenerator;
+	private final IDGenerator transmitterIdGenerator;
 
-	private final Map<Long, Communicator> communicators;
+	private final Map<Long, Transmitter> transmitters;
+
+
 
 	public static Server run(int port, List<String> originPackages, List<String> endpointPackages) {
 		ServerSocket serverSocket = Try.supplyAndGet(() -> new ServerSocket(port));
@@ -66,14 +69,13 @@ public final class Server {
 	private Server(ServerSocket serverSocket, OriginBoot originBoot, EndpointBoot endpointBoot) {
 		this.serverSocket = serverSocket;
 
-		InvocationHandler originInvocationHandler = createOriginInvocationHandler();
+		OriginInvocationHandler.Handler invocationHandler = createOriginInvocationHandler();
 		this.originServices = originBoot.getSignatures()
 				.stream()
 				.peek(this::checkOriginExtraParamTypes)
 				.peek(Server::checkDestination)
 				.map(signature -> signature.clazz)
-				.distinct()
-				.collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, originInvocationHandler)));
+				.distinct().collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, invocationHandler)));
 
 		this.endpointServices = endpointBoot.getSignatures()
 				.stream()
@@ -89,8 +91,8 @@ public final class Server {
 				.stream()
 				.collect(toMap(signature -> signature.path, identity()));
 
-		this.communicatorIdGenerator = new IDGenerator();
-		this.communicators = new ConcurrentHashMap<>();
+		this.transmitterIdGenerator = new IDGenerator();
+		this.transmitters = new ConcurrentHashMap<>();
 	}
 
 	@SuppressWarnings("unchecked")
@@ -119,7 +121,7 @@ public final class Server {
 
 			CompletableFuture.runAsync(() -> {
 				Transmitter transmitter = new Transmitter(socket);
-				long connectedClientID = communicatorIdGenerator.next();
+				long connectedClientID = transmitterIdGenerator.next();
 				transmitter.send(new Transfer(Headers.EMPTY, connectedClientID));
 				transmitter.handleIncomingTransfers();
 
@@ -137,26 +139,26 @@ public final class Server {
 							throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
 						}
 						Object serviceInstance = endpointServices.get(endpoint.clazz);
-						return endpoint.invoke(serviceInstance, args, endpointExtraArgResolvers::get);
+						return (Serializable) endpoint.invoke(serviceInstance, args, endpointExtraArgResolvers::get);
 					}
 					else {
-						Communicator destinationCommunicator = communicators.get(destinationClientId);
+						Communicator destinationCommunicator = transmitters.get(destinationClientId);
 						if (destinationCommunicator == null) {
 							throw new IllegalArgumentException(
 									String.format("Client by id %s not found", destinationClientId));
 						}
 
 						if (headers.getBoolean("need-response")) {
-							return destinationCommunicator.sendRequest(headers, args).get();
+							return destinationCommunicator.invokeRemote(headers, args).get();
 
 						}
 						else {
-							destinationCommunicator.sendUnresponsiveRequest(headers, args);
+							destinationCommunicator.invokeRemoteUnresponsive(headers, args);
 							return null;
 						}
 					}
 				});
-				communicators.put(connectedClientID, communicator);
+				transmitters.put(connectedClientID, communicator);
 			}, EXECUTOR).exceptionallyAsync(throwable -> {
 				throwable.getCause().printStackTrace();
 				return null;
@@ -180,7 +182,7 @@ public final class Server {
 		List<ExtraParam> extraParams = originMethod.extraParams;
 
 		Set<Class<? extends Annotation>> existingExtraParams = extraParams.stream()
-				.map(extraParam -> extraParam.annotation.annotationType())
+				.map(extraParam -> extraParam.annotationArguments)
 				.collect(Collectors.toSet());
 
 		String nonExistingRequiredExtraParams = requiredExtraParams.stream()
@@ -194,10 +196,10 @@ public final class Server {
 		}
 
 		for (ExtraParam extraParam : extraParams) {
-			Class<?> expectedType = requiredTypes.get(extraParam.annotation.annotationType());
+			Class<?> expectedType = requiredTypes.get(extraParam.annotationArguments);
 			if (extraParam.type != expectedType) {
 				throw new BootException(String.format("Extra param @%s must have type %s",
-						extraParam.annotation.annotationType().getSimpleName(), expectedType.getName()));
+						extraParam.annotationArguments.getSimpleName(), expectedType.getName()));
 			}
 
 		}
@@ -212,37 +214,17 @@ public final class Server {
 		return Try.supplyAndGet(() -> clazz.getConstructor().newInstance());
 	}
 
-	private InvocationHandler createOriginInvocationHandler() {
-		return (proxy, method, args) -> {
-			if (method.getDeclaringClass() == Object.class) {
-				throw new UnsupportedOperationException("This method does not allowed on origin services");
-			}
+	private OriginInvocationHandler.Handler createOriginInvocationHandler() {
+		return (method, simpleArgs, extraArgs) -> {
+			Long clientId = (Long) extraArgs.get(ClientID.class).getValue();
 
-			OriginMethod signature = originsByMethod.get(method);
-			List<Param> simpleParams = signature.simpleParams;
-			List<ExtraParam> extraParams = signature.extraParams;
-
-			Object[] simpleArgs = new Object[simpleParams.size()];
-			System.arraycopy(args, 0, simpleArgs, 0, simpleArgs.length); // fill simple args
-
-			Map<Class<? extends Annotation>, Object> extraArgs = new HashMap<>();
-			int extraParamsIndex = 0;
-			int firstExtraIndex = simpleArgs.length;
-			for (int i = firstExtraIndex; i < args.length; i++) {
-				Class<? extends Annotation> key = extraParams.get(extraParamsIndex++).annotation.annotationType();
-				Object value = args[i];
-				extraArgs.put(key, value);
-			}
-
-			long clientId = (long) extraArgs.get(ClientID.class);
-
-			Communicator communicator = communicators.get(clientId);
+			Communicator communicator = transmitters.get(clientId);
 			Headers headers = Headers.builder().header("path", signature.path).build();
 			if (signature.needResponse) {
-				return communicator.sendRequest(headers, simpleArgs);
+				return communicator.invokeRemote(headers, simpleArgs);
 			}
 			else {
-				communicator.sendUnresponsiveRequest(headers, simpleArgs);
+				communicator.invokeRemoteUnresponsive(headers, simpleArgs);
 				return null;
 			}
 		};

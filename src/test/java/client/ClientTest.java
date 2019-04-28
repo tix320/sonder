@@ -2,7 +2,7 @@ package client;
 
 import java.util.List;
 
-import io.titix.sonder.Client;
+import io.titix.sonder.client.Client;
 
 /**
  * @author Tigran.Sargsyan on 24-Jan-19

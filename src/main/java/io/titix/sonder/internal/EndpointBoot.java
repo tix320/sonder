@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import io.titix.kiwi.check.Try;
+import com.gitlab.tixtix320.kiwi.check.Try;
 import io.titix.sonder.Endpoint;
 import io.titix.sonder.extra.ClientID;
 
@@ -16,16 +16,14 @@ import static io.titix.sonder.internal.BootException.throwWhen;
 /**
  * @author tix32 on 24-Feb-19
  */
-public final class EndpointBoot
-		extends Boot<EndpointMethod> {
+public final class EndpointBoot extends Boot<EndpointMethod> {
 
 	public EndpointBoot(List<Class<?>> classes) {
 		super(classes.stream().filter(clazz -> clazz.isAnnotationPresent(Endpoint.class)).collect(Collectors.toList()));
 	}
 
 	@Override
-	void checkService(Class<?> clazz)
-			throws BootException {
+	void checkService(Class<?> clazz) {
 		BootException.checkAndThrow(clazz,
 				aClass -> "Failed to resolve endpoint service " + aClass.getSimpleName() + ", there are the following errors.",
 				throwWhen(aClass -> aClass.isInterface() || aClass.isEnum(), "Must be a non abstract class"),

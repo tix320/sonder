@@ -32,7 +32,7 @@ public final class Headers implements Serializable {
 		return (Long) values.get(key);
 	}
 
-	public Headers compose(Headers headers) {
+	public Headers concat(Headers headers) {
 		Map<String, Object> newValues = new HashMap<>();
 		newValues.putAll(this.values);
 		newValues.putAll(headers.values);

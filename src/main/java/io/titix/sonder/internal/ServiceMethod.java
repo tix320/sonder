@@ -42,9 +42,4 @@ public abstract class ServiceMethod {
 	public int hashCode() {
 		return Objects.hash(path, clazz, method, simpleParams, extraParams);
 	}
-
-	@Override
-	public String toString() {
-		return "Signature{" + "path='" + path + '\'' + ", clazz=" + clazz + ", method=" + method + ", simpleParams=" + simpleParams + ", extraParams=" + extraParams + '}';
-	}
 }
