@@ -53,6 +53,14 @@ public final class Client {
 	private Client(Transmitter transmitter, OriginBoot originBoot, EndpointBoot endpointBoot) {
 		this.transmitter = transmitter;
 
+		this.originsByMethod = originBoot.getSignatures()
+										 .stream()
+										 .collect(toMap(signature -> signature.method, identity()));
+
+		this.endpointsByPath = endpointBoot.getSignatures()
+										   .stream()
+										   .collect(toMap(signature -> signature.path, identity()));
+		
 		OriginInvocationHandler.Handler invocationHandler = createOriginInvocationHandler();
 		this.originServices = originBoot.getSignatures()
 				.stream()
@@ -64,14 +72,6 @@ public final class Client {
 				.map(endpointMethod -> endpointMethod.clazz)
 				.distinct()
 				.collect(toMap(clazz -> clazz, this::creatEndpointInstance));
-
-		this.originsByMethod = originBoot.getSignatures()
-				.stream()
-				.collect(toMap(signature -> signature.method, identity()));
-
-		this.endpointsByPath = endpointBoot.getSignatures()
-				.stream()
-				.collect(toMap(signature -> signature.path, identity()));
 
 		this.exchangers = new ConcurrentHashMap<>();
 		this.transferIdGenerator = new IDGenerator();

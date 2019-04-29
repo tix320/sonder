@@ -98,7 +98,7 @@ public abstract class Boot<T extends ServiceMethod> {
 			for (Annotation annotation : parameter.getAnnotations()) {
 
 				if (allowedExtraParams.contains(annotation.annotationType())) {
-					params.add(new ExtraParam(i, parameter.getType(), annotationType, annotation));
+					params.add(new ExtraParam(i, parameter.getType(), annotation));
 				}
 			}
 		}

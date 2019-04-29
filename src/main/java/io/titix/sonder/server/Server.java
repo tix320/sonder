@@ -1,23 +1,21 @@
 package io.titix.sonder.server;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.gitlab.tixtix320.kiwi.check.Try;
+import com.gitlab.tixtix320.kiwi.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.util.IDGenerator;
 import io.titix.sonder.client.OriginInvocationHandler;
 import io.titix.sonder.extra.ClientID;
@@ -50,7 +48,7 @@ public final class Server {
 
 	private final Map<Long, Transmitter> transmitters;
 
-
+	private final Map<Long, Exchanger<Object>> exchangers;
 
 	public static Server run(int port, List<String> originPackages, List<String> endpointPackages) {
 		ServerSocket serverSocket = Try.supplyAndGet(() -> new ServerSocket(port));
@@ -69,30 +67,31 @@ public final class Server {
 	private Server(ServerSocket serverSocket, OriginBoot originBoot, EndpointBoot endpointBoot) {
 		this.serverSocket = serverSocket;
 
+		this.originsByMethod =
+				originBoot.getSignatures().stream().collect(toMap(signature -> signature.method, identity()));
+
+		this.endpointsByPath =
+				endpointBoot.getSignatures().stream().collect(toMap(signature -> signature.path, identity()));
+
 		OriginInvocationHandler.Handler invocationHandler = createOriginInvocationHandler();
 		this.originServices = originBoot.getSignatures()
-				.stream()
-				.peek(this::checkOriginExtraParamTypes)
-				.peek(Server::checkDestination)
-				.map(signature -> signature.clazz)
-				.distinct().collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, invocationHandler)));
+										.stream()
+										.peek(this::checkOriginExtraParamTypes)
+										.peek(Server::checkDestination)
+										.map(signature -> signature.clazz)
+										.distinct()
+										.collect(toMap(clazz -> clazz,
+												clazz -> createOriginInstance(clazz, invocationHandler)));
 
 		this.endpointServices = endpointBoot.getSignatures()
-				.stream()
-				.map(endpointMethod -> endpointMethod.clazz)
-				.distinct()
-				.collect(toMap(clazz -> clazz, this::creatEndpointInstance));
-
-		this.originsByMethod = originBoot.getSignatures()
-				.stream()
-				.collect(toMap(signature -> signature.method, identity()));
-
-		this.endpointsByPath = endpointBoot.getSignatures()
-				.stream()
-				.collect(toMap(signature -> signature.path, identity()));
+											.stream()
+											.map(endpointMethod -> endpointMethod.clazz)
+											.distinct()
+											.collect(toMap(clazz -> clazz, this::creatEndpointInstance));
 
 		this.transmitterIdGenerator = new IDGenerator();
 		this.transmitters = new ConcurrentHashMap<>();
+		this.exchangers = new ConcurrentHashMap<>();
 	}
 
 	@SuppressWarnings("unchecked")
@@ -123,42 +122,51 @@ public final class Server {
 				Transmitter transmitter = new Transmitter(socket);
 				long connectedClientID = transmitterIdGenerator.next();
 				transmitter.send(new Transfer(Headers.EMPTY, connectedClientID));
-				transmitter.handleIncomingTransfers();
 
-				Communicator communicator = new Communicator(transmitter, (headers, args) -> {
+				transmitter.transfers().subscribe(transfer -> {
+					Headers headers = transfer.headers;
+
 					String path = headers.get("path", String.class);
 
 					Long sourceClientId = headers.getLong("source-client-id");
-					Map<Class<? extends Annotation>, Object> endpointExtraArgResolvers = Map.of(ClientID.class,
-							sourceClientId);
+					Map<Class<? extends Annotation>, Object> extraArgResolver = Map.of(ClientID.class, sourceClientId);
 
 					Long destinationClientId = headers.getLong("destination-client-id");
 					if (destinationClientId == null) { // for server
-						EndpointMethod endpoint = endpointsByPath.get(path);
-						if (endpoint == null) {
+						EndpointMethod method = endpointsByPath.get(path);
+						if (method == null) {
 							throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
 						}
-						Object serviceInstance = endpointServices.get(endpoint.clazz);
-						return (Serializable) endpoint.invoke(serviceInstance, args, endpointExtraArgResolvers::get);
+						Object serviceInstance = endpointServices.get(method.clazz);
+						Object[] args = appendExtraArgs((Object[]) transfer.content, method.extraParams,
+								annotation -> extraArgResolver.get(annotation.annotationType()));
+						method.invoke(serviceInstance, args);
 					}
 					else {
-						Communicator destinationCommunicator = transmitters.get(destinationClientId);
-						if (destinationCommunicator == null) {
+						Transmitter destinationTransmitter = transmitters.get(destinationClientId);
+						if (destinationTransmitter == null) {
 							throw new IllegalArgumentException(
 									String.format("Client by id %s not found", destinationClientId));
 						}
 
 						if (headers.getBoolean("need-response")) {
-							return destinationCommunicator.invokeRemote(headers, args).get();
+							headers = Headers.builder()
+											 .header("transfer-key", headers.getLong("transfer_key"))
+											 .header("is-response", true)
+											 .build();
+							destinationTransmitter.send(new Transfer(headers, transfer.content));
 
 						}
 						else {
-							destinationCommunicator.invokeRemoteUnresponsive(headers, args);
-							return null;
+							headers = Headers.builder().header("need-response", false).build();
+							destinationTransmitter.send(new Transfer(headers, transfer.content));
 						}
 					}
 				});
-				transmitters.put(connectedClientID, communicator);
+
+				transmitter.handleIncomingTransfers();
+
+				transmitters.put(connectedClientID, transmitter);
 			}, EXECUTOR).exceptionallyAsync(throwable -> {
 				throwable.getCause().printStackTrace();
 				return null;
@@ -174,6 +182,22 @@ public final class Server {
 		}
 	}
 
+	private Object[] appendExtraArgs(Object[] simpleArgs, List<ExtraParam> extraParams,
+									 Function<Annotation, Object> extraArgResolver) {
+		int simpleArgsLength = simpleArgs.length;
+		int extraArgsLength = simpleArgs.length;
+
+		Object[] allArgs = new Object[simpleArgsLength + extraArgsLength];
+
+		System.arraycopy(simpleArgs, 0, allArgs, 0, simpleArgs.length); // fill simple args
+
+		for (ExtraParam extraParam : extraParams) {
+			allArgs[extraParam.index] = extraArgResolver.apply(extraParam.annotation);
+		}
+
+		return allArgs;
+	}
+
 	private void checkOriginExtraParamTypes(OriginMethod originMethod) {
 		Map<Class<? extends Annotation>, Class<?>> requiredTypes = Map.of(ClientID.class, long.class);
 
@@ -182,13 +206,14 @@ public final class Server {
 		List<ExtraParam> extraParams = originMethod.extraParams;
 
 		Set<Class<? extends Annotation>> existingExtraParams = extraParams.stream()
-				.map(extraParam -> extraParam.annotationArguments)
-				.collect(Collectors.toSet());
+																		  .map(extraParam -> extraParam.annotation.annotationType())
+																		  .collect(Collectors.toSet());
 
 		String nonExistingRequiredExtraParams = requiredExtraParams.stream()
-				.filter(annotation -> !existingExtraParams.contains(annotation))
-				.map(annotation -> "@" + annotation.getSimpleName())
-				.collect(joining(",", "[", "]"));
+																   .filter(annotation -> !existingExtraParams.contains(
+																		   annotation))
+																   .map(annotation -> "@" + annotation.getSimpleName())
+																   .collect(joining(",", "[", "]"));
 
 		if (nonExistingRequiredExtraParams.length() > 2) { // is empty
 			throw new BootException(
@@ -196,18 +221,18 @@ public final class Server {
 		}
 
 		for (ExtraParam extraParam : extraParams) {
-			Class<?> expectedType = requiredTypes.get(extraParam.annotationArguments);
+			Class<?> expectedType = requiredTypes.get(extraParam.annotation.annotationType());
 			if (extraParam.type != expectedType) {
 				throw new BootException(String.format("Extra param @%s must have type %s",
-						extraParam.annotationArguments.getSimpleName(), expectedType.getName()));
+						extraParam.annotation.annotationType().getSimpleName(), expectedType.getName()));
 			}
 
 		}
 	}
 
-	private Object createOriginInstance(Class<?> clazz, InvocationHandler invocationHandler) {
-		return Proxy.newProxyInstance(clazz.getClassLoader(), new Class[]{clazz}, invocationHandler);
-
+	private Object createOriginInstance(Class<?> clazz, OriginInvocationHandler.Handler invocationHandler) {
+		return Proxy.newProxyInstance(clazz.getClassLoader(), new Class[]{clazz},
+				new OriginInvocationHandler(originsByMethod::get, invocationHandler));
 	}
 
 	private Object creatEndpointInstance(Class<?> clazz) {
@@ -218,13 +243,24 @@ public final class Server {
 		return (method, simpleArgs, extraArgs) -> {
 			Long clientId = (Long) extraArgs.get(ClientID.class).getValue();
 
-			Communicator communicator = transmitters.get(clientId);
-			Headers headers = Headers.builder().header("path", signature.path).build();
-			if (signature.needResponse) {
-				return communicator.invokeRemote(headers, simpleArgs);
+			Transmitter transmitter = transmitters.get(clientId);
+			Headers headers = Headers.builder().header("path", method.path).build();
+			if (method.needResponse) {
+				Long transferKey = headers.getLong("transfer-key");
+				headers = Headers.builder().header("transfer-key", transferKey).header("is-response", true).build();
+				Subject<Object> result = Subject.single();
+				Exchanger<Object> exchanger = new Exchanger<>();
+				exchangers.put(transferKey, exchanger);
+				CompletableFuture.runAsync(() -> Try.runAndRethrow(() -> result.next(exchanger.exchange(null))))
+								 .whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
+																			  .ifPresent(t -> t.getCause()
+																							   .printStackTrace()));
+				transmitter.send(new Transfer(headers, simpleArgs));
+				return result.asObservable().one();
 			}
 			else {
-				communicator.invokeRemoteUnresponsive(headers, simpleArgs);
+				headers = Headers.builder().header("need-response", false).build();
+				transmitter.send(new Transfer(headers, simpleArgs));
 				return null;
 			}
 		};
