@@ -67,27 +67,28 @@ public final class Server {
 	private Server(ServerSocket serverSocket, OriginBoot originBoot, EndpointBoot endpointBoot) {
 		this.serverSocket = serverSocket;
 
-		this.originsByMethod =
-				originBoot.getSignatures().stream().collect(toMap(signature -> signature.method, identity()));
+		this.originsByMethod = originBoot.getSignatures()
+				.stream()
+				.collect(toMap(signature -> signature.method, identity()));
 
-		this.endpointsByPath =
-				endpointBoot.getSignatures().stream().collect(toMap(signature -> signature.path, identity()));
+		this.endpointsByPath = endpointBoot.getSignatures()
+				.stream()
+				.collect(toMap(signature -> signature.path, identity()));
 
 		OriginInvocationHandler.Handler invocationHandler = createOriginInvocationHandler();
 		this.originServices = originBoot.getSignatures()
-										.stream()
-										.peek(this::checkOriginExtraParamTypes)
-										.peek(Server::checkDestination)
-										.map(signature -> signature.clazz)
-										.distinct()
-										.collect(toMap(clazz -> clazz,
-												clazz -> createOriginInstance(clazz, invocationHandler)));
+				.stream()
+				.peek(this::checkOriginExtraParamTypes)
+				.peek(Server::checkDestination)
+				.map(signature -> signature.clazz)
+				.distinct()
+				.collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, invocationHandler)));
 
 		this.endpointServices = endpointBoot.getSignatures()
-											.stream()
-											.map(endpointMethod -> endpointMethod.clazz)
-											.distinct()
-											.collect(toMap(clazz -> clazz, this::creatEndpointInstance));
+				.stream()
+				.map(endpointMethod -> endpointMethod.clazz)
+				.distinct()
+				.collect(toMap(clazz -> clazz, this::creatEndpointInstance));
 
 		this.transmitterIdGenerator = new IDGenerator();
 		this.transmitters = new ConcurrentHashMap<>();
@@ -126,21 +127,26 @@ public final class Server {
 				transmitter.transfers().subscribe(transfer -> {
 					Headers headers = transfer.headers;
 
-					String path = headers.get("path", String.class);
-
-					Long sourceClientId = headers.getLong("source-client-id");
-					Map<Class<? extends Annotation>, Object> extraArgResolver = Map.of(ClientID.class, sourceClientId);
-
 					Long destinationClientId = headers.getLong("destination-client-id");
 					if (destinationClientId == null) { // for server
+						String path = headers.getString("path");
 						EndpointMethod method = endpointsByPath.get(path);
 						if (method == null) {
 							throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
 						}
+
+						Long sourceClientId = headers.getLong("source-client-id");
+						Map<Class<? extends Annotation>, Object> extraArgResolver = Map.of(ClientID.class,
+								sourceClientId);
+
 						Object serviceInstance = endpointServices.get(method.clazz);
 						Object[] args = appendExtraArgs((Object[]) transfer.content, method.extraParams,
 								annotation -> extraArgResolver.get(annotation.annotationType()));
-						method.invoke(serviceInstance, args);
+						Object result = method.invoke(serviceInstance, args);
+						if (headers.getBoolean("need-response")) {
+							headers = Headers.builder().header("is-response", true).build();
+							transmitter.send(new Transfer(headers, result));
+						}
 					}
 					else {
 						Transmitter destinationTransmitter = transmitters.get(destinationClientId);
@@ -151,14 +157,20 @@ public final class Server {
 
 						if (headers.getBoolean("need-response")) {
 							headers = Headers.builder()
-											 .header("transfer-key", headers.getLong("transfer_key"))
-											 .header("is-response", true)
-											 .build();
+									.header("path", headers.getString("path"))
+									.header("transfer-key", headers.getLong("transfer-key"))
+									.header("is-response", false)
+									.header("need-response", true)
+									.build();
 							destinationTransmitter.send(new Transfer(headers, transfer.content));
 
 						}
 						else {
-							headers = Headers.builder().header("need-response", false).build();
+							headers = Headers.builder()
+									.header("path", headers.getString("path"))
+									.header("need-response", false)
+									.header("is-response", false)
+									.build();
 							destinationTransmitter.send(new Transfer(headers, transfer.content));
 						}
 					}
@@ -184,10 +196,7 @@ public final class Server {
 
 	private Object[] appendExtraArgs(Object[] simpleArgs, List<ExtraParam> extraParams,
 									 Function<Annotation, Object> extraArgResolver) {
-		int simpleArgsLength = simpleArgs.length;
-		int extraArgsLength = simpleArgs.length;
-
-		Object[] allArgs = new Object[simpleArgsLength + extraArgsLength];
+		Object[] allArgs = new Object[simpleArgs.length + extraParams.size()];
 
 		System.arraycopy(simpleArgs, 0, allArgs, 0, simpleArgs.length); // fill simple args
 
@@ -206,14 +215,13 @@ public final class Server {
 		List<ExtraParam> extraParams = originMethod.extraParams;
 
 		Set<Class<? extends Annotation>> existingExtraParams = extraParams.stream()
-																		  .map(extraParam -> extraParam.annotation.annotationType())
-																		  .collect(Collectors.toSet());
+				.map(extraParam -> extraParam.annotation.annotationType())
+				.collect(Collectors.toSet());
 
 		String nonExistingRequiredExtraParams = requiredExtraParams.stream()
-																   .filter(annotation -> !existingExtraParams.contains(
-																		   annotation))
-																   .map(annotation -> "@" + annotation.getSimpleName())
-																   .collect(joining(",", "[", "]"));
+				.filter(annotation -> !existingExtraParams.contains(annotation))
+				.map(annotation -> "@" + annotation.getSimpleName())
+				.collect(joining(",", "[", "]"));
 
 		if (nonExistingRequiredExtraParams.length() > 2) { // is empty
 			throw new BootException(
@@ -252,9 +260,8 @@ public final class Server {
 				Exchanger<Object> exchanger = new Exchanger<>();
 				exchangers.put(transferKey, exchanger);
 				CompletableFuture.runAsync(() -> Try.runAndRethrow(() -> result.next(exchanger.exchange(null))))
-								 .whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
-																			  .ifPresent(t -> t.getCause()
-																							   .printStackTrace()));
+						.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
+								.ifPresent(t -> t.getCause().printStackTrace()));
 				transmitter.send(new Transfer(headers, simpleArgs));
 				return result.asObservable().one();
 			}

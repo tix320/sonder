@@ -5,10 +5,10 @@ import io.titix.sonder.Endpoint;
 /**
  * @author Tigran.Sargsyan on 08-Apr-19
  */
-@Endpoint("foo")
+@Endpoint("chat")
 public class B {
 
-	@Endpoint("lol")
+	@Endpoint("message")
 	public void foo(String message) {
 		System.out.println(message);
 	}

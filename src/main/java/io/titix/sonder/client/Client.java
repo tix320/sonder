@@ -4,6 +4,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.Socket;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,18 +55,19 @@ public final class Client {
 		this.transmitter = transmitter;
 
 		this.originsByMethod = originBoot.getSignatures()
-										 .stream()
-										 .collect(toMap(signature -> signature.method, identity()));
+				.stream()
+				.collect(toMap(signature -> signature.method, identity()));
 
 		this.endpointsByPath = endpointBoot.getSignatures()
-										   .stream()
-										   .collect(toMap(signature -> signature.path, identity()));
-		
+				.stream()
+				.collect(toMap(signature -> signature.path, identity()));
+
 		OriginInvocationHandler.Handler invocationHandler = createOriginInvocationHandler();
 		this.originServices = originBoot.getSignatures()
 				.stream()
 				.map(signature -> signature.clazz)
-				.distinct().collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, invocationHandler)));
+				.distinct()
+				.collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, invocationHandler)));
 
 		this.endpointServices = endpointBoot.getSignatures()
 				.stream()
@@ -125,9 +127,8 @@ public final class Client {
 
 			if (method.needResponse) {
 				long transferKey = transferIdGenerator.next();
-				headers = headers.concat(
-						Headers.builder().header("transfer-key", transferKey).header("need-response", true).build());
-				Transfer transfer = new Transfer(headers, simpleArgs);
+				headers = headers.compose().header("transfer-key", transferKey).header("need-response", true).build();
+				Transfer transfer = new Transfer(headers, simpleArgs.toArray());
 
 				Subject<Object> result = Subject.single();
 				Exchanger<Object> exchanger = new Exchanger<>();
@@ -143,9 +144,9 @@ public final class Client {
 				return result.asObservable().one();
 			}
 			else {
-				headers = headers.concat(Headers.builder().header("need-response", false).build());
+				headers = headers.compose().header("need-response", false).build();
 
-				Transfer transfer = new Transfer(headers, simpleArgs);
+				Transfer transfer = new Transfer(headers, simpleArgs.toArray());
 
 				CompletableFuture.runAsync(() -> this.transmitter.send(transfer))
 						.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
@@ -199,7 +200,9 @@ public final class Client {
 
 		Long sourceClientId = headers.getLong("source-client-id");
 
-		Map<Class<? extends Annotation>, Object> extraArgResolver = Map.of(ClientID.class, sourceClientId);
+
+		Map<Class<? extends Annotation>, Object> extraArgResolver = new HashMap<>();
+		extraArgResolver.put(ClientID.class, sourceClientId);
 
 		Object serviceInstance = endpointServices.get(method.clazz);
 		Object[] args = appendExtraArgs((Object[]) transfer.content, method.extraParams,
@@ -217,10 +220,8 @@ public final class Client {
 
 	private Object[] appendExtraArgs(Object[] simpleArgs, List<ExtraParam> extraParams,
 									 Function<Annotation, Object> extraArgResolver) {
-		int simpleArgsLength = simpleArgs.length;
-		int extraArgsLength = simpleArgs.length;
 
-		Object[] allArgs = new Object[simpleArgsLength + extraArgsLength];
+		Object[] allArgs = new Object[simpleArgs.length + extraParams.size()];
 
 		System.arraycopy(simpleArgs, 0, allArgs, 0, simpleArgs.length); // fill simple args
 

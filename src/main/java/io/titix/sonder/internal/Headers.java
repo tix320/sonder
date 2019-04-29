@@ -1,7 +1,6 @@
 package io.titix.sonder.internal;
 
 import java.io.Serializable;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,7 +12,7 @@ public final class Headers implements Serializable {
 	private final Map<String, Object> values;
 
 	private Headers(Map<String, Object> values) {
-		this.values = Collections.unmodifiableMap(values);
+		this.values = values;
 	}
 
 	public <T> T get(String key, Class<T> type) {
@@ -32,22 +31,28 @@ public final class Headers implements Serializable {
 		return (Long) values.get(key);
 	}
 
-	public Headers concat(Headers headers) {
-		Map<String, Object> newValues = new HashMap<>();
-		newValues.putAll(this.values);
-		newValues.putAll(headers.values);
-		return new Headers(newValues);
+	public HeadersBuilder compose() {
+		return new HeadersBuilder(new HashMap<>(this.values));
 	}
 
 	public static HeadersBuilder builder() {
-		return new HeadersBuilder();
+		return new HeadersBuilder(new HashMap<>());
 	}
 
 	public static final class HeadersBuilder {
-		private final Map<String, Object> values = new HashMap<>();
+		private final Map<String, Object> values;
+
+		public HeadersBuilder(Map<String, Object> values) {
+			this.values = values;
+		}
 
 		public HeadersBuilder header(String key, Object value) {
 			values.put(key, value);
+			return this;
+		}
+
+		public HeadersBuilder delete(String key, Object value) {
+			values.remove(key, value);
 			return this;
 		}
 
