@@ -11,7 +11,7 @@ public final class ServerTest {
 
 	public static void main(String[] args)
 			throws InterruptedException {
-		Server server = Server.run(777, List.of("server"), List.of("server"));
+		Server server = Server.run(Integer.parseInt(args[0]), List.of("server"), List.of("server"));
 
 
 	}

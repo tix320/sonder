@@ -10,7 +10,7 @@ import io.titix.sonder.client.Client;
 public class Client2Test {
 
 	public static void main(String[] args) throws IOException {
-		Client client = Client.run("localhost", 777, List.of("client"), List.of("client"));
+		Client client = Client.run("18.194.51.33", 8888, List.of("client"), List.of("client"));
 
 		A service = client.getService(A.class);
 
