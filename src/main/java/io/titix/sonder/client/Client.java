@@ -211,7 +211,7 @@ public final class Client {
 
 		if (headers.getBoolean("need-response")) {
 			headers = Headers.builder()
-					.header("transfer-key", headers.getLong("transfer_key"))
+					.header("transfer-key", headers.getLong("transfer-key"))
 					.header("is-response", true)
 					.build();
 			this.transmitter.send(new Transfer(headers, result));
