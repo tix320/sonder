@@ -51,11 +51,6 @@ public final class Headers implements Serializable {
 			return this;
 		}
 
-		public HeadersBuilder delete(String key, Object value) {
-			values.remove(key, value);
-			return this;
-		}
-
 		public Headers build() {
 			return new Headers(values);
 		}

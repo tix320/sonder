@@ -17,9 +17,6 @@ public final class EndpointMethod extends ServiceMethod {
 
 	public Object invoke(Object instance, Object[] args) {
 		try {
-			if (simpleParams.size() + extraParams.size() != args.length) {
-				throw new IllegalArgumentException();
-			}
 			return method.invoke(instance, args);
 		}
 		catch (IllegalAccessException | InvocationTargetException e) {
@@ -33,7 +30,8 @@ public final class EndpointMethod extends ServiceMethod {
 	private BootException illegalEndpointSignature(Object[] args) {
 		return new BootException(String.format("Illegal signature of method '%s'(%s). Expected following parameters %s",
 				method.getName(), clazz, Arrays.stream(args)
-						.map(arg -> arg.getClass().getSimpleName()).collect(Collectors.joining(",", "[", "]"))));
+						.map(arg -> arg.getClass().getSimpleName())
+						.collect(Collectors.joining(",", "[", "]"))));
 	}
 
 	@Override

@@ -15,7 +15,7 @@ import com.gitlab.tixtix320.kiwi.observable.subject.Subject;
 
 public final class Transmitter {
 
-	private final Lock writeLock = new ReentrantLock();
+	private final Lock writeAccess = new ReentrantLock();
 
 	private final AtomicBoolean started = new AtomicBoolean(false);
 
@@ -41,7 +41,7 @@ public final class Transmitter {
 
 	public void send(Transfer transfer) {
 		try {
-			writeLock.lock();
+			writeAccess.lock();
 			writer.writeObject(transfer);
 		}
 		catch (IOException e) {
@@ -49,7 +49,7 @@ public final class Transmitter {
 			throw new TransmitterException("Failed to send transfer", e);
 		}
 		finally {
-			writeLock.unlock();
+			writeAccess.unlock();
 		}
 	}
 
