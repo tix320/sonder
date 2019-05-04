@@ -107,19 +107,19 @@ public final class Client {
 
 	private OriginInvocationHandler.Handler createOriginInvocationHandler() {
 		return (method, simpleArgs, extraArgs) -> {
-			Headers headers;
+			Headers headers = Headers.builder()
+					.header("path", method.path)
+					.header("is-response", false)
+					.header("source-client-id", id)
+					.build();
 
 			switch (method.destination) {
 				case SERVER:
-					headers = Headers.builder().header("path", method.path).header("source-client-id", id).build();
 					break;
 				case CLIENT:
 					ExtraArg extraArg = extraArgs.get(ClientID.class);
 					Object clientId = extraArg.getValue();
-					headers = Headers.builder().header("path", method.path)
-							.header("source-client-id", id)
-							.header("destination-client-id", clientId)
-							.build();
+					headers = headers.compose().header("destination-client-id", clientId).build();
 					break;
 				default:
 					throw new IllegalStateException();
@@ -213,6 +213,7 @@ public final class Client {
 			headers = Headers.builder()
 					.header("transfer-key", headers.getLong("transfer-key"))
 					.header("is-response", true)
+					.header("destination-client-id", headers.getLong("source-client-id"))
 					.build();
 			this.transmitter.send(new Transfer(headers, result));
 		}

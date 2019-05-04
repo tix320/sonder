@@ -9,7 +9,8 @@ import io.titix.sonder.Endpoint;
 public class B {
 
 	@Endpoint("message")
-	public void foo(String message) {
+	public int foo(String message) {
 		System.out.println(message);
+		return message.length();
 	}
 }

@@ -13,14 +13,14 @@ import io.titix.sonder.client.Client;
 public final class Client1Test {
 
 	public static void main(String[] args) throws IOException {
-		Client client = Client.run("18.194.51.33", 8888, List.of("client"), List.of("client"));
+		Client client = Client.run("localhost", 8888, List.of("client"), List.of("client"));
 
 		A service = client.getService(A.class);
 
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {
 			String message = bufferedReader.readLine();
-			service.send(message, -9223372036854775807L);
+			service.send(message, -9223372036854775807L).subscribe(object -> System.out.println("length is " + object));
 		}
 
 	}

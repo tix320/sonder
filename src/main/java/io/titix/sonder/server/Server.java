@@ -17,7 +17,6 @@ import java.util.stream.Collectors;
 import com.gitlab.tixtix320.kiwi.check.Try;
 import com.gitlab.tixtix320.kiwi.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.util.IDGenerator;
-import io.titix.sonder.client.OriginInvocationHandler;
 import io.titix.sonder.extra.ClientID;
 import io.titix.sonder.internal.*;
 
@@ -154,25 +153,8 @@ public final class Server {
 							throw new IllegalArgumentException(
 									String.format("Client by id %s not found", destinationClientId));
 						}
-
-						if (headers.getBoolean("need-response")) {
-							headers = Headers.builder()
-									.header("path", headers.getString("path"))
-									.header("transfer-key", headers.getLong("transfer-key"))
-									.header("is-response", false)
-									.header("need-response", true)
-									.build();
-							destinationTransmitter.send(new Transfer(headers, transfer.content));
-
-						}
-						else {
-							headers = Headers.builder()
-									.header("path", headers.getString("path"))
-									.header("need-response", false)
-									.header("is-response", false)
-									.build();
-							destinationTransmitter.send(new Transfer(headers, transfer.content));
-						}
+						headers = headers.compose().delete("destination-client-id").build();
+						destinationTransmitter.send(new Transfer(headers, transfer.content));
 					}
 				});
 

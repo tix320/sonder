@@ -1,4 +1,4 @@
-package io.titix.sonder.client;
+package io.titix.sonder.internal;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
@@ -8,11 +8,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-
-import io.titix.sonder.internal.ExtraArg;
-import io.titix.sonder.internal.ExtraParam;
-import io.titix.sonder.internal.OriginMethod;
-import io.titix.sonder.internal.Param;
 
 public final class OriginInvocationHandler implements InvocationHandler {
 

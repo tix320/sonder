@@ -1,5 +1,6 @@
 package client;
 
+import com.gitlab.tixtix320.kiwi.observable.Observable;
 import io.titix.sonder.Origin;
 import io.titix.sonder.extra.ClientID;
 
@@ -10,5 +11,5 @@ import io.titix.sonder.extra.ClientID;
 public interface A {
 
 	@Origin("message")
-	void send(String message, @ClientID long id);
+	Observable<Integer> send(String message, @ClientID long id);
 }
