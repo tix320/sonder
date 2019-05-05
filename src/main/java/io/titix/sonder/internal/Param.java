@@ -11,7 +11,7 @@ public class Param {
 	
 	public final Class<?> type;
 
-	Param(int index, Class<?> type) {
+	public Param(int index, Class<?> type) {
 		this.index = index;
 		this.type = type;
 	}

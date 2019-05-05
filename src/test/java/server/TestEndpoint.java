@@ -2,17 +2,15 @@ package server;
 
 
 import io.titix.sonder.Endpoint;
-import io.titix.sonder.extra.ClientID;
 
 /**
  * @author tix32 on 19-Feb-19
  */
-@Endpoint("foo")
+@Endpoint("sd")
 public class TestEndpoint {
 
-	@Endpoint("lol")
-	public Object foo(String list, @ClientID long a) {
-		System.out.println(a);
+	@Endpoint("")
+	public Object foo(String list) {
 		return 34;
 	}
 }

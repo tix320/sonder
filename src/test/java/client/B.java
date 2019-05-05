@@ -1,6 +1,7 @@
 package client;
 
 import io.titix.sonder.Endpoint;
+import io.titix.sonder.extra.ClientID;
 
 /**
  * @author Tigran.Sargsyan on 08-Apr-19
@@ -9,8 +10,8 @@ import io.titix.sonder.Endpoint;
 public class B {
 
 	@Endpoint("message")
-	public int foo(String message) {
+	public String foo(String message, @ClientID Long dfad) {
 		System.out.println(message);
-		return message.length();
+		return message;
 	}
 }

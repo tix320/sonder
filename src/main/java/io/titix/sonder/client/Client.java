@@ -16,6 +16,8 @@ import java.util.function.Function;
 import com.gitlab.tixtix320.kiwi.check.Try;
 import com.gitlab.tixtix320.kiwi.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.util.IDGenerator;
+import io.titix.sonder.client.internal.EndpointBoot;
+import io.titix.sonder.client.internal.OriginBoot;
 import io.titix.sonder.extra.ClientID;
 import io.titix.sonder.internal.*;
 
@@ -54,22 +56,22 @@ public final class Client {
 	private Client(Transmitter transmitter, OriginBoot originBoot, EndpointBoot endpointBoot) {
 		this.transmitter = transmitter;
 
-		this.originsByMethod = originBoot.getSignatures()
+		this.originsByMethod = originBoot.getServiceMethods()
 				.stream()
 				.collect(toMap(signature -> signature.method, identity()));
 
-		this.endpointsByPath = endpointBoot.getSignatures()
+		this.endpointsByPath = endpointBoot.getServiceMethods()
 				.stream()
 				.collect(toMap(signature -> signature.path, identity()));
 
 		OriginInvocationHandler.Handler invocationHandler = createOriginInvocationHandler();
-		this.originServices = originBoot.getSignatures()
+		this.originServices = originBoot.getServiceMethods()
 				.stream()
 				.map(signature -> signature.clazz)
 				.distinct()
 				.collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, invocationHandler)));
 
-		this.endpointServices = endpointBoot.getSignatures()
+		this.endpointServices = endpointBoot.getServiceMethods()
 				.stream()
 				.map(endpointMethod -> endpointMethod.clazz)
 				.distinct()
@@ -133,7 +135,18 @@ public final class Client {
 				Subject<Object> result = Subject.single();
 				Exchanger<Object> exchanger = new Exchanger<>();
 				exchangers.put(transferKey, exchanger);
-				CompletableFuture.runAsync(() -> Try.runAndRethrow(() -> result.next(exchanger.exchange(null))))
+				CompletableFuture.runAsync(() -> Try.runAndRethrow(() -> {
+					Object object = exchanger.exchange(null);
+					try {
+						result.next(object);
+						result.complete();
+					}
+					catch (ClassCastException e) {
+						throw new IllegalStateException(String.format(
+								"Origin method %s(%s) return type is not compatible with received response type(%s)",
+								method.method.getName(), method.clazz, object.getClass()));
+					}
+				}))
 						.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
 								.ifPresent(t -> t.getCause().printStackTrace()));
 
@@ -151,7 +164,6 @@ public final class Client {
 				CompletableFuture.runAsync(() -> this.transmitter.send(transfer))
 						.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
 								.ifPresent(t -> t.getCause().printStackTrace()));
-
 				return null;
 			}
 		};

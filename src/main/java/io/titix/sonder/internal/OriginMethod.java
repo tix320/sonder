@@ -14,8 +14,8 @@ public final class OriginMethod
 
 	public final Destination destination;
 
-	OriginMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams, List<ExtraParam> extraParams,
-				 boolean needResponse, Destination destination) {
+	public OriginMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams,
+						List<ExtraParam> extraParams, boolean needResponse, Destination destination) {
 		super(path, clazz, method, simpleParams, extraParams);
 		this.needResponse = needResponse;
 		this.destination = destination;

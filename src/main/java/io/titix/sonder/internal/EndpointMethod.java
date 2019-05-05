@@ -6,12 +6,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import io.titix.sonder.internal.boot.BootException;
+
 /**
  * @author tix32 on 24-Feb-19
  */
 public final class EndpointMethod extends ServiceMethod {
 
-	EndpointMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams, List<ExtraParam> extraParams) {
+	public EndpointMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams,
+						  List<ExtraParam> extraParams) {
 		super(path, clazz, method, simpleParams, extraParams);
 	}
 
@@ -36,6 +39,6 @@ public final class EndpointMethod extends ServiceMethod {
 
 	@Override
 	public String toString() {
-		return "EndpointMethod { " + clazz + ", method - " + method.getName() + ", @Path - " + path + " }";
+		return "EndpointMethod { " + method.getName() + "(" + clazz + "), @Path - " + path + " }";
 	}
 }

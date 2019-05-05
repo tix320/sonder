@@ -1,4 +1,4 @@
-package io.titix.sonder.internal;
+package io.titix.sonder.internal.boot;
 
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -16,7 +16,7 @@ public final class BootException extends RuntimeException {
 	}
 
 	@SafeVarargs
-	static <T> void checkAndThrow(T value, Function<T, String> rootMessage, Check<T>... checks) {
+	public static <T> void checkAndThrow(T value, Function<T, String> rootMessage, Check<T>... checks) {
 		String checksMessage = IntStream.range(0, checks.length)
 				.filter(index -> checks[index].predicate.test(value))
 				.mapToObj(index -> index + ": " + checks[index].errorMessage)
@@ -30,12 +30,12 @@ public final class BootException extends RuntimeException {
 		throw new BootException(message);
 	}
 
-	static <T> Check<T> throwWhen(Predicate<T> predicate, String errorMessage) {
+	public static <T> Check<T> throwWhen(Predicate<T> predicate, String errorMessage) {
 		return new Check<>(predicate, errorMessage);
 	}
 
 	@SuppressWarnings("WeakerAccess")
-	static final class Check<T> {
+	public static final class Check<T> {
 
 		private final Predicate<T> predicate;
 

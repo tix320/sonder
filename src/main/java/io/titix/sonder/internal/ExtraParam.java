@@ -6,7 +6,7 @@ public class ExtraParam extends Param {
 
 	public final Annotation annotation;
 
-	ExtraParam(int index, Class<?> type, Annotation annotation) {
+	public ExtraParam(int index, Class<?> type, Annotation annotation) {
 		super(index, type);
 		this.annotation = annotation;
 	}

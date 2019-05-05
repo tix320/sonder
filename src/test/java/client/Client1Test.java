@@ -20,7 +20,9 @@ public final class Client1Test {
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {
 			String message = bufferedReader.readLine();
-			service.send(message, -9223372036854775807L).subscribe(object -> System.out.println("length is " + object));
+			long start = System.currentTimeMillis();
+			service.send(message, -9223372036854775807L)
+					.subscribe(object -> System.out.println(System.currentTimeMillis() - start));
 		}
 
 	}

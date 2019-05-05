@@ -17,7 +17,9 @@ public class Client2Test {
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {
 			String message = bufferedReader.readLine();
-			service.send(message, -9223372036854775808L).subscribe(object -> System.out.println("dzec " + object));
+			long start = System.currentTimeMillis();
+			service.send(message, -9223372036854775808L)
+					.subscribe(object -> System.out.println(System.currentTimeMillis() - start));
 		}
 
 	}
