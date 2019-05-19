@@ -3,6 +3,7 @@ package io.titix.sonder.internal;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 public final class Headers implements Serializable {
 	private static final long serialVersionUID = 4379459480293747097L;
@@ -37,6 +38,24 @@ public final class Headers implements Serializable {
 
 	public static HeadersBuilder builder() {
 		return new HeadersBuilder(new HashMap<>());
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		Headers headers = (Headers) o;
+		return values.equals(headers.values);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(values);
+	}
+
+	@Override
+	public String toString() {
+		return values.toString();
 	}
 
 	public static final class HeadersBuilder {

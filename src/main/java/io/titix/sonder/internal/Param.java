@@ -7,13 +7,21 @@ import java.util.Objects;
  */
 public class Param {
 
-	public final int index;
-	
-	public final Class<?> type;
+	protected final int index;
+
+	protected final Class<?> type;
 
 	public Param(int index, Class<?> type) {
 		this.index = index;
 		this.type = type;
+	}
+
+	public int getIndex() {
+		return index;
+	}
+
+	public Class<?> getType() {
+		return type;
 	}
 
 	@Override
@@ -21,16 +29,16 @@ public class Param {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		Param param = (Param) o;
-		return index == param.index;
+		return index == param.index && type.equals(param.type);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(index);
+		return Objects.hash(index, type);
 	}
 
 	@Override
 	public String toString() {
-		return "Param{" + "index=" + index + '}';
+		return "Param{" + "index=" + index + ", type=" + type + '}';
 	}
 }

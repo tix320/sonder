@@ -57,23 +57,19 @@ public final class Client {
 		this.transmitter = transmitter;
 
 		this.originsByMethod = originBoot.getServiceMethods()
-				.stream()
-				.collect(toMap(signature -> signature.method, identity()));
+				.stream().collect(toMap(ServiceMethod::getRawMethod, identity()));
 
 		this.endpointsByPath = endpointBoot.getServiceMethods()
-				.stream()
-				.collect(toMap(signature -> signature.path, identity()));
+				.stream().collect(toMap(ServiceMethod::getPath, identity()));
 
-		OriginInvocationHandler.Handler invocationHandler = createOriginInvocationHandler();
 		this.originServices = originBoot.getServiceMethods()
 				.stream()
-				.map(signature -> signature.clazz)
+				.map(ServiceMethod::getRawClass)
 				.distinct()
-				.collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, invocationHandler)));
+				.collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, this::handleOriginCall)));
 
 		this.endpointServices = endpointBoot.getServiceMethods()
-				.stream()
-				.map(endpointMethod -> endpointMethod.clazz)
+				.stream().map(ServiceMethod::getRawClass)
 				.distinct()
 				.collect(toMap(clazz -> clazz, this::creatEndpointInstance));
 
@@ -107,66 +103,65 @@ public final class Client {
 		return Try.supplyAndGet(() -> clazz.getConstructor().newInstance());
 	}
 
-	private OriginInvocationHandler.Handler createOriginInvocationHandler() {
-		return (method, simpleArgs, extraArgs) -> {
-			Headers headers = Headers.builder()
-					.header("path", method.path)
-					.header("is-response", false)
-					.header("source-client-id", id)
-					.build();
+	private Object handleOriginCall(OriginMethod method, List<Object> simpleArgs,
+									Map<Class<? extends Annotation>, ExtraArg> extraArgs) {
+		Headers headers = Headers.builder()
+				.header("path", method.getPath())
+				.header("is-response", false)
+				.header("source-client-id", id)
+				.build();
 
-			switch (method.destination) {
-				case SERVER:
-					break;
-				case CLIENT:
-					ExtraArg extraArg = extraArgs.get(ClientID.class);
-					Object clientId = extraArg.getValue();
-					headers = headers.compose().header("destination-client-id", clientId).build();
-					break;
-				default:
-					throw new IllegalStateException();
-			}
+		switch (method.destination) {
+			case SERVER:
+				break;
+			case CLIENT:
+				ExtraArg extraArg = extraArgs.get(ClientID.class);
+				Object clientId = extraArg.getValue();
+				headers = headers.compose().header("destination-client-id", clientId).build();
+				break;
+			default:
+				throw new IllegalStateException();
+		}
 
-			if (method.needResponse) {
-				long transferKey = transferIdGenerator.next();
-				headers = headers.compose().header("transfer-key", transferKey).header("need-response", true).build();
-				Transfer transfer = new Transfer(headers, simpleArgs.toArray());
+		if (method.needResponse) {
+			long transferKey = transferIdGenerator.next();
+			headers = headers.compose().header("transfer-key", transferKey).header("need-response", true).build();
+			Transfer transfer = new Transfer(headers, simpleArgs.toArray());
 
-				Subject<Object> result = Subject.single();
-				Exchanger<Object> exchanger = new Exchanger<>();
-				exchangers.put(transferKey, exchanger);
-				CompletableFuture.runAsync(() -> Try.runAndRethrow(() -> {
-					Object object = exchanger.exchange(null);
-					try {
-						result.next(object);
-						result.complete();
-					}
-					catch (ClassCastException e) {
-						throw new IllegalStateException(String.format(
-								"Origin method %s(%s) return type is not compatible with received response type(%s)",
-								method.method.getName(), method.clazz, object.getClass()));
-					}
-				}))
-						.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
-								.ifPresent(t -> t.getCause().printStackTrace()));
+			Subject<Object> result = Subject.single();
+			Exchanger<Object> exchanger = new Exchanger<>();
+			exchangers.put(transferKey, exchanger);
+			CompletableFuture.runAsync(() -> Try.runAndRethrow(() -> {
+				Object object = exchanger.exchange(null);
+				try {
+					result.next(object);
+					result.complete();
+				}
+				catch (ClassCastException e) {
+					throw new IllegalStateException(String.format(
+							"Origin method %s(%s) return type is not compatible with received response type(%s)",
+							method.getRawMethod().getName(), method.getRawClass(), object.getClass()));
+				}
+			}))
+					.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
+							.ifPresent(t -> t.getCause().printStackTrace()));
 
-				CompletableFuture.runAsync(() -> this.transmitter.send(transfer))
-						.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
-								.ifPresent(t -> t.getCause().printStackTrace()));
+			CompletableFuture.runAsync(() -> this.transmitter.send(transfer))
+					.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
+							.ifPresent(t -> t.getCause().printStackTrace()));
 
-				return result.asObservable().one();
-			}
-			else {
-				headers = headers.compose().header("need-response", false).build();
+			return result.asObservable().one();
+		}
+		else {
+			headers = headers.compose().header("need-response", false).build();
 
-				Transfer transfer = new Transfer(headers, simpleArgs.toArray());
+			Transfer transfer = new Transfer(headers, simpleArgs.toArray());
 
-				CompletableFuture.runAsync(() -> this.transmitter.send(transfer))
-						.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
-								.ifPresent(t -> t.getCause().printStackTrace()));
-				return null;
-			}
-		};
+			CompletableFuture.runAsync(() -> this.transmitter.send(transfer))
+					.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
+							.ifPresent(t -> t.getCause().printStackTrace()));
+			return null;
+		}
 	}
 
 	private Long resolveId() {
@@ -216,8 +211,8 @@ public final class Client {
 		Map<Class<? extends Annotation>, Object> extraArgResolver = new HashMap<>();
 		extraArgResolver.put(ClientID.class, sourceClientId);
 
-		Object serviceInstance = endpointServices.get(method.clazz);
-		Object[] args = appendExtraArgs((Object[]) transfer.content, method.extraParams,
+		Object serviceInstance = endpointServices.get(method.getRawClass());
+		Object[] args = appendExtraArgs((Object[]) transfer.content, method.getExtraParams(),
 				annotation -> extraArgResolver.get(annotation.annotationType()));
 		Object result = method.invoke(serviceInstance, args);
 
@@ -239,7 +234,7 @@ public final class Client {
 		System.arraycopy(simpleArgs, 0, allArgs, 0, simpleArgs.length); // fill simple args
 
 		for (ExtraParam extraParam : extraParams) {
-			allArgs[extraParam.index] = extraArgResolver.apply(extraParam.annotation);
+			allArgs[extraParam.getIndex()] = extraArgResolver.apply(extraParam.getAnnotation());
 		}
 
 		return allArgs;

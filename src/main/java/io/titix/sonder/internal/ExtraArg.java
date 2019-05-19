@@ -17,8 +17,11 @@ public final class ExtraArg {
 		return value;
 	}
 
-	@SuppressWarnings("unchecked")
-	public <T extends Annotation> T getAnnotation(Class<T> annotationType) {
-		return (T) annotation;
+	public Annotation getAnnotation() {
+		return annotation;
+	}
+
+	public <T extends Annotation> T getAnnotation(Class<T> type) {
+		return type.cast(annotation);
 	}
 }

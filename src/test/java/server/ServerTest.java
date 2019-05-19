@@ -13,6 +13,9 @@ public final class ServerTest {
 			throws InterruptedException {
 		Server server = Server.run(Integer.parseInt(args[0]), List.of("server"), List.of("server"));
 
+		TestOrigin service = server.getService(TestOrigin.class);
 
+		Thread.sleep(5000);
+		service.foo("hello", -9223372036854775808L).subscribe(object -> System.out.println(object));
 	}
 }

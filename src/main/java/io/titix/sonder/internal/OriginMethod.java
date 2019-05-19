@@ -7,40 +7,36 @@ import java.util.Objects;
 /**
  * @author tix32 on 24-Feb-19
  */
-public final class OriginMethod
-		extends ServiceMethod {
+public final class OriginMethod extends ServiceMethod {
 
 	public final boolean needResponse;
 
 	public final Destination destination;
 
-	public OriginMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams,
-						List<ExtraParam> extraParams, boolean needResponse, Destination destination) {
-		super(path, clazz, method, simpleParams, extraParams);
+	public OriginMethod(String path, Method method, List<Param> simpleParams, List<ExtraParam> extraParams,
+						boolean needResponse, Destination destination) {
+		super(path, method, simpleParams, extraParams);
 		this.needResponse = needResponse;
 		this.destination = destination;
 	}
 
 	@Override
 	public boolean equals(Object o) {
-		if (this == o)
-			return true;
-		if (o == null || getClass() != o.getClass())
-			return false;
-		if (!super.equals(o))
-			return false;
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		if (!super.equals(o)) return false;
 		OriginMethod that = (OriginMethod) o;
-		return needResponse == that.needResponse;
+		return needResponse == that.needResponse && destination == that.destination;
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(super.hashCode(), needResponse);
+		return Objects.hash(super.hashCode(), needResponse, destination);
 	}
 
 	@Override
 	public String toString() {
-		return "OriginMethod { " +  clazz + ", method - " + method.getName() + ", @Path - " + path + " }";
+		return "OriginMethod{" + "needResponse=" + needResponse + ", destination=" + destination + ", path='" + path + '\'' + ", rawMethod=" + rawMethod + ", simpleParams=" + simpleParams + ", extraParams=" + extraParams + '}';
 	}
 
 	public enum Destination {

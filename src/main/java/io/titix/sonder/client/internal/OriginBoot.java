@@ -64,9 +64,9 @@ public class OriginBoot extends Boot<OriginMethod> {
 	}
 
 	@Override
-	protected OriginMethod createServiceMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams,
+	protected OriginMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
 											   List<ExtraParam> extraParams) {
-		return new OriginMethod(path, clazz, method, simpleParams, extraParams, needResponse(method),
+		return new OriginMethod(path, method, simpleParams, extraParams, needResponse(method),
 				getDestination(extraParams));
 	}
 
@@ -81,7 +81,7 @@ public class OriginBoot extends Boot<OriginMethod> {
 
 	private OriginMethod.Destination getDestination(List<ExtraParam> extraParams) {
 		for (ExtraParam extraParam : extraParams) {
-			if (extraParam.annotation.annotationType() == ClientID.class) {
+			if (extraParam.getAnnotation().annotationType() == ClientID.class) {
 				return OriginMethod.Destination.CLIENT;
 			}
 		}

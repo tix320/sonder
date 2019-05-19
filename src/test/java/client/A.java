@@ -11,5 +11,5 @@ import io.titix.sonder.extra.ClientID;
 public interface A {
 
 	@Origin("message")
-	Observable<Integer> send(String message, @ClientID long id);
+	Observable<String> send(String message, @ClientID long id);
 }

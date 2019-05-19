@@ -56,7 +56,7 @@ public abstract class Boot<T extends ServiceMethod> {
 		@SuppressWarnings("unchecked")
 		List<ExtraParam> extraParams = (List<ExtraParam>) params.get("extra");
 
-		return createServiceMethod(getPath(method), method.getDeclaringClass(), method, simpleParams, extraParams);
+		return createServiceMethod(getPath(method), method, simpleParams, extraParams);
 	}
 
 	private Map<String, List<? extends Param>> resolveParameters(Method method) {
@@ -101,7 +101,7 @@ public abstract class Boot<T extends ServiceMethod> {
 				.filter(extraParamDefinition -> extraParamDefinition.isRequired)
 				.map(extraParamDefinition -> extraParamDefinition.annotationType)
 				.filter(annotationType -> extraParams.stream()
-						.noneMatch(extraParam -> extraParam.annotation.annotationType().equals(annotationType)))
+						.noneMatch(extraParam -> extraParam.getAnnotation().annotationType().equals(annotationType)))
 				.map(annotation -> "@" + annotation.getSimpleName())
 				.collect(joining(",", "[", "]"));
 
@@ -116,26 +116,26 @@ public abstract class Boot<T extends ServiceMethod> {
 
 	protected abstract String getPath(Method method);
 
-	protected abstract T createServiceMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams,
+	protected abstract T createServiceMethod(String path, Method method, List<Param> simpleParams,
 											 List<ExtraParam> extraParams);
 
 	private void checkPath(ServiceMethod method) {
-		if (method.path.startsWith(":")) {
-			throw new BootException(String.format("path value must be non empty in %s", method.clazz));
+		if (method.getPath().startsWith(":")) {
+			throw new BootException(String.format("path value must be non empty in %s", method.getPath()));
 		}
 	}
 
 	private void checkDuplicatePaths(Collection<T> signatures) {
 		Map<String, ServiceMethod> uniqueSignatures = new HashMap<>();
 		for (ServiceMethod serviceMethod : signatures) {
-			if (uniqueSignatures.containsKey(serviceMethod.path)) {
-				ServiceMethod presentServiceMethod = uniqueSignatures.get(serviceMethod.path);
+			if (uniqueSignatures.containsKey(serviceMethod.getPath())) {
+				ServiceMethod presentServiceMethod = uniqueSignatures.get(serviceMethod.getPath());
 				throw new DuplicatePathException(
-						String.format("Methods %s(%s) and %s(%s) has same path", serviceMethod.method.getName(),
-								serviceMethod.clazz.getName(), presentServiceMethod.method.getName(),
-								presentServiceMethod.clazz.getName()));
+						String.format("Methods %s(%s) and %s(%s) has same path", serviceMethod.getRawMethod().getName(),
+								serviceMethod.getRawClass().getName(), presentServiceMethod.getRawMethod().getName(),
+								presentServiceMethod.getRawClass().getName()));
 			}
-			uniqueSignatures.put(serviceMethod.path, serviceMethod);
+			uniqueSignatures.put(serviceMethod.getPath(), serviceMethod);
 		}
 	}
 

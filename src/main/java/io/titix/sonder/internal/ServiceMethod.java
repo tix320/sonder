@@ -9,37 +9,55 @@ import java.util.Objects;
  */
 public abstract class ServiceMethod {
 
-	public final String path;
+	protected final String path;
 
-	public final Class<?> clazz;
+	protected final Method rawMethod;
 
-	public final Method method;
+	protected final List<Param> simpleParams;
 
-	public final List<Param> simpleParams;
+	protected final List<ExtraParam> extraParams;
 
-	public final List<ExtraParam> extraParams;
-
-	public ServiceMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams,
-						 List<ExtraParam> extraParams) {
+	public ServiceMethod(String path, Method rawMethod, List<Param> simpleParams, List<ExtraParam> extraParams) {
 		this.path = path;
-		this.clazz = clazz;
-		this.method = method;
+		this.rawMethod = rawMethod;
 		this.simpleParams = simpleParams;
 		this.extraParams = extraParams;
+	}
+
+	public String getPath() {
+		return path;
+	}
+
+	public Method getRawMethod() {
+		return rawMethod;
+	}
+
+	public Class<?> getRawClass() {
+		return rawMethod.getDeclaringClass();
+	}
+
+	public List<Param> getSimpleParams() {
+		return simpleParams;
+	}
+
+	public List<ExtraParam> getExtraParams() {
+		return extraParams;
 	}
 
 	@Override
 	public boolean equals(Object o) {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
-		ServiceMethod serviceMethod = (ServiceMethod) o;
-		return path.equals(serviceMethod.path) && clazz.equals(serviceMethod.clazz) && method.equals(
-				serviceMethod.method) && simpleParams.equals(serviceMethod.simpleParams) && extraParams.equals(
-				serviceMethod.extraParams);
+		ServiceMethod that = (ServiceMethod) o;
+		return path.equals(that.path) && rawMethod.equals(that.rawMethod) && simpleParams.equals(
+				that.simpleParams) && extraParams.equals(that.extraParams);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(path, clazz, method, simpleParams, extraParams);
+		return Objects.hash(path, rawMethod, simpleParams, extraParams);
 	}
+
+	@Override
+	public abstract String toString();
 }

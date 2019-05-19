@@ -58,9 +58,9 @@ public class EndpointBoot extends Boot<EndpointMethod> {
 	}
 
 	@Override
-	protected EndpointMethod createServiceMethod(String path, Class<?> clazz, Method method, List<Param> simpleParams,
+	protected EndpointMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
 												 List<ExtraParam> extraParams) {
-		return new EndpointMethod(path, clazz, method, simpleParams, extraParams);
+		return new EndpointMethod(path, method, simpleParams, extraParams);
 	}
 
 	@Override

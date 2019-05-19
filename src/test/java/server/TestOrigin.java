@@ -7,9 +7,9 @@ import io.titix.sonder.extra.ClientID;
 /**
  * @author Tigran.Sargsyan on 30-Jan-19
  */
-@Origin("dfoo")
+@Origin("super")
 public interface TestOrigin {
 
-	@Origin("ldsaol")
+	@Origin("")
 	Observable<Integer> foo(String message, @ClientID long id);
 }

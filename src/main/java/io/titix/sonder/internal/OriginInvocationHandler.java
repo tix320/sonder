@@ -40,7 +40,8 @@ public final class OriginInvocationHandler implements InvocationHandler {
 
 		for (ExtraParam extraParam : extraParams) {
 			int index = extraParam.index;
-			extraArgs.put(extraParam.annotation.annotationType(), new ExtraArg(args[index], extraParam.annotation));
+			extraArgs.put(extraParam.getAnnotation().annotationType(),
+					new ExtraArg(args[index], extraParam.getAnnotation()));
 		}
 
 		return handler.handle(originMethod, simpleArgs, extraArgs);
