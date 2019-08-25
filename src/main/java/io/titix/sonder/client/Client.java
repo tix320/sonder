@@ -1,26 +1,33 @@
 package io.titix.sonder.client;
 
+import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.net.Socket;
+import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Exchanger;
 import java.util.function.Function;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.gitlab.tixtix320.kiwi.check.Try;
 import com.gitlab.tixtix320.kiwi.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.util.IDGenerator;
+import io.titix.sonder.client.internal.ClientChannel;
 import io.titix.sonder.client.internal.EndpointBoot;
 import io.titix.sonder.client.internal.OriginBoot;
 import io.titix.sonder.extra.ClientID;
 import io.titix.sonder.internal.*;
 
+import static io.titix.sonder.internal.Headers.*;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toMap;
 
@@ -30,9 +37,9 @@ import static java.util.stream.Collectors.toMap;
 @SuppressWarnings("Duplicates")
 public final class Client {
 
-	private final long id;
+	private static final ObjectMapper MAPPER = new ObjectMapper();
 
-	private final Transmitter transmitter;
+	private final ClientChannel channel;
 
 	private final Map<Class<?>, ?> originServices;
 
@@ -44,23 +51,25 @@ public final class Client {
 
 	private final IDGenerator transferIdGenerator;
 
-	private final Map<Long, Exchanger<Object>> exchangers;
+	private final Map<Long, Subject<Object>> resultSubjects;
 
 	public static Client run(String host, int port, List<String> originPackages, List<String> endpointPackages) {
-		Socket socket = Try.supplyAndGet(() -> new Socket(host, port));
+		ClientChannel clientChannel = new ClientChannel(new InetSocketAddress(host, port));
 		OriginBoot originBoot = new OriginBoot(Config.getPackageClasses(originPackages));
 		EndpointBoot endpointBoot = new EndpointBoot(Config.getPackageClasses(endpointPackages));
-		return new Client(new Transmitter(socket), originBoot, endpointBoot);
+		return new Client(clientChannel, originBoot, endpointBoot);
 	}
 
-	private Client(Transmitter transmitter, OriginBoot originBoot, EndpointBoot endpointBoot) {
-		this.transmitter = transmitter;
+	private Client(ClientChannel channel, OriginBoot originBoot, EndpointBoot endpointBoot) {
+		this.channel = channel;
 
 		this.originsByMethod = originBoot.getServiceMethods()
-				.stream().collect(toMap(ServiceMethod::getRawMethod, identity()));
+				.stream()
+				.collect(toMap(ServiceMethod::getRawMethod, identity()));
 
 		this.endpointsByPath = endpointBoot.getServiceMethods()
-				.stream().collect(toMap(ServiceMethod::getPath, identity()));
+				.stream()
+				.collect(toMap(ServiceMethod::getPath, identity()));
 
 		this.originServices = originBoot.getServiceMethods()
 				.stream()
@@ -69,16 +78,15 @@ public final class Client {
 				.collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, this::handleOriginCall)));
 
 		this.endpointServices = endpointBoot.getServiceMethods()
-				.stream().map(ServiceMethod::getRawClass)
+				.stream()
+				.map(ServiceMethod::getRawClass)
 				.distinct()
 				.collect(toMap(clazz -> clazz, this::creatEndpointInstance));
 
-		this.exchangers = new ConcurrentHashMap<>();
+		this.resultSubjects = new ConcurrentHashMap<>();
 		this.transferIdGenerator = new IDGenerator();
 
-		this.id = resolveId();
-
-		handleIncomingRequests();
+		handleIncomingTransfers();
 	}
 
 	@SuppressWarnings("unchecked")
@@ -91,7 +99,7 @@ public final class Client {
 	}
 
 	public void stop() {
-		transmitter.close();
+		channel.close();
 	}
 
 	private Object createOriginInstance(Class<?> clazz, OriginInvocationHandler.Handler invocationHandler) {
@@ -106,18 +114,19 @@ public final class Client {
 	private Object handleOriginCall(OriginMethod method, List<Object> simpleArgs,
 									Map<Class<? extends Annotation>, ExtraArg> extraArgs) {
 		Headers headers = Headers.builder()
-				.header("path", method.getPath())
-				.header("is-response", false)
-				.header("source-client-id", id)
+				.header(PATH, method.getPath())
+				.header(IS_RESPONSE, false)
+				.header(SOURCE_CLIENT_ID, channel.getId())
 				.build();
 
 		switch (method.destination) {
 			case SERVER:
+				headers = headers.compose().header(DESTINATION_CLIENT_ID, 0L).build();
 				break;
 			case CLIENT:
 				ExtraArg extraArg = extraArgs.get(ClientID.class);
 				Object clientId = extraArg.getValue();
-				headers = headers.compose().header("destination-client-id", clientId).build();
+				headers = headers.compose().header(DESTINATION_CLIENT_ID, clientId).build();
 				break;
 			default:
 				throw new IllegalStateException();
@@ -125,105 +134,91 @@ public final class Client {
 
 		if (method.needResponse) {
 			long transferKey = transferIdGenerator.next();
-			headers = headers.compose().header("transfer-key", transferKey).header("need-response", true).build();
-			Transfer transfer = new Transfer(headers, simpleArgs.toArray());
+			headers = headers.compose().header(TRANSFER_KEY, transferKey).header(NEED_RESPONSE, true).build();
+			Transfer transfer = new Transfer<>(headers, simpleArgs.toArray());
 
-			Subject<Object> result = Subject.single();
-			Exchanger<Object> exchanger = new Exchanger<>();
-			exchangers.put(transferKey, exchanger);
-			CompletableFuture.runAsync(() -> Try.runAndRethrow(() -> {
-				Object object = exchanger.exchange(null);
-				try {
-					result.next(object);
-					result.complete();
-				}
-				catch (ClassCastException e) {
-					throw new IllegalStateException(String.format(
-							"Origin method %s(%s) return type is not compatible with received response type(%s)",
-							method.getRawMethod().getName(), method.getRawClass(), object.getClass()));
-				}
-			}))
+			Subject<Object> resultSubject = Subject.single();
+			resultSubjects.put(transferKey, resultSubject);
+
+			CompletableFuture.runAsync(() -> this.channel.send(serialize(transfer)))
 					.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
 							.ifPresent(t -> t.getCause().printStackTrace()));
 
-			CompletableFuture.runAsync(() -> this.transmitter.send(transfer))
-					.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
-							.ifPresent(t -> t.getCause().printStackTrace()));
-
-			return result.asObservable().one();
+			return resultSubject.asObservable().one();
 		}
 		else {
-			headers = headers.compose().header("need-response", false).build();
+			headers = headers.compose().header(NEED_RESPONSE, false).build();
 
-			Transfer transfer = new Transfer(headers, simpleArgs.toArray());
+			Transfer transfer = new Transfer<>(headers, simpleArgs.toArray());
 
-			CompletableFuture.runAsync(() -> this.transmitter.send(transfer))
+			CompletableFuture.runAsync(() -> this.channel.send(serialize(transfer)))
 					.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
 							.ifPresent(t -> t.getCause().printStackTrace()));
 			return null;
 		}
 	}
 
-	private Long resolveId() {
-		Exchanger<Long> clientIdExchanger = new Exchanger<>();
-		transmitter.transfers()
-				.one()
-				.subscribe(transfer -> Try.runAndRethrow(() -> clientIdExchanger.exchange((Long) transfer.content)));
-		transmitter.handleIncomingTransfers();
+	private void handleIncomingTransfers() {
+		channel.requests().subscribe(data -> {
+			ObjectNode transfer = (ObjectNode) deserialize(data);
+			Headers headers = toHeaders(transfer.get("headers"));
+			String path = headers.getString(PATH);
 
-		return Try.supplyAndGet(() -> clientIdExchanger.exchange(null));
-	}
-
-	private void handleIncomingRequests() {
-		transmitter.transfers().subscribe(transfer -> {
-			Headers headers = transfer.headers;
-			boolean isResponse = headers.getBoolean("is-response");
-			if (isResponse) {
-				processResponse(transfer);
+			EndpointMethod method = endpointsByPath.get(path);
+			if (headers.getBoolean(IS_RESPONSE)) {
+				Long transferKey = headers.getLong(TRANSFER_KEY);
+				resultSubjects.computeIfPresent(transferKey, (key, subject) -> {
+					//try {
+					JsonNode content = transfer.get("content");
+					Class<?> returnType = method.getRawMethod().getReturnType();
+					Object result = deserialize(content, returnType);
+					subject.next(result);
+					subject.complete();
+					//}
+					//catch (ClassCastException e) {
+					//throw new IllegalStateException(String.format(
+					//		"Origin method %s(%s) return type is not compatible with received response type(%s)",
+					//		method.getRawMethod().getName(), method.getRawClass(), object.getClass()));
+					//}
+					return null;
+				});
 			}
 			else {
-				processRequest(transfer);
+				if (method == null) {
+					throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
+				}
+
+				Long sourceClientId = headers.getLong(SOURCE_CLIENT_ID);
+
+				Map<Class<? extends Annotation>, Object> extraArgResolver = new HashMap<>();
+				extraArgResolver.put(ClientID.class, sourceClientId);
+
+				Object serviceInstance = endpointServices.get(method.getRawClass());
+
+				ArrayNode argsNode = transfer.withArray("content");
+
+				List<Param> simpleParams = method.getSimpleParams();
+				Object[] simpleArgs = new Object[simpleParams.size()];
+				for (int i = 0; i < argsNode.size(); i++) {
+					JsonNode argNode = argsNode.get(i);
+					Param param = simpleParams.get(i);
+					simpleArgs[i] = deserialize(argNode, param.getType());
+				}
+
+				Object[] args = appendExtraArgs(simpleArgs, method.getExtraParams(),
+						annotation -> extraArgResolver.get(annotation.annotationType()));
+				Object result = method.invoke(serviceInstance, args);
+
+				if (headers.getBoolean(NEED_RESPONSE)) {
+					Headers newHeaders = Headers.builder()
+							.header(TRANSFER_KEY, headers.getLong(TRANSFER_KEY))
+							.header(IS_RESPONSE, true)
+							.header(DESTINATION_CLIENT_ID, sourceClientId)
+							.build();
+					this.channel.send(serialize(new Transfer<>(newHeaders, result)));
+				}
 			}
-
 		});
-	}
-
-	private void processResponse(Transfer transfer) {
-		Long transferKey = transfer.headers.getLong("transfer-key");
-		exchangers.computeIfPresent(transferKey, (key, exchanger) -> {
-			Try.runAndRethrow(() -> exchanger.exchange(transfer.content));
-			return null;
-		});
-	}
-
-	private void processRequest(Transfer transfer) {
-		Headers headers = transfer.headers;
-
-		String path = headers.getString("path");
-		EndpointMethod method = endpointsByPath.get(path);
-		if (method == null) {
-			throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
-		}
-
-		Long sourceClientId = headers.getLong("source-client-id");
-
-
-		Map<Class<? extends Annotation>, Object> extraArgResolver = new HashMap<>();
-		extraArgResolver.put(ClientID.class, sourceClientId);
-
-		Object serviceInstance = endpointServices.get(method.getRawClass());
-		Object[] args = appendExtraArgs((Object[]) transfer.content, method.getExtraParams(),
-				annotation -> extraArgResolver.get(annotation.annotationType()));
-		Object result = method.invoke(serviceInstance, args);
-
-		if (headers.getBoolean("need-response")) {
-			headers = Headers.builder()
-					.header("transfer-key", headers.getLong("transfer-key"))
-					.header("is-response", true)
-					.header("destination-client-id", headers.getLong("source-client-id"))
-					.build();
-			this.transmitter.send(new Transfer(headers, result));
-		}
 	}
 
 	private Object[] appendExtraArgs(Object[] simpleArgs, List<ExtraParam> extraParams,
@@ -238,5 +233,43 @@ public final class Client {
 		}
 
 		return allArgs;
+	}
+
+	private static byte[] serialize(Transfer obj) {
+		ObjectMapper mapper = new ObjectMapper();
+		try {
+			return mapper.writeValueAsBytes(obj);
+		}
+		catch (JsonProcessingException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	private static JsonNode deserialize(byte[] data) {
+		ObjectMapper mapper = new ObjectMapper();
+		try {
+			return mapper.readTree(data);
+		}
+		catch (IOException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	private static Object deserialize(JsonNode node, Class<?> requiredType) {
+		try {
+			return MAPPER.treeToValue(node, requiredType);
+		}
+		catch (JsonProcessingException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	private static Headers toHeaders(JsonNode jsonNode) {
+		try {
+			return MAPPER.treeToValue(jsonNode, Headers.class);
+		}
+		catch (JsonProcessingException e) {
+			throw new RuntimeException(e);
+		}
 	}
 }

@@ -15,7 +15,7 @@ public final class ServerTest {
 
 		TestOrigin service = server.getService(TestOrigin.class);
 
-		Thread.sleep(5000);
-		service.foo("hello", -9223372036854775808L).subscribe(object -> System.out.println(object));
+		Thread.sleep(500000);
+		//service.foo("hello", -9223372036854775808L).subscribe(object -> System.out.println(object));
 	}
 }
