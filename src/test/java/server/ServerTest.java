@@ -9,8 +9,7 @@ import io.titix.sonder.server.Server;
  */
 public final class ServerTest {
 
-	public static void main(String[] args)
-			throws InterruptedException {
+	public static void main(String[] args) throws InterruptedException {
 		Server server = Server.run(Integer.parseInt(args[0]), List.of("server"), List.of("server"));
 
 		TestOrigin service = server.getService(TestOrigin.class);

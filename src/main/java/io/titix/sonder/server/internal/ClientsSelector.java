@@ -14,9 +14,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import com.gitlab.tixtix320.kiwi.observable.Observable;
-import com.gitlab.tixtix320.kiwi.observable.subject.Subject;
-import com.gitlab.tixtix320.kiwi.util.IDGenerator;
+import com.gitlab.tixtix320.kiwi.api.observable.Observable;
+import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
+import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
 import io.titix.sonder.internal.ByteUtils;
 import io.titix.sonder.internal.SocketConnection;
 

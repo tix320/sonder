@@ -12,15 +12,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Function;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.gitlab.tixtix320.kiwi.check.Try;
-import com.gitlab.tixtix320.kiwi.observable.subject.Subject;
-import com.gitlab.tixtix320.kiwi.util.IDGenerator;
+import com.gitlab.tixtix320.kiwi.api.check.Try;
+import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
+import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
 import io.titix.sonder.extra.ClientID;
 import io.titix.sonder.internal.*;
 import io.titix.sonder.internal.boot.BootException;
@@ -65,6 +64,7 @@ public final class Server {
 	}
 
 	private Server(ClientsSelector clientsSelector, OriginBoot originBoot, EndpointBoot endpointBoot) {
+
 		this.clientsSelector = clientsSelector;
 		clientsSelector.requests().subscribe(this::handleTransfer);
 
@@ -115,66 +115,93 @@ public final class Server {
 	}
 
 	private void handleTransfer(byte[] data) {
-		ObjectNode transfer = (ObjectNode) deserialize(data);
-		Headers headers = toHeaders(transfer.get("headers"));
-		String path = headers.getString(PATH);
+		ObjectNode transfer = (ObjectNode) Try.supplyAndRethrow(() -> MAPPER.readTree(data));
+		JsonNode headersNode = transfer.get("headers");
+		if (headersNode == null) {
+			new IllegalStateException("Headers not provided").printStackTrace();
+			return;
+		}
+		Headers headers = Try.supplyAndRethrow(() -> MAPPER.treeToValue(headersNode, Headers.class));
 
 		Long destinationClientId = headers.getLong(DESTINATION_CLIENT_ID);
+		if (destinationClientId == null) {
+			new IllegalStateException("Destination client id not provided").printStackTrace();
+			return;
+		}
 		if (destinationClientId != 0L) { // for any client
-			headers = headers.compose().header(DESTINATION_CLIENT_ID, destinationClientId).build();
-			JsonNode headersNode = MAPPER.valueToTree(headers);
 			JsonNode content = transfer.get("content");
+			if (content == null) {
+				new IllegalStateException("Content not provided").printStackTrace();
+				return;
+			}
 			ObjectNode transferNode = new ObjectNode(JsonNodeFactory.instance);
 			transferNode.set("headers", headersNode);
 			transferNode.set("content", content);
-			try {
-				clientsSelector.send(destinationClientId, MAPPER.writeValueAsString(transferNode).getBytes());
-			}
-			catch (JsonProcessingException e) {
-				throw new RuntimeException(e);
-			}
+
+			clientsSelector.send(destinationClientId,
+					Try.supplyAndRethrow(() -> MAPPER.writeValueAsString(transferNode).getBytes()));
 		}
 		else { // for server
+			String path = headers.getString(PATH);
 			EndpointMethod method = endpointsByPath.get(path);
-			if (headers.getBoolean(IS_RESPONSE)) {
-				Long transferKey = headers.getLong(TRANSFER_KEY);
-				resultSubjects.computeIfPresent(transferKey, (key, subject) -> {
-					JsonNode content = transfer.get("content");
-					Class<?> returnType = method.getRawMethod().getReturnType();
-					Object result = deserialize(content, returnType);
-					subject.next(result);
-					return null;
-				});
+			if (method == null) {
+				new PathNotFoundException("Endpoint with path '" + path + "' not found").printStackTrace();
+				return;
+			}
 
+			Boolean isResponse = headers.getBoolean(IS_RESPONSE);
+			if (isResponse) {
+				Long transferKey = headers.getLong(TRANSFER_KEY);
+				Subject<Object> subject = resultSubjects.get(transferKey);
+				if (subject == null) {
+					new IllegalStateException(
+							String.format("Transfer key %s is invalid", transferKey)).printStackTrace();
+					return;
+				}
+				JsonNode content = transfer.get("content");
+				if (content == null) {
+					new IllegalStateException("Content not provided").printStackTrace();
+					return;
+				}
+				Class<?> returnType = method.getRawMethod().getReturnType();
+				Object result = Try.supplyAndRethrow(() -> MAPPER.treeToValue(content, returnType));
+				subject.next(result);
+				resultSubjects.remove(transferKey);
 			}
 			else {
-				if (method == null) {
-					throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
-				}
-
 				Long sourceClientId = headers.getLong(SOURCE_CLIENT_ID);
+				if (sourceClientId == null) {
+					new IllegalStateException("Source client id not provided").printStackTrace();
+					return;
+				}
 				Map<Class<? extends Annotation>, Object> extraArgResolver = Map.of(ClientID.class, sourceClientId);
 
 				Object serviceInstance = endpointServices.get(method.getRawClass());
 				ArrayNode argsNode = transfer.withArray("content");
+				if (argsNode == null) {
+					new IllegalStateException("Arguments not provided").printStackTrace();
+					return;
+				}
 
 				List<Param> simpleParams = method.getSimpleParams();
 				Object[] simpleArgs = new Object[simpleParams.size()];
 				for (int i = 0; i < argsNode.size(); i++) {
 					JsonNode argNode = argsNode.get(i);
 					Param param = simpleParams.get(i);
-					simpleArgs[i] = deserialize(argNode, param.getType());
+					simpleArgs[i] = Try.supplyAndRethrow(() -> MAPPER.treeToValue(argNode, param.getType()));
 				}
 				Object[] args = appendExtraArgs(simpleArgs, method.getExtraParams(),
 						annotation -> extraArgResolver.get(annotation.annotationType()));
 				Object result = method.invoke(serviceInstance, args);
-				if (headers.getBoolean(NEED_RESPONSE)) {
+				Boolean needResponse = headers.getBoolean(NEED_RESPONSE);
+				if (needResponse) {
 					Headers newHeaders = Headers.builder()
 							.header(DESTINATION_CLIENT_ID, sourceClientId)
 							.header(TRANSFER_KEY, headers.getLong(TRANSFER_KEY))
 							.header(IS_RESPONSE, true)
 							.build();
-					clientsSelector.send(sourceClientId, serialize(new Transfer<>(newHeaders, result)));
+					clientsSelector.send(sourceClientId,
+							Try.supplyAndRethrow(() -> MAPPER.writeValueAsBytes(new Transfer<>(newHeaders, result))));
 				}
 			}
 		}
@@ -214,10 +241,9 @@ public final class Server {
 		return (method, simpleArgs, extraArgs) -> {
 			long clientId = (long) extraArgs.get(ClientID.class).getValue();
 
-			Headers headers = Headers.builder().header(PATH, method.getPath()).build();
 			if (method.needResponse) {
 				Long transferKey = transferIdGenerator.next();
-				headers = headers.compose()
+				Headers headers = Headers.builder().header(PATH, method.getPath())
 						.header(DESTINATION_CLIENT_ID, clientId)
 						.header(TRANSFER_KEY, transferKey)
 						.header(IS_RESPONSE, false)
@@ -225,55 +251,20 @@ public final class Server {
 						.build();
 				Subject<Object> resultSubject = Subject.single();
 				resultSubjects.put(transferKey, resultSubject);
-				clientsSelector.send(headers.getLong(DESTINATION_CLIENT_ID),
-						serialize(new Transfer<>(headers, simpleArgs.toArray())));
+				clientsSelector.send(headers.getLong(DESTINATION_CLIENT_ID), Try.supplyAndRethrow(
+						() -> MAPPER.writeValueAsBytes(new Transfer<>(headers, simpleArgs.toArray()))));
 				return resultSubject.asObservable().one();
 			}
 			else {
-				headers = headers.compose().header(NEED_RESPONSE, false).header(IS_RESPONSE, false).build();
+				Headers headers = Headers.builder()
+						.header(PATH, method.getPath())
+						.header(NEED_RESPONSE, false)
+						.header(IS_RESPONSE, false)
+						.build();
 				clientsSelector.send(headers.getLong(DESTINATION_CLIENT_ID),
-						serialize(new Transfer<>(headers, simpleArgs)));
+						Try.supplyAndRethrow(() -> MAPPER.writeValueAsBytes(new Transfer<>(headers, simpleArgs))));
 				return null;
 			}
 		};
-	}
-
-
-	private static byte[] serialize(Transfer obj) {
-		ObjectMapper mapper = new ObjectMapper();
-		try {
-			return mapper.writeValueAsBytes(obj);
-		}
-		catch (JsonProcessingException e) {
-			throw new IllegalStateException(e);
-		}
-	}
-
-	private static JsonNode deserialize(byte[] data) {
-		ObjectMapper mapper = new ObjectMapper();
-		try {
-			return mapper.readTree(data);
-		}
-		catch (IOException e) {
-			throw new IllegalStateException(e);
-		}
-	}
-
-	private static Object deserialize(JsonNode node, Class<?> requiredType) {
-		try {
-			return MAPPER.treeToValue(node, requiredType);
-		}
-		catch (JsonProcessingException e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	private static Headers toHeaders(JsonNode jsonNode) {
-		try {
-			return MAPPER.treeToValue(jsonNode, Headers.class);
-		}
-		catch (JsonProcessingException e) {
-			throw new RuntimeException(e);
-		}
 	}
 }

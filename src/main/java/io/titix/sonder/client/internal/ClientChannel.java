@@ -5,9 +5,10 @@ import java.net.InetSocketAddress;
 import java.nio.channels.SocketChannel;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
-import com.gitlab.tixtix320.kiwi.observable.Observable;
-import com.gitlab.tixtix320.kiwi.observable.subject.Subject;
+import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import io.titix.sonder.internal.ByteUtils;
 import io.titix.sonder.internal.SocketConnection;
 
@@ -17,24 +18,21 @@ public class ClientChannel {
 
 	private final SocketConnection connection;
 
-	private final Subject<byte[]> requests;
-
 	public ClientChannel(InetSocketAddress address) {
 		try {
 			connection = new SocketConnection(SocketChannel.open(address));
-			start();
-			byte[] bytes = connection.requests().get();
-			this.id = ByteUtils.bytesToLong(bytes);
 		}
 		catch (IOException e) {
 			throw new RuntimeException(e);
 		}
-		this.requests = Subject.single();
-		connection.requests().subscribe(requests::next);
+		AtomicLong idHolder = new AtomicLong();
+		start();
+		connection.requests().block().one().subscribe(bytes -> idHolder.set(ByteUtils.bytesToLong(bytes)));
+		this.id = idHolder.get();
 	}
 
 	public Observable<byte[]> requests() {
-		return requests.asObservable();
+		return connection.requests();
 	}
 
 	public void send(byte[] data) {
@@ -51,6 +49,12 @@ public class ClientChannel {
 
 	private void start() {
 		CompletableFuture.runAsync(() -> {
+			try {
+				TimeUnit.SECONDS.sleep(1);
+			}
+			catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 			while (true) {
 				connection.read();
 			}

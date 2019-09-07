@@ -9,13 +9,14 @@ import java.util.Objects;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 
 @JsonSerialize(using = Headers.HeadersSerializer.class)
@@ -105,8 +106,8 @@ public final class Headers implements Serializable {
 
 	public static class HeadersSerializer extends StdSerializer<Headers> {
 
-		protected HeadersSerializer(Class<Headers> t) {
-			super(t);
+		public HeadersSerializer() {
+			super(Headers.class);
 		}
 
 		@Override
@@ -118,14 +119,28 @@ public final class Headers implements Serializable {
 
 	public static class HeadersDeserializer extends StdDeserializer<Headers> {
 
-		protected HeadersDeserializer(Class<?> vc) {
-			super(vc);
+		public HeadersDeserializer() {
+			super(Headers.class);
 		}
 
 		@Override
 		public Headers deserialize(JsonParser p,
 								   DeserializationContext ctxt) throws IOException, JsonProcessingException {
-			Map<String, Object> values = p.readValueAs(new TypeReference<Map<String, Object>>() {});
+			ObjectNode valuesNode = p.readValueAsTree();
+
+			Map<String, Object> values = new HashMap<>();
+			JsonNode destId = valuesNode.get(DESTINATION_CLIENT_ID);
+			JsonNode isResponse = valuesNode.get(IS_RESPONSE);
+			JsonNode transferKey = valuesNode.get(TRANSFER_KEY);
+			JsonNode path = valuesNode.get(PATH);
+			JsonNode sourceId = valuesNode.get(SOURCE_CLIENT_ID);
+			JsonNode needResponse = valuesNode.get(NEED_RESPONSE);
+			values.put(DESTINATION_CLIENT_ID, destId == null ? null : destId.asLong());
+			values.put(IS_RESPONSE, isResponse != null && isResponse.asBoolean());
+			values.put(TRANSFER_KEY, transferKey == null ? null : transferKey.asLong());
+			values.put(PATH, path == null ? null : path.asText());
+			values.put(SOURCE_CLIENT_ID, sourceId == null ? null : sourceId.asLong());
+			values.put(NEED_RESPONSE, needResponse != null && needResponse.asBoolean());
 			return new Headers(values);
 		}
 	}

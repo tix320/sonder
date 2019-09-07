@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import com.gitlab.tixtix320.kiwi.observable.Observable;
+import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import io.titix.sonder.Origin;
 import io.titix.sonder.extra.ClientID;
 import io.titix.sonder.internal.ExtraParam;

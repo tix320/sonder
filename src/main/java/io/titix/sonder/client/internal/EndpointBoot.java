@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import com.gitlab.tixtix320.kiwi.check.Try;
+import com.gitlab.tixtix320.kiwi.api.check.Try;
 import io.titix.sonder.Endpoint;
 import io.titix.sonder.extra.ClientID;
 import io.titix.sonder.internal.EndpointMethod;

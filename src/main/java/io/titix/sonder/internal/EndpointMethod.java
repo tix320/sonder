@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import com.gitlab.tixtix320.kiwi.check.Try;
+import com.gitlab.tixtix320.kiwi.api.check.Try;
 import io.titix.sonder.internal.boot.BootException;
 
 /**
