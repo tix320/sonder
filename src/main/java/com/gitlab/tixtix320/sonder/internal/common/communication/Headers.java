@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.communication;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -23,8 +23,6 @@ import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 @JsonDeserialize(using = Headers.HeadersDeserializer.class)
 public final class Headers implements Serializable {
 	private static final long serialVersionUID = 4379459480293747097L;
-
-	public static final Headers EMPTY = new Headers(Map.of());
 
 	private final Map<String, Object> values;
 

@@ -1,23 +1,33 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.service;
 
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Objects;
+
+import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
 
 /**
  * @author tix32 on 24-Feb-19
  */
 public final class OriginMethod extends ServiceMethod {
 
-	public final boolean needResponse;
+	private final boolean needResponse;
 
-	public final Destination destination;
+	private final Destination destination;
 
 	public OriginMethod(String path, Method method, List<Param> simpleParams, List<ExtraParam> extraParams,
 						boolean needResponse, Destination destination) {
 		super(path, method, simpleParams, extraParams);
 		this.needResponse = needResponse;
 		this.destination = destination;
+	}
+
+	public boolean needResponse() {
+		return needResponse;
+	}
+
+	public Destination getDestination() {
+		return destination;
 	}
 
 	@Override

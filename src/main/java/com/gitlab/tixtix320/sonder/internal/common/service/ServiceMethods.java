@@ -1,24 +1,28 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.service;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.*;
 
+import com.gitlab.tixtix320.sonder.internal.common.StartupException;
+import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParamQualifier;
+
 import static java.util.stream.Collectors.*;
 
 /**
  * @author Tigran.Sargsyan on 13-Dec-18
  */
-public abstract class Boot<T extends ServiceMethod> {
+public abstract class ServiceMethods<T extends ServiceMethod> {
 
 	private final List<T> serviceMethods;
 
-	public Boot(List<Class<?>> classes) {
+	public ServiceMethods(List<Class<?>> classes) {
 		this.serviceMethods = createServiceMethods(classes);
 	}
 
-	public final List<T> getServiceMethods() {
+	public final List<T> get() {
 		return serviceMethods;
 	}
 
@@ -66,12 +70,12 @@ public abstract class Boot<T extends ServiceMethod> {
 			for (Annotation annotation : parameter.getAnnotations()) {
 				if (annotation.annotationType().isAnnotationPresent(ExtraParamQualifier.class)) {
 					if (!extraParamDefinitions.containsKey(annotation.annotationType())) {
-						throw new BootException(String.format("Extra param @%s is not allowed in method %s(%s)",
+						throw new StartupException(String.format("Extra param @%s is not allowed in method %s(%s)",
 								annotation.annotationType().getSimpleName(), method.getName(),
 								method.getDeclaringClass()));
 					}
 					if (extraParamAnnotationExists) {
-						throw new BootException(String.format(
+						throw new StartupException(String.format(
 								"Parameter(index:%s) in method %s(%s) must have only one extra param annotation", i,
 								method.getName(), method.getDeclaringClass()));
 					}
@@ -79,7 +83,7 @@ public abstract class Boot<T extends ServiceMethod> {
 					extraParamAnnotationExists = true;
 					ExtraParamDefinition definition = extraParamDefinitions.get(annotation.annotationType());
 					if (parameter.getType() != definition.expectedType) {
-						throw new BootException(String.format("Extra param @%s must have type %s in method %s(%s)",
+						throw new StartupException(String.format("Extra param @%s must have type %s in method %s(%s)",
 								annotation.annotationType().getSimpleName(), definition.expectedType.getName(),
 								method.getName(), method.getDeclaringClass()));
 					}
@@ -101,7 +105,7 @@ public abstract class Boot<T extends ServiceMethod> {
 				.collect(joining(",", "[", "]"));
 
 		if (nonExistingRequiredExtraParams.length() > 2) { // is not empty
-			throw new BootException(
+			throw new StartupException(
 					String.format("Extra params %s are required in method %s(%s)", nonExistingRequiredExtraParams,
 							method.getName(), method.getDeclaringClass()));
 		}
@@ -116,7 +120,7 @@ public abstract class Boot<T extends ServiceMethod> {
 
 	private void checkPath(ServiceMethod method) {
 		if (method.getPath().startsWith(":")) {
-			throw new BootException(String.format("path value must be non empty in %s", method.getPath()));
+			throw new StartupException(String.format("path value must be non empty in %s", method.getPath()));
 		}
 	}
 

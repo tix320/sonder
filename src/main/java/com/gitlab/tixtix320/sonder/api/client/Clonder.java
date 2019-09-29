@@ -1,5 +1,7 @@
 package com.gitlab.tixtix320.sonder.api.client;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
@@ -8,7 +10,6 @@ import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -20,11 +21,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
-import com.gitlab.tixtix320.sonder.internal.client.ClientChannel;
-import com.gitlab.tixtix320.sonder.internal.client.EndpointBoot;
-import com.gitlab.tixtix320.sonder.internal.client.OriginBoot;
-import com.gitlab.tixtix320.sonder.api.extra.ClientID;
-import com.gitlab.tixtix320.sonder.internal.common.*;
+import com.gitlab.tixtix320.sonder.api.common.extra.ClientID;
+import com.gitlab.tixtix320.sonder.internal.client.EndpointServiceMethods;
+import com.gitlab.tixtix320.sonder.internal.client.OriginServiceMethods;
+import com.gitlab.tixtix320.sonder.internal.client.ServerConnection;
+import com.gitlab.tixtix320.sonder.internal.client.SocketServerConnection;
+import com.gitlab.tixtix320.sonder.internal.common.PathNotFoundException;
+import com.gitlab.tixtix320.sonder.internal.common.communication.Headers;
+import com.gitlab.tixtix320.sonder.internal.common.communication.Transfer;
+import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraArg;
+import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.service.*;
+import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toMap;
@@ -33,11 +41,11 @@ import static java.util.stream.Collectors.toMap;
  * @author tix32 on 20-Dec-18
  */
 @SuppressWarnings("Duplicates")
-public final class Client {
+public final class Clonder implements Closeable {
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
-	private final ClientChannel channel;
+	private final ServerConnection connection;
 
 	private final Map<Class<?>, ?> originServices;
 
@@ -53,33 +61,30 @@ public final class Client {
 
 	private final Map<Long, Subject<Object>> responseSubjects;
 
-	public static Client run(String host, int port, List<String> originPackages, List<String> endpointPackages) {
-		ClientChannel clientChannel = new ClientChannel(new InetSocketAddress(host, port));
-		OriginBoot originBoot = new OriginBoot(Config.getPackageClasses(originPackages));
-		EndpointBoot endpointBoot = new EndpointBoot(Config.getPackageClasses(endpointPackages));
-		return new Client(clientChannel, originBoot, endpointBoot);
+	public static Clonder run(String host, int port, List<String> originPackages, List<String> endpointPackages) {
+		SocketServerConnection socketServerConnection = new SocketServerConnection(new InetSocketAddress(host, port));
+		OriginServiceMethods originBoot = new OriginServiceMethods(ClassFinder.getPackageClasses(originPackages));
+		EndpointServiceMethods endpointBoot = new EndpointServiceMethods(
+				ClassFinder.getPackageClasses(endpointPackages));
+		return new Clonder(socketServerConnection, originBoot, endpointBoot);
 	}
 
-	private Client(ClientChannel channel, OriginBoot originBoot, EndpointBoot endpointBoot) {
-		this.channel = channel;
+	private Clonder(ServerConnection connection, OriginServiceMethods originBoot, EndpointServiceMethods endpointBoot) {
+		this.connection = connection;
 
-		this.originsByMethod = originBoot.getServiceMethods()
-				.stream()
-				.collect(toMap(ServiceMethod::getRawMethod, identity()));
+		this.originsByMethod = originBoot.get().stream().collect(toMap(ServiceMethod::getRawMethod, identity()));
 
-		this.originsByPath = originBoot.getServiceMethods().stream().collect(toMap(ServiceMethod::getPath, identity()));
+		this.originsByPath = originBoot.get().stream().collect(toMap(ServiceMethod::getPath, identity()));
 
-		this.endpointsByPath = endpointBoot.getServiceMethods()
-				.stream()
-				.collect(toMap(ServiceMethod::getPath, identity()));
+		this.endpointsByPath = endpointBoot.get().stream().collect(toMap(ServiceMethod::getPath, identity()));
 
-		this.originServices = originBoot.getServiceMethods()
+		this.originServices = originBoot.get()
 				.stream()
 				.map(ServiceMethod::getRawClass)
 				.distinct()
 				.collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, this::handleOriginCall)));
 
-		this.endpointServices = endpointBoot.getServiceMethods()
+		this.endpointServices = endpointBoot.get()
 				.stream()
 				.map(ServiceMethod::getRawClass)
 				.distinct()
@@ -100,8 +105,9 @@ public final class Client {
 		return service;
 	}
 
-	public void stop() {
-		channel.close();
+	@Override
+	public void close() throws IOException {
+		connection.close();
 	}
 
 	private Object createOriginInstance(Class<?> clazz, OriginInvocationHandler.Handler invocationHandler) {
@@ -110,7 +116,7 @@ public final class Client {
 	}
 
 	private Object creatEndpointInstance(Class<?> clazz) {
-		return Try.supplyAndGet(() -> clazz.getConstructor().newInstance());
+		return Try.supplyOrRethrow(() -> clazz.getConstructor().newInstance());
 	}
 
 	private Object handleOriginCall(OriginMethod method, List<Object> simpleArgs,
@@ -118,10 +124,9 @@ public final class Client {
 		Headers headers = Headers.builder()
 				.header(Headers.PATH, method.getPath())
 				.header(Headers.IS_RESPONSE, false)
-				.header(Headers.SOURCE_CLIENT_ID, channel.getId())
 				.build();
 
-		switch (method.destination) {
+		switch (method.getDestination()) {
 			case SERVER:
 				headers = headers.compose().header(Headers.DESTINATION_CLIENT_ID, 0L).build();
 				break;
@@ -134,18 +139,23 @@ public final class Client {
 				throw new IllegalStateException();
 		}
 
-		if (method.needResponse) {
+		if (method.needResponse()) {
 			long transferKey = transferIdGenerator.next();
-			headers = headers.compose().header(Headers.TRANSFER_KEY, transferKey).header(Headers.NEED_RESPONSE, true).build();
+			headers = headers.compose()
+					.header(Headers.TRANSFER_KEY, transferKey)
+					.header(Headers.NEED_RESPONSE, true)
+					.build();
 			Transfer transfer = new Transfer<>(headers, simpleArgs.toArray());
 
 			Subject<Object> resultSubject = Subject.single();
 			responseSubjects.put(transferKey, resultSubject);
 
 			CompletableFuture.runAsync(
-					() -> this.channel.send(Try.supplyAndRethrow(() -> MAPPER.writeValueAsBytes((transfer)))))
-					.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
-							.ifPresent(t -> t.getCause().printStackTrace()));
+					() -> this.connection.send(Try.supplyOrRethrow(() -> MAPPER.writeValueAsBytes((transfer)))))
+					.exceptionally(throwable -> {
+						throwable.getCause().printStackTrace();
+						return null;
+					});
 
 			return resultSubject.asObservable().one();
 		}
@@ -155,17 +165,19 @@ public final class Client {
 			Transfer transfer = new Transfer<>(headers, simpleArgs.toArray());
 
 			CompletableFuture.runAsync(
-					() -> this.channel.send(Try.supplyAndRethrow(() -> MAPPER.writeValueAsBytes((transfer)))))
-					.whenCompleteAsync((v, throwable) -> Optional.ofNullable(throwable)
-							.ifPresent(t -> t.getCause().printStackTrace()));
+					() -> this.connection.send(Try.supplyOrRethrow(() -> MAPPER.writeValueAsBytes((transfer)))))
+					.exceptionally(throwable -> {
+						throwable.getCause().printStackTrace();
+						return null;
+					});
 			return null;
 		}
 	}
 
 	private void handleIncomingTransfers() {
-		channel.requests().subscribe(data -> {
-			ObjectNode transfer = (ObjectNode) Try.supplyAndRethrow(() -> MAPPER.readTree(data));
-			Headers headers = Try.supplyAndRethrow(() -> MAPPER.treeToValue(transfer.get("headers"), Headers.class));
+		connection.requests().subscribe(data -> {
+			ObjectNode transfer = (ObjectNode) Try.supplyOrRethrow(() -> MAPPER.readTree(data));
+			Headers headers = Try.supplyOrRethrow(() -> MAPPER.treeToValue(transfer.get("headers"), Headers.class));
 			String path = headers.getString(Headers.PATH);
 
 			EndpointMethod method = endpointsByPath.get(path);
@@ -177,11 +189,11 @@ public final class Client {
 				responseSubjects.computeIfPresent(transferKey, (key, subject) -> {
 					JsonNode content = transfer.get("content");
 					Class<?> returnType = method.getRawMethod().getReturnType();
-					Object result = Try.supplyAndRethrow(() -> MAPPER.treeToValue(content, returnType));
+					Object result = Try.supplyOrRethrow(() -> MAPPER.treeToValue(content, returnType));
 					OriginMethod originMethod = originsByPath.get(path);
 					String actualReturnTypeName = ((ParameterizedType) originMethod.getRawMethod()
 							.getGenericReturnType()).getActualTypeArguments()[0].getTypeName();
-					if (Try.supplyAndRethrow(() -> Class.forName(actualReturnTypeName)) == Void.class) {
+					if (Try.supplyOrRethrow(() -> Class.forName(actualReturnTypeName)) == Void.class) {
 						subject.next((Object) null);
 					}
 					else {
@@ -214,7 +226,7 @@ public final class Client {
 				for (int i = 0; i < argsNode.size(); i++) {
 					JsonNode argNode = argsNode.get(i);
 					Param param = simpleParams.get(i);
-					simpleArgs[i] = Try.supplyAndRethrow(() -> MAPPER.treeToValue(argNode, param.getType()));
+					simpleArgs[i] = Try.supplyOrRethrow(() -> MAPPER.treeToValue(argNode, param.getType()));
 				}
 
 				Object[] args = appendExtraArgs(simpleArgs, method.getExtraParams(),
@@ -227,8 +239,8 @@ public final class Client {
 							.header(Headers.IS_RESPONSE, true)
 							.header(Headers.DESTINATION_CLIENT_ID, sourceClientId)
 							.build();
-					this.channel.send(
-							Try.supplyAndRethrow(() -> MAPPER.writeValueAsBytes(new Transfer<>(newHeaders, result))));
+					this.connection.send(
+							Try.supplyOrRethrow(() -> MAPPER.writeValueAsBytes(new Transfer<>(newHeaders, result))));
 				}
 			}
 		});

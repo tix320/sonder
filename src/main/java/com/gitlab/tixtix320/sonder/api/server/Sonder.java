@@ -1,5 +1,6 @@
 package com.gitlab.tixtix320.sonder.api.server;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
@@ -8,8 +9,6 @@ import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Function;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,25 +19,29 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
-import com.gitlab.tixtix320.sonder.api.extra.ClientID;
-import com.gitlab.tixtix320.sonder.internal.common.*;
+import com.gitlab.tixtix320.sonder.api.common.extra.ClientID;
+import com.gitlab.tixtix320.sonder.internal.common.PathNotFoundException;
+import com.gitlab.tixtix320.sonder.internal.common.StartupException;
+import com.gitlab.tixtix320.sonder.internal.common.communication.Headers;
+import com.gitlab.tixtix320.sonder.internal.common.communication.Transfer;
+import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.service.*;
+import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.ClientsSelector;
-import com.gitlab.tixtix320.sonder.internal.server.EndpointBoot;
-import com.gitlab.tixtix320.sonder.internal.server.OriginBoot;
+import com.gitlab.tixtix320.sonder.internal.server.EndpointServiceMethods;
+import com.gitlab.tixtix320.sonder.internal.server.OriginServiceMethods;
+import com.gitlab.tixtix320.sonder.internal.server.SocketClientsSelector;
 
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toMap;
-
 
 /**
  * @author Tigran.Sargsyan on 11-Dec-18
  */
 @SuppressWarnings("Duplicates")
-public final class Server {
+public final class Sonder implements Closeable {
 
-	private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
-
-	private static final ObjectMapper MAPPER = new ObjectMapper();
+	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
 	private final ClientsSelector clientsSelector;
 
@@ -54,36 +57,33 @@ public final class Server {
 
 	private final IDGenerator transferIdGenerator;
 
-	public static Server run(int port, List<String> originPackages, List<String> endpointPackages) {
-		OriginBoot originBoot = new OriginBoot(Config.getPackageClasses(originPackages));
-		EndpointBoot endpointBoot = new EndpointBoot(Config.getPackageClasses(endpointPackages));
+	public static Sonder run(int port, List<String> originPackages, List<String> endpointPackages) {
+		OriginServiceMethods originBoot = new OriginServiceMethods(ClassFinder.getPackageClasses(originPackages));
+		EndpointServiceMethods endpointBoot = new EndpointServiceMethods(
+				ClassFinder.getPackageClasses(endpointPackages));
 
-		return new Server(new ClientsSelector(new InetSocketAddress(port)), originBoot, endpointBoot);
+		return new Sonder(new SocketClientsSelector(new InetSocketAddress(port)), originBoot, endpointBoot);
 	}
 
-	private Server(ClientsSelector clientsSelector, OriginBoot originBoot, EndpointBoot endpointBoot) {
-
+	private Sonder(ClientsSelector clientsSelector, ServiceMethods<OriginMethod> originServiceMethods,
+				   ServiceMethods<EndpointMethod> endpointServiceMethods) {
 		this.clientsSelector = clientsSelector;
 		clientsSelector.requests().subscribe(this::handleTransfer);
 
-		this.originsByMethod = originBoot.getServiceMethods()
+		this.originsByMethod = originServiceMethods.get()
 				.stream()
 				.collect(toMap(ServiceMethod::getRawMethod, identity()));
 
-		this.endpointsByPath = endpointBoot.getServiceMethods()
-				.stream()
-				.collect(toMap(ServiceMethod::getPath, identity()));
+		this.endpointsByPath = endpointServiceMethods.get().stream().collect(toMap(ServiceMethod::getPath, identity()));
 
 		OriginInvocationHandler.Handler invocationHandler = createOriginInvocationHandler();
-		this.originServices = originBoot.getServiceMethods()
-				.stream()
-				//.peek(this::checkOriginExtraParamTypes)
-				.peek(Server::checkDestination)
+		this.originServices = originServiceMethods.get()
+				.stream().peek(Sonder::checkDestination)
 				.map(ServiceMethod::getRawClass)
 				.distinct()
 				.collect(toMap(clazz -> clazz, clazz -> createOriginInstance(clazz, invocationHandler)));
 
-		this.endpointServices = endpointBoot.getServiceMethods()
+		this.endpointServices = endpointServiceMethods.get()
 				.stream()
 				.map(ServiceMethod::getRawClass)
 				.distinct()
@@ -102,49 +102,41 @@ public final class Server {
 		return service;
 	}
 
-	public void stop() {
-		try {
-			EXECUTOR.shutdownNow();
-			clientsSelector.close();
-		}
-		catch (IOException e) {
-			throw new SonderException("Cannot close server socket.", e);
-		}
+	@Override
+	public void close() throws IOException {
+		clientsSelector.close();
 	}
 
-	private void handleTransfer(byte[] data) {
-		ObjectNode transfer = (ObjectNode) Try.supplyAndRethrow(() -> MAPPER.readTree(data));
+	private void handleTransfer(ClientsSelector.Result result) {
+		ObjectNode transfer = (ObjectNode) Try.supplyOrRethrow(() -> JSON_MAPPER.readTree(result.getData()));
 		JsonNode headersNode = transfer.get("headers");
 		if (headersNode == null) {
 			new IllegalStateException("Headers not provided").printStackTrace();
 			return;
 		}
-		Headers headers = Try.supplyAndRethrow(() -> MAPPER.treeToValue(headersNode, Headers.class));
+		Headers headers = Try.supplyOrRethrow(() -> JSON_MAPPER.treeToValue(headersNode, Headers.class));
 
 		Long destinationClientId = headers.getLong(Headers.DESTINATION_CLIENT_ID);
 		if (destinationClientId == null) {
-			new IllegalStateException("Destination client id not provided").printStackTrace();
-			return;
+			throw new IllegalStateException("Destination client id not provided");
 		}
 		if (destinationClientId != 0L) { // for any client
 			JsonNode content = transfer.get("content");
 			if (content == null) {
-				new IllegalStateException("Content not provided").printStackTrace();
-				return;
+				throw new IllegalStateException("Content not provided");
 			}
 			ObjectNode transferNode = new ObjectNode(JsonNodeFactory.instance);
 			transferNode.set("headers", headersNode);
 			transferNode.set("content", content);
 
 			clientsSelector.send(destinationClientId,
-					Try.supplyAndRethrow(() -> MAPPER.writeValueAsString(transferNode).getBytes()));
+					Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsString(transferNode).getBytes()));
 		}
 		else { // for server
 			String path = headers.getString(Headers.PATH);
 			EndpointMethod method = endpointsByPath.get(path);
 			if (method == null) {
-				new PathNotFoundException("Endpoint with path '" + path + "' not found").printStackTrace();
-				return;
+				throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
 			}
 
 			Boolean isResponse = headers.getBoolean(Headers.IS_RESPONSE);
@@ -152,33 +144,29 @@ public final class Server {
 				Long transferKey = headers.getLong(Headers.TRANSFER_KEY);
 				Subject<Object> subject = resultSubjects.get(transferKey);
 				if (subject == null) {
-					new IllegalStateException(
-							String.format("Transfer key %s is invalid", transferKey)).printStackTrace();
-					return;
+					throw new IllegalStateException(String.format("Transfer key %s is invalid", transferKey));
 				}
 				JsonNode content = transfer.get("content");
 				if (content == null) {
-					new IllegalStateException("Content not provided").printStackTrace();
-					return;
+					throw new IllegalStateException("Content not provided");
 				}
 				Class<?> returnType = method.getRawMethod().getReturnType();
-				Object result = Try.supplyAndRethrow(() -> MAPPER.treeToValue(content, returnType));
-				subject.next(result);
+				Object object = Try.supplyOrRethrow(() -> JSON_MAPPER.treeToValue(content, returnType));
+				subject.next(object);
 				resultSubjects.remove(transferKey);
 			}
 			else {
 				Long sourceClientId = headers.getLong(Headers.SOURCE_CLIENT_ID);
 				if (sourceClientId == null) {
-					new IllegalStateException("Source client id not provided").printStackTrace();
-					return;
+					throw new IllegalStateException("Source client id not provided");
 				}
 				Map<Class<? extends Annotation>, Object> extraArgResolver = Map.of(ClientID.class, sourceClientId);
 
 				Object serviceInstance = endpointServices.get(method.getRawClass());
 				ArrayNode argsNode = transfer.withArray("content");
 				if (argsNode == null) {
-					new IllegalStateException("Arguments not provided").printStackTrace();
-					return;
+					throw new IllegalStateException("Arguments not provided");
+
 				}
 
 				List<Param> simpleParams = method.getSimpleParams();
@@ -186,11 +174,11 @@ public final class Server {
 				for (int i = 0; i < argsNode.size(); i++) {
 					JsonNode argNode = argsNode.get(i);
 					Param param = simpleParams.get(i);
-					simpleArgs[i] = Try.supplyAndRethrow(() -> MAPPER.treeToValue(argNode, param.getType()));
+					simpleArgs[i] = Try.supplyOrRethrow(() -> JSON_MAPPER.treeToValue(argNode, param.getType()));
 				}
 				Object[] args = appendExtraArgs(simpleArgs, method.getExtraParams(),
 						annotation -> extraArgResolver.get(annotation.annotationType()));
-				Object result = method.invoke(serviceInstance, args);
+				Object object = method.invoke(serviceInstance, args);
 				Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
 				if (needResponse) {
 					Headers newHeaders = Headers.builder()
@@ -198,16 +186,16 @@ public final class Server {
 							.header(Headers.TRANSFER_KEY, headers.getLong(Headers.TRANSFER_KEY))
 							.header(Headers.IS_RESPONSE, true)
 							.build();
-					clientsSelector.send(sourceClientId,
-							Try.supplyAndRethrow(() -> MAPPER.writeValueAsBytes(new Transfer<>(newHeaders, result))));
+					clientsSelector.send(sourceClientId, Try.supplyOrRethrow(
+							() -> JSON_MAPPER.writeValueAsBytes(new Transfer<>(newHeaders, object))));
 				}
 			}
 		}
 	}
 
 	private static void checkDestination(OriginMethod signature) {
-		if (signature.destination == OriginMethod.Destination.SERVER) {
-			throw new BootException(String.format(
+		if (signature.getDestination() == OriginMethod.Destination.SERVER) {
+			throw new StartupException(String.format(
 					"In Server environment origin method '%s' in '%s' must have parameter annotated by @'%s'",
 					signature.getRawMethod().getName(), signature.getRawClass(), ClientID.class.getSimpleName()));
 		}
@@ -232,14 +220,14 @@ public final class Server {
 	}
 
 	private Object creatEndpointInstance(Class<?> clazz) {
-		return Try.supplyAndGet(() -> clazz.getConstructor().newInstance());
+		return Try.supplyOrRethrow(() -> clazz.getConstructor().newInstance());
 	}
 
 	private OriginInvocationHandler.Handler createOriginInvocationHandler() {
 		return (method, simpleArgs, extraArgs) -> {
 			long clientId = (long) extraArgs.get(ClientID.class).getValue();
 
-			if (method.needResponse) {
+			if (method.needResponse()) {
 				Long transferKey = transferIdGenerator.next();
 				Headers headers = Headers.builder()
 						.header(Headers.PATH, method.getPath())
@@ -250,8 +238,8 @@ public final class Server {
 						.build();
 				Subject<Object> resultSubject = Subject.single();
 				resultSubjects.put(transferKey, resultSubject);
-				clientsSelector.send(headers.getLong(Headers.DESTINATION_CLIENT_ID), Try.supplyAndRethrow(
-						() -> MAPPER.writeValueAsBytes(new Transfer<>(headers, simpleArgs.toArray()))));
+				clientsSelector.send(headers.getLong(Headers.DESTINATION_CLIENT_ID), Try.supplyOrRethrow(
+						() -> JSON_MAPPER.writeValueAsBytes(new Transfer<>(headers, simpleArgs.toArray()))));
 				return resultSubject.asObservable().one();
 			}
 			else {
@@ -261,7 +249,7 @@ public final class Server {
 						.header(Headers.IS_RESPONSE, false)
 						.build();
 				clientsSelector.send(headers.getLong(Headers.DESTINATION_CLIENT_ID),
-						Try.supplyAndRethrow(() -> MAPPER.writeValueAsBytes(new Transfer<>(headers, simpleArgs))));
+						Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(new Transfer<>(headers, simpleArgs))));
 				return null;
 			}
 		};

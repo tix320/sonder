@@ -8,10 +8,10 @@ import java.util.stream.IntStream;
 /**
  * @author Tigran.Sargsyan on 18-Dec-18
  */
-public final class BootException extends RuntimeException {
+public final class StartupException extends RuntimeException {
 	private static final long serialVersionUID = -4222792746745482561L;
 
-	public BootException(String message) {
+	public StartupException(String message) {
 		super(message);
 	}
 
@@ -27,7 +27,7 @@ public final class BootException extends RuntimeException {
 
 		String message = (rootMessage.apply(value) + '\n' + checksMessage);
 
-		throw new BootException(message);
+		throw new StartupException(message);
 	}
 
 	public static <T> Check<T> throwWhen(Predicate<T> predicate, String errorMessage) {

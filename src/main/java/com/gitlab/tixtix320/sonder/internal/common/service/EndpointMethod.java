@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.service;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -9,7 +9,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import com.gitlab.tixtix320.kiwi.api.check.Try;
+import com.gitlab.tixtix320.sonder.internal.common.StartupException;
+import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
 
 /**
  * @author tix32 on 24-Feb-19
@@ -20,9 +21,14 @@ public final class EndpointMethod extends ServiceMethod {
 
 	public EndpointMethod(String path, Method method, List<Param> simpleParams, List<ExtraParam> extraParams) {
 		super(path, method, simpleParams, extraParams);
-		this.methodHandle = Try.supply(() -> MethodHandles.publicLookup().unreflect(method))
-				.getOrElseThrow(InternalException::new)
-				.orElseThrow();
+		try {
+			this.methodHandle = MethodHandles.publicLookup().unreflect(method);
+		}
+		catch (IllegalAccessException e) {
+			throw new IllegalStateException(
+					String.format("Cannot access to class %s, you must open your package to sonder module.",
+							method.getDeclaringClass()), e);
+		}
 	}
 
 	public Object invoke(Object instance, Object[] args) {
@@ -33,15 +39,16 @@ public final class EndpointMethod extends ServiceMethod {
 			throw illegalEndpointSignature(args);
 		}
 		catch (Throwable throwable) {
-			throw new InternalException(throwable);
+			throw new IllegalStateException(throwable);
 		}
 	}
 
-	private BootException illegalEndpointSignature(Object[] args) {
-		return new BootException(String.format("Illegal signature of method '%s'(%s). Expected following parameters %s",
-				getRawMethod().getName(), getRawClass(), Arrays.stream(args)
-						.map(arg -> arg.getClass().getSimpleName())
-						.collect(Collectors.joining(",", "[", "]"))));
+	private StartupException illegalEndpointSignature(Object[] args) {
+		return new StartupException(
+				String.format("Illegal signature of method '%s'(%s). Expected following parameters %s",
+						getRawMethod().getName(), getRawClass(), Arrays.stream(args)
+								.map(arg -> arg.getClass().getSimpleName())
+								.collect(Collectors.joining(",", "[", "]"))));
 	}
 
 	@Override

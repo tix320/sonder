@@ -1,66 +1,69 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.communication;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.ByteChannel;
 
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
+import com.gitlab.tixtix320.sonder.internal.common.util.ByteArrayList;
 
-
-public final class SocketConnection {
+public final class PackChannel implements Closeable {
 
 	private static final byte[] HEADER = {105, 99, 111, 110, 116, 114, 111, 108};
 
 	private static final int CONTENT_LENGTH_BYTES = 4;
 
-	private final SocketChannel channel;
+	private final ByteChannel channel;
 
-	private final Subject<byte[]> transfers;
+	private final ByteBuffer buffer;
 
-	private final ByteArray storage;
+	private final Subject<byte[]> packs;
+
+	private final ByteArrayList storage;
 
 	private boolean headerConsumed;
 
 	private Integer contentLength;
 
-	private final ByteBuffer buffer = ByteBuffer.allocate(1024);
-
-	public SocketConnection(SocketChannel channel) {
+	public PackChannel(ByteChannel channel) {
 		this.channel = channel;
-		this.transfers = Subject.single();
-		this.storage = new ByteArray();
+		this.buffer = ByteBuffer.allocate(1024);
+		this.packs = Subject.single();
+		this.storage = new ByteArrayList();
 	}
 
-	public void write(byte[] bytes) {
-		try {
-			ByteBuffer buffer = ByteBuffer.allocate(HEADER.length + CONTENT_LENGTH_BYTES + bytes.length);
-			buffer.put(HEADER, 0, HEADER.length);
-			buffer.putInt(bytes.length);
-			buffer.put(bytes, 0, bytes.length);
-			buffer.flip();
-			channel.write(buffer);
-		}
-		catch (IOException e) {
-			close();
-			throw new RuntimeException("Failed to send transfer", e);
-		}
+	public void write(byte[] bytes) throws IOException {
+		ByteBuffer buffer = ByteBuffer.allocate(HEADER.length + CONTENT_LENGTH_BYTES + bytes.length);
+		buffer.put(HEADER, 0, HEADER.length);
+		buffer.putInt(bytes.length);
+		buffer.put(bytes, 0, bytes.length);
+		buffer.flip();
+		channel.write(buffer);
 	}
 
-	public void read() {
+	public void read() throws IOException {
 		try {
 			buffer.position(0);
 			int bytesCount = channel.read(buffer);
 			consume(buffer, bytesCount);
 		}
-		catch (IOException e) {
-			close();
-			throw new RuntimeException("Failed to send transfer", e);
+		catch (Exception e) {
+			reset();
+			throw e;
 		}
 	}
 
-	public Observable<byte[]> requests() {
-		return transfers.asObservable();
+	public Observable<byte[]> packs() {
+		return packs.asObservable();
+	}
+
+	@Override
+	public void close() throws IOException {
+		buffer.clear();
+		packs.complete();
+		channel.close();
 	}
 
 	private void consume(ByteBuffer bytes, int length) {
@@ -72,9 +75,7 @@ public final class SocketConnection {
 				if (length >= remainingHeaderBytes) {
 					boolean isHeader = isHeader(bytes.array(), start);
 					if (!isHeader) {
-						new IllegalStateException("Invalid Header").printStackTrace();
-						reset();
-						return;
+						throw new IllegalStateException("Invalid Header");
 					}
 					headerConsumed = true;
 					storage.addBytes(bytes.array(), start, remainingHeaderBytes);
@@ -92,10 +93,7 @@ public final class SocketConnection {
 				if (length >= remainingContentLengthBytes) {
 					contentLength = bytes.getInt(start);
 					if (contentLength <= 0) {
-						new IllegalStateException(
-								String.format("Invalid content length: %s", contentLength)).printStackTrace();
-						reset();
-						return;
+						throw new IllegalStateException(String.format("Invalid content length: %s", contentLength));
 					}
 					storage.addBytes(bytes.array(), start, remainingContentLengthBytes);
 					start = start + remainingContentLengthBytes;
@@ -112,10 +110,10 @@ public final class SocketConnection {
 
 				if (length >= remainingContentBytes) {
 					storage.addBytes(bytes.array(), start, remainingContentBytes);
-					byte[] data = storage.getBytes();
+					byte[] data = storage.asArray();
 					byte[] requestData = new byte[contentLength];
 					System.arraycopy(data, HEADER.length + CONTENT_LENGTH_BYTES, requestData, 0, contentLength);
-					transfers.next(requestData);
+					packs.next(requestData);
 					reset();
 					start = start + remainingContentBytes;
 					length = length - remainingContentBytes;
@@ -129,7 +127,7 @@ public final class SocketConnection {
 	}
 
 	private void reset() {
-		storage.reset();
+		storage.clear();
 		headerConsumed = false;
 		contentLength = null;
 	}
@@ -142,14 +140,5 @@ public final class SocketConnection {
 			}
 		}
 		return true;
-	}
-
-	public void close() {
-		try {
-			channel.close();
-		}
-		catch (IOException e) {
-			throw new RuntimeException("Cannot close socket", e);
-		}
 	}
 }

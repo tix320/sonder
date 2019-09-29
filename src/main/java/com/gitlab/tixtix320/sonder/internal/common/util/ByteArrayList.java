@@ -1,12 +1,12 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.util;
 
-public final class ByteArray {
+public final class ByteArrayList {
 
 	private byte[] data;
 
 	private int index;
 
-	public ByteArray() {
+	public ByteArrayList() {
 		this.data = new byte[512];
 		this.index = 0;
 	}
@@ -25,11 +25,11 @@ public final class ByteArray {
 		index = index + length;
 	}
 
-	public byte[] getBytes() {
+	public byte[] asArray() {
 		return data;
 	}
 
-	public void reset() {
+	public void clear() {
 		index = 0;
 	}
 

@@ -1,8 +1,10 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.service;
 
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Objects;
+
+import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
 
 /**
  * @author Tigran.Sargsyan on 12-Dec-18

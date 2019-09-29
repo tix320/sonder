@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.util;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 /**
  * @author Tigran.Sargsyan on 24-Jan-19
  */
-public final class Config {
+public final class ClassFinder {
 
 	private static final Pattern packagePattern = Pattern.compile(
 			"^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)*[0-9a-zA-Z_]$");
@@ -20,27 +20,27 @@ public final class Config {
 				.collect(Collectors.toList());
 	}
 
-	private static List<Class<?>> getPackageClasses(String packageName) {
+	public static List<Class<?>> getPackageClasses(String packageName) {
 		ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
 
 		if (!packagePattern.matcher(packageName).matches()) {
 			throw new IllegalArgumentException("Invalid package name " + packageName);
 		}
 
-		String path = packageName.replace('.', '/');
+		String packageDirectory = packageName.replace('.', '/');
 
-		return classLoader.resources(path)
+		return classLoader.resources(packageDirectory)
 				.map(url -> new File(url.getFile()))
 				.flatMap(directory -> findClasses(directory, packageName).stream())
 				.collect(Collectors.toList());
 	}
 
 	private static List<Class<?>> findClasses(File directory, String packageName) {
-		List<Class<?>> classes = new ArrayList<>();
 		if (!directory.exists()) {
-			return classes;
+			throw new IllegalStateException(String.format("Directory %s does not exists", directory));
 		}
 
+		List<Class<?>> classes = new ArrayList<>();
 		File[] files = directory.listFiles();
 		if (files == null) {
 			return classes;
@@ -55,7 +55,7 @@ public final class Config {
 							packageName + '.' + file.getName().substring(0, file.getName().length() - 6)));
 				}
 				catch (ClassNotFoundException e) {
-					throw new InternalException(e);
+					throw new IllegalStateException(e);
 				}
 			}
 		}

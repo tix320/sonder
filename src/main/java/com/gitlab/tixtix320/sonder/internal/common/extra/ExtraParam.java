@@ -1,7 +1,9 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.extra;
 
 import java.lang.annotation.Annotation;
 import java.util.Objects;
+
+import com.gitlab.tixtix320.sonder.internal.common.service.Param;
 
 public final class ExtraParam extends Param {
 

@@ -9,32 +9,32 @@ import java.util.stream.Collectors;
 
 import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.sonder.api.common.Endpoint;
-import com.gitlab.tixtix320.sonder.api.extra.ClientID;
-import com.gitlab.tixtix320.sonder.internal.common.ExtraParam;
-import com.gitlab.tixtix320.sonder.internal.common.Param;
-import com.gitlab.tixtix320.sonder.internal.common.Boot;
-import com.gitlab.tixtix320.sonder.internal.common.BootException;
-import com.gitlab.tixtix320.sonder.internal.common.EndpointMethod;
+import com.gitlab.tixtix320.sonder.api.common.extra.ClientID;
+import com.gitlab.tixtix320.sonder.internal.common.StartupException;
+import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.service.EndpointMethod;
+import com.gitlab.tixtix320.sonder.internal.common.service.Param;
+import com.gitlab.tixtix320.sonder.internal.common.service.ServiceMethods;
 
-public class EndpointBoot extends Boot<EndpointMethod> {
+public class EndpointServiceMethods extends ServiceMethods<EndpointMethod> {
 
-	public EndpointBoot(List<Class<?>> classes) {
+	public EndpointServiceMethods(List<Class<?>> classes) {
 		super(classes.stream().filter(clazz -> clazz.isAnnotationPresent(Endpoint.class)).collect(Collectors.toList()));
 	}
 
 	@Override
 	protected void checkService(Class<?> clazz) {
-		BootException.checkAndThrow(clazz,
+		StartupException.checkAndThrow(clazz,
 				aClass -> String.format("Failed to resolve endpoint service(%s), there are the following errors.",
-						aClass), BootException.throwWhen(aClass -> Modifier.isAbstract(aClass.getModifiers()) || aClass.isEnum(),
-						"Must be a concrete class"),
-				BootException.throwWhen(aClass -> (aClass.isMemberClass() && !Modifier.isStatic(aClass.getModifiers())),
+						aClass),
+				StartupException.throwWhen(aClass -> Modifier.isAbstract(aClass.getModifiers()) || aClass.isEnum(),
+						"Must be a concrete class"), StartupException.throwWhen(
+						aClass -> (aClass.isMemberClass() && !Modifier.isStatic(aClass.getModifiers())),
 						"Must be static, when is a member class"),
-				BootException.throwWhen(aClass -> !Modifier.isPublic(aClass.getModifiers()), "Must be public"), BootException
-						.throwWhen(
-						aClass -> Try.supply(aClass::getConstructor)
-								.filter(constructor -> Modifier.isPublic(constructor.getModifiers()))
-								.isUseless(), "Must have public no-args constructor"));
+				StartupException.throwWhen(aClass -> !Modifier.isPublic(aClass.getModifiers()), "Must be public"),
+				StartupException.throwWhen(aClass -> Try.supply(aClass::getConstructor)
+						.filter(constructor -> Modifier.isPublic(constructor.getModifiers()))
+						.isUseless(), "Must have public no-args constructor"));
 	}
 
 	@Override
@@ -44,10 +44,10 @@ public class EndpointBoot extends Boot<EndpointMethod> {
 
 	@Override
 	protected void checkMethod(Method method) {
-		BootException.checkAndThrow(method,
+		StartupException.checkAndThrow(method,
 				m -> String.format("Failed to resolve endpoint method '%s'(%s), there are the following errors.",
 						m.getName(), m.getDeclaringClass()),
-				BootException.throwWhen(m -> !Modifier.isPublic(m.getModifiers()), "Must be public"));
+				StartupException.throwWhen(m -> !Modifier.isPublic(m.getModifiers()), "Must be public"));
 	}
 
 	@Override
@@ -64,6 +64,6 @@ public class EndpointBoot extends Boot<EndpointMethod> {
 
 	@Override
 	protected Map<Class<? extends Annotation>, ExtraParamDefinition> getExtraParamDefinitions() {
-		return Map.of(ClientID.class, new Boot.ExtraParamDefinition(ClientID.class, Long.class, false));
+		return Map.of(ClientID.class, new ServiceMethods.ExtraParamDefinition(ClientID.class, Long.class, false));
 	}
 }

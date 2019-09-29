@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common;
+package com.gitlab.tixtix320.sonder.internal.common.service;
 
 import java.util.Objects;
 
