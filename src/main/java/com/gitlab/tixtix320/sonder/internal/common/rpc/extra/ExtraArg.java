@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common.extra;
+package com.gitlab.tixtix320.sonder.internal.common.rpc.extra;
 
 import java.lang.annotation.Annotation;
 

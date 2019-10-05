@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common.service;
+package com.gitlab.tixtix320.sonder.internal.common.rpc.service;
 
 final class DuplicatePathException extends RuntimeException {
 	private static final long serialVersionUID = 6360125090465073978L;

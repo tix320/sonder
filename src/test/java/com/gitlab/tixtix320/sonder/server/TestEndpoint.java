@@ -1,7 +1,7 @@
 package com.gitlab.tixtix320.sonder.server;
 
 
-import com.gitlab.tixtix320.sonder.api.common.Endpoint;
+import com.gitlab.tixtix320.sonder.api.common.rpc.Endpoint;
 
 /**
  * @author tix32 on 19-Feb-19

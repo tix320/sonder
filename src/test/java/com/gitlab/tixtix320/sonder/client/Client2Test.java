@@ -5,23 +5,23 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.gitlab.tixtix320.sonder.api.client.Clonder;
+import com.gitlab.tixtix320.sonder.api.common.topic.TopicPublisher;
 
 public class Client2Test {
 
 	public static void main(String[] args) throws IOException {
-		Clonder clonder = Clonder.run("localhost", 8888, List.of("com.gitlab.tixtix320.sonder.client"),
-				List.of("com.gitlab.tixtix320.sonder.client"));
+		Clonder clonder = Clonder.withBuiltInProtocols("localhost", 8888, "com.gitlab.tixtix320.sonder.client");
 
-		A service = clonder.getService(A.class);
-
+		TopicPublisher<List<String>> topicPublisher = clonder.registerTopicPublisher("foo", new TypeReference<>() {});
+		topicPublisher.asObservable().subscribe(System.out::println);
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {
 			String message = bufferedReader.readLine();
 			long start = System.currentTimeMillis();
-			service.send(1, message);
-			//.subscribe(object -> System.out.println(System.currentTimeMillis() - start));
+			topicPublisher.publish(List.of(message, message + "pizdec"))
+					.subscribe(aVoid -> System.out.println(System.currentTimeMillis() - start));
 		}
-
 	}
 }

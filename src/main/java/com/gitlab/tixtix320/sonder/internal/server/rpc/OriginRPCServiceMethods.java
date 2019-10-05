@@ -1,27 +1,31 @@
-package com.gitlab.tixtix320.sonder.internal.server;
+package com.gitlab.tixtix320.sonder.internal.server.rpc;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
-import com.gitlab.tixtix320.sonder.api.common.Origin;
-import com.gitlab.tixtix320.sonder.api.common.extra.ClientID;
+import com.gitlab.tixtix320.sonder.api.common.rpc.Origin;
+import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
 import com.gitlab.tixtix320.sonder.internal.common.StartupException;
-import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
-import com.gitlab.tixtix320.sonder.internal.common.service.OriginMethod;
-import com.gitlab.tixtix320.sonder.internal.common.service.Param;
-import com.gitlab.tixtix320.sonder.internal.common.service.ServiceMethods;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.service.OriginMethod;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.service.Param;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.service.RPCServiceMethods;
 
 import static java.util.function.Predicate.not;
 
-public class OriginServiceMethods extends ServiceMethods<OriginMethod> {
+public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 
-	public OriginServiceMethods(List<Class<?>> classes) {
-		super(classes.stream().filter(clazz -> clazz.isAnnotationPresent(Origin.class)).collect(Collectors.toList()));
+	public OriginRPCServiceMethods(List<Class<?>> classes) {
+		super(classes);
+	}
+
+	@Override
+	protected boolean isService(Class<?> clazz) {
+		return clazz.isAnnotationPresent(Origin.class);
 	}
 
 	@Override
@@ -34,23 +38,13 @@ public class OriginServiceMethods extends ServiceMethods<OriginMethod> {
 
 	@Override
 	protected boolean isServiceMethod(Method method) {
-		if (method.isAnnotationPresent(Origin.class)) {
-			return true;
-		}
-		if (Modifier.isAbstract(method.getModifiers())) {
-			throw new StartupException(
-					String.format("Abstract method '%s'(%s) must be annotated by @%s", method.getName(),
-							method.getDeclaringClass(), Origin.class.getSimpleName()));
-		}
-		else {
-			return false;
-		}
+		return method.isAnnotationPresent(Origin.class);
 	}
 
 	@Override
 	protected void checkMethod(Method method) {
 		StartupException.checkAndThrow(method,
-				m -> String.format("Failed to resolve endpoint method '%s'(%s), there are the following errors. ",
+				m -> String.format("Failed to resolve origin method '%s'(%s), there are the following errors. ",
 						m.getName(), m.getDeclaringClass()), StartupException.throwWhen(
 						m -> m.getReturnType() != void.class && m.getReturnType() != Observable.class,
 						"Return type must be void or Observable"),

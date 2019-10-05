@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common.service;
+package com.gitlab.tixtix320.sonder.internal.common.rpc.service;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
@@ -6,19 +6,19 @@ import java.lang.reflect.Parameter;
 import java.util.*;
 
 import com.gitlab.tixtix320.sonder.internal.common.StartupException;
-import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
-import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParamQualifier;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParamQualifier;
 
 import static java.util.stream.Collectors.*;
 
 /**
  * @author Tigran.Sargsyan on 13-Dec-18
  */
-public abstract class ServiceMethods<T extends ServiceMethod> {
+public abstract class RPCServiceMethods<T extends ServiceMethod> {
 
 	private final List<T> serviceMethods;
 
-	public ServiceMethods(List<Class<?>> classes) {
+	public RPCServiceMethods(List<Class<?>> classes) {
 		this.serviceMethods = createServiceMethods(classes);
 	}
 
@@ -28,6 +28,7 @@ public abstract class ServiceMethods<T extends ServiceMethod> {
 
 	private List<T> createServiceMethods(Collection<Class<?>> services) {
 		return services.stream()
+				.filter(this::isService)
 				.peek(this::checkService)
 				.flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
 				.filter(this::isServiceMethod)
@@ -39,6 +40,8 @@ public abstract class ServiceMethods<T extends ServiceMethod> {
 					return methods;
 				}));
 	}
+
+	protected abstract boolean isService(Class<?> clazz);
 
 	protected abstract void checkService(Class<?> clazz);
 

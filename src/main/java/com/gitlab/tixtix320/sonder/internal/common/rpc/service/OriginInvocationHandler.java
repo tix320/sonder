@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common.service;
+package com.gitlab.tixtix320.sonder.internal.common.rpc.service;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraArg;
-import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraArg;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 
 public final class OriginInvocationHandler implements InvocationHandler {
 

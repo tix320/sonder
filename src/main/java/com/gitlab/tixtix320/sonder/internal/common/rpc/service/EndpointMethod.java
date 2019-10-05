@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common.service;
+package com.gitlab.tixtix320.sonder.internal.common.rpc.service;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import com.gitlab.tixtix320.sonder.internal.common.StartupException;
-import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 
 /**
  * @author tix32 on 24-Feb-19
@@ -26,7 +26,7 @@ public final class EndpointMethod extends ServiceMethod {
 		}
 		catch (IllegalAccessException e) {
 			throw new IllegalStateException(
-					String.format("Cannot access to class %s, you must open your package to sonder module.",
+					String.format("Cannot access to class %s, you must open your module must be open.",
 							method.getDeclaringClass()), e);
 		}
 	}

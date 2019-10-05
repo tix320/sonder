@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.internal.common.service;
+package com.gitlab.tixtix320.sonder.internal.common.rpc.service;
 
 import java.util.Objects;
 

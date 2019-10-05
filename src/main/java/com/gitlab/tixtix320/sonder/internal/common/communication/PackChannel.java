@@ -75,7 +75,7 @@ public final class PackChannel implements Closeable {
 				if (length >= remainingHeaderBytes) {
 					boolean isHeader = isHeader(bytes.array(), start);
 					if (!isHeader) {
-						throw new IllegalStateException("Invalid Header");
+						throw new IllegalStateException("Invalid pack header");
 					}
 					headerConsumed = true;
 					storage.addBytes(bytes.array(), start, remainingHeaderBytes);

@@ -1,25 +1,29 @@
-package com.gitlab.tixtix320.sonder.internal.client;
+package com.gitlab.tixtix320.sonder.internal.client.rpc;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import com.gitlab.tixtix320.kiwi.api.check.Try;
-import com.gitlab.tixtix320.sonder.api.common.Endpoint;
-import com.gitlab.tixtix320.sonder.api.common.extra.ClientID;
+import com.gitlab.tixtix320.sonder.api.common.rpc.Endpoint;
+import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
 import com.gitlab.tixtix320.sonder.internal.common.StartupException;
-import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
-import com.gitlab.tixtix320.sonder.internal.common.service.EndpointMethod;
-import com.gitlab.tixtix320.sonder.internal.common.service.Param;
-import com.gitlab.tixtix320.sonder.internal.common.service.ServiceMethods;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.service.EndpointMethod;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.service.Param;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.service.RPCServiceMethods;
 
-public class EndpointServiceMethods extends ServiceMethods<EndpointMethod> {
+public class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointMethod> {
 
-	public EndpointServiceMethods(List<Class<?>> classes) {
-		super(classes.stream().filter(clazz -> clazz.isAnnotationPresent(Endpoint.class)).collect(Collectors.toList()));
+	public EndpointRPCServiceMethods(List<Class<?>> classes) {
+		super(classes);
+	}
+
+	@Override
+	protected boolean isService(Class<?> clazz) {
+		return clazz.isAnnotationPresent(Endpoint.class);
 	}
 
 	@Override
@@ -64,6 +68,6 @@ public class EndpointServiceMethods extends ServiceMethods<EndpointMethod> {
 
 	@Override
 	protected Map<Class<? extends Annotation>, ExtraParamDefinition> getExtraParamDefinitions() {
-		return Map.of(ClientID.class, new ServiceMethods.ExtraParamDefinition(ClientID.class, Long.class, false));
+		return Map.of(ClientID.class, new RPCServiceMethods.ExtraParamDefinition(ClientID.class, Long.class, false));
 	}
 }

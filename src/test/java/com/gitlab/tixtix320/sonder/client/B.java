@@ -1,7 +1,7 @@
 package com.gitlab.tixtix320.sonder.client;
 
-import com.gitlab.tixtix320.sonder.api.common.Endpoint;
-import com.gitlab.tixtix320.sonder.api.common.extra.ClientID;
+import com.gitlab.tixtix320.sonder.api.common.rpc.Endpoint;
+import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
 
 /**
  * @author Tigran.Sargsyan on 08-Apr-19

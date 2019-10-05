@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.api.common;
+package com.gitlab.tixtix320.sonder.internal.common.rpc.extra;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -6,11 +6,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * @author Tigran.Sargsyan on 11-Dec-18
+ * @author Tigran.Sargsyan on 10-Jan-19
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.TYPE, ElementType.METHOD})
-public @interface Endpoint {
-
-	String value();
-}
+@Target(ElementType.ANNOTATION_TYPE)
+public @interface ExtraParamQualifier {}

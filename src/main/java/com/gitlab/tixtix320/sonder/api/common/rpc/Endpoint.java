@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.api.common;
+package com.gitlab.tixtix320.sonder.api.common.rpc;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -10,7 +10,7 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.TYPE, ElementType.METHOD})
-public @interface Origin {
+public @interface Endpoint {
 
 	String value();
 }

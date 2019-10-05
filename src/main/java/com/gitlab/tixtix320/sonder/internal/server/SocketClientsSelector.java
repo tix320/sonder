@@ -24,7 +24,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final Selector selector;
 
-	private final Subject<Result> requests;
+	private final Subject<ClientPack> requests;
 
 	private final Map<Long, PackChannel> connections;
 
@@ -42,17 +42,19 @@ public final class SocketClientsSelector implements ClientsSelector {
 	}
 
 	@Override
-	public Observable<Result> requests() {
+	public Observable<ClientPack> requests() {
 		return requests.asObservable();
 	}
 
 	@Override
-	public void send(long clientId, byte[] data) {
+	public void send(ClientPack clientPack) {
+		long clientId = clientPack.getClientId();
+
 		Queue<byte[]> queue = messageQueues.get(clientId);
 		if (queue == null) {
 			throw new IllegalArgumentException(String.format("Client by id %s not found", clientId));
 		}
-		queue.add(data);
+		queue.add(clientPack.getData());
 	}
 
 	@Override
@@ -91,7 +93,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 									connectedClientID);
 
 							PackChannel packChannel = new PackChannel(clientChannel);
-							packChannel.packs().subscribe(bytes -> requests.next(new Result(connectedClientID, bytes)));
+							packChannel.packs()
+									.subscribe(bytes -> requests.next(new ClientPack(connectedClientID, bytes)));
 							connections.put(connectedClientID, packChannel);
 
 							ConcurrentLinkedQueue<byte[]> queue = new ConcurrentLinkedQueue<>();
@@ -102,7 +105,14 @@ public final class SocketClientsSelector implements ClientsSelector {
 							Long clientId = (Long) selectionKey.attachment();
 
 							PackChannel channel = connections.get(clientId);
-							channel.read();
+							try {
+								channel.read();
+							}
+							catch (IOException e) {
+								channel.close();
+								connections.remove(clientId);
+								throw e;
+							}
 						}
 						else if (selectionKey.isWritable()) {
 							Long clientId = (Long) selectionKey.attachment();

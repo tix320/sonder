@@ -6,16 +6,16 @@ import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 
 public interface ClientsSelector extends Closeable {
 
-	Observable<Result> requests();
+	Observable<ClientPack> requests();
 
-	void send(long clientId, byte[] data);
+	void send(ClientPack clientPack);
 
-	class Result {
+	class ClientPack {
 		private final long clientId;
 
 		private final byte[] data;
 
-		public Result(long clientId, byte[] data) {
+		public ClientPack(long clientId, byte[] data) {
 			this.clientId = clientId;
 			this.data = data;
 		}

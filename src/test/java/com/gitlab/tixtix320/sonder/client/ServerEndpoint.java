@@ -1,6 +1,6 @@
 package com.gitlab.tixtix320.sonder.client;
 
-import com.gitlab.tixtix320.sonder.api.common.Endpoint;
+import com.gitlab.tixtix320.sonder.api.common.rpc.Endpoint;
 
 @Endpoint("super")
 public class ServerEndpoint {

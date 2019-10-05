@@ -1,10 +1,10 @@
-package com.gitlab.tixtix320.sonder.internal.common.service;
+package com.gitlab.tixtix320.sonder.internal.common.rpc.service;
 
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Objects;
 
-import com.gitlab.tixtix320.sonder.internal.common.extra.ExtraParam;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 
 /**
  * @author Tigran.Sargsyan on 12-Dec-18

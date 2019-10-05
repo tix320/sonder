@@ -127,7 +127,7 @@
 		<dependency>
 			<groupId>com.gitlab.tixtix320</groupId>
 			<artifactId>kiwi</artifactId>
-			<version>0.5.1-SNAPSHOT</version>
+			<version>0.5.1</version>
 		</dependency>
 
 		<dependency>
