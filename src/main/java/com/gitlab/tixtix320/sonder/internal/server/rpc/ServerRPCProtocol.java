@@ -3,13 +3,13 @@ package com.gitlab.tixtix320.sonder.internal.server.rpc;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -24,6 +24,7 @@ import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
 import com.gitlab.tixtix320.sonder.internal.common.PathNotFoundException;
 import com.gitlab.tixtix320.sonder.internal.common.StartupException;
 import com.gitlab.tixtix320.sonder.internal.common.communication.InvalidHeaderException;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.*;
@@ -130,7 +131,7 @@ public final class ServerRPCProtocol implements Protocol {
 				Object object = method.invoke(serviceInstance, args);
 				Object needResponse = headers.get(Headers.NEED_RESPONSE);
 				if (needResponse instanceof Boolean && (boolean) needResponse) {
-					Headers newHeaders = Headers.builder()
+					Headers newHeaders = Headers.builder().header(Headers.PATH, path)
 							.header(Headers.DESTINATION_CLIENT_ID, sourceClientId)
 							.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY))
 							.header(Headers.IS_RESPONSE, true)
@@ -144,23 +145,27 @@ public final class ServerRPCProtocol implements Protocol {
 					throw new InvalidHeaderException(Headers.TRANSFER_KEY, transferKey, Number.class);
 				}
 				responseSubjects.computeIfPresent(((Number) transferKey).longValue(), (key, subject) -> {
-					Class<?> returnType = method.getRawMethod().getReturnType();
-					Object result = Try.supplyOrRethrow(() -> JSON_MAPPER.treeToValue(contentNode, returnType));
 					OriginMethod originMethod = originsByPath.get(path);
-					String actualReturnTypeName = ((ParameterizedType) originMethod.getRawMethod()
-							.getGenericReturnType()).getActualTypeArguments()[0].getTypeName();
-					if (Try.supplyOrRethrow(() -> Class.forName(actualReturnTypeName)) == Void.class) {
+					if (originMethod == null) {
+						throw new PathNotFoundException("Origin with path '" + path + "' not found");
+					}
+
+					JavaType responseType = originMethod.getResponseType();
+					if (responseType.getRawClass() == Void.class) {
 						subject.next((Object) null);
 					}
 					else {
 						try {
+							Object result = JSON_MAPPER.convertValue(contentNode, responseType);
 							subject.next(result);
 						}
+						catch (IllegalArgumentException e) {
+							throw new IncompatibleTypeException(
+									String.format("Expected type %s is not compatible with received JSON %s",
+											responseType.getGenericSignature(), contentNode), e);
+						}
 						catch (ClassCastException e) {
-							throw new IllegalStateException(String.format(
-									"Origin method %s(%s) return type is %s, which is not compatible with received response type(%s)",
-									originMethod.getRawMethod().getName(), originMethod.getRawClass(),
-									actualReturnTypeName, result.getClass()), e);
+							throw IncompatibleTypeException.forMethodReturnType(originMethod.getRawMethod(), e);
 						}
 					}
 					subject.complete();

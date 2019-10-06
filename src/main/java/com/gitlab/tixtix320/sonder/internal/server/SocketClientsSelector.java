@@ -109,9 +109,11 @@ public final class SocketClientsSelector implements ClientsSelector {
 								channel.read();
 							}
 							catch (IOException e) {
-								channel.close();
-								connections.remove(clientId);
-								throw e;
+								if (channel.isOpen()) {
+									connections.remove(clientId);
+									channel.close();
+									throw e;
+								}
 							}
 						}
 						else if (selectionKey.isWritable()) {

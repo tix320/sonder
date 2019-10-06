@@ -49,7 +49,19 @@ public class SocketServerConnection implements ServerConnection {
 					channel.read();
 				}
 				catch (IOException e) {
-					throw new RuntimeException("See cause", e);
+					if (channel.isOpen()) {
+						try {
+							channel.close();
+						}
+						catch (IOException ex) {
+							e.printStackTrace();
+							throw new RuntimeException("See cause", ex);
+						}
+						throw new RuntimeException("See cause", e);
+					}
+					else {
+						break;
+					}
 				}
 				catch (Exception e) {
 					e.printStackTrace();

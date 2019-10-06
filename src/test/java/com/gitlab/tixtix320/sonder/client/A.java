@@ -1,7 +1,9 @@
 package com.gitlab.tixtix320.sonder.client;
 
+import java.util.List;
+
+import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.sonder.api.common.rpc.Origin;
-import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
 
 /**
  * @author Tigran.Sargsyan on 30-Jan-19
@@ -10,5 +12,5 @@ import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
 public interface A {
 
 	@Origin("message")
-	void send(@ClientID long id, String message);
+	Observable<List<Integer>> send(String message);
 }

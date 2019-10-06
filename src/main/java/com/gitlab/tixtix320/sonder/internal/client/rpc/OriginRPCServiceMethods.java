@@ -3,9 +3,14 @@ package com.gitlab.tixtix320.sonder.internal.client.rpc;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.sonder.api.common.rpc.Origin;
 import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
@@ -61,12 +66,27 @@ public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 	protected OriginMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
 											   List<ExtraParam> extraParams) {
 		return new OriginMethod(path, method, simpleParams, extraParams, needResponse(method),
-				getDestination(extraParams));
+				getDestination(extraParams), constructResponseType(method));
 	}
 
 	@Override
 	protected Map<Class<? extends Annotation>, ExtraParamDefinition> getExtraParamDefinitions() {
 		return Map.of(ClientID.class, new ExtraParamDefinition(ClientID.class, long.class, false));
+	}
+
+	private JavaType constructResponseType(Method method) {
+		TypeFactory typeFactory = new ObjectMapper().getTypeFactory();
+		Type returnType = method.getGenericReturnType();
+		if (returnType instanceof Class) { // Observable
+			return typeFactory.constructSimpleType(Object.class, new JavaType[0]);
+		}
+		else if (returnType instanceof ParameterizedType) { // Observable<...>
+			Type argument = ((ParameterizedType) returnType).getActualTypeArguments()[0]; // <...>
+			return typeFactory.constructType(argument);
+		}
+		else {
+			throw new IllegalStateException();
+		}
 	}
 
 	private boolean needResponse(Method method) {

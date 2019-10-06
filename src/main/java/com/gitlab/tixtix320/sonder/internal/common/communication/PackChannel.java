@@ -59,6 +59,10 @@ public final class PackChannel implements Closeable {
 		return packs.asObservable();
 	}
 
+	public boolean isOpen() {
+		return channel.isOpen();
+	}
+
 	@Override
 	public void close() throws IOException {
 		buffer.clear();

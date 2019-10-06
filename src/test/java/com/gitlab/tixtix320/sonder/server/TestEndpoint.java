@@ -1,17 +1,19 @@
 package com.gitlab.tixtix320.sonder.server;
 
 
+import java.util.List;
+
 import com.gitlab.tixtix320.sonder.api.common.rpc.Endpoint;
 
 /**
  * @author tix32 on 19-Feb-19
  */
-@Endpoint("ujex")
+@Endpoint("chat")
 public class TestEndpoint {
 
-	@Endpoint("wtf")
-	public Object foo(String message, String message2) {
+	@Endpoint("message")
+	public List<Integer> foo(String message) {
 		System.out.println(message);
-		return message.length();
+		return List.of(5, 6);
 	}
 }

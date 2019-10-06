@@ -4,6 +4,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Objects;
 
+import com.fasterxml.jackson.databind.JavaType;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 
 /**
@@ -15,11 +16,14 @@ public final class OriginMethod extends ServiceMethod {
 
 	private final Destination destination;
 
+	private final JavaType responseType;
+
 	public OriginMethod(String path, Method method, List<Param> simpleParams, List<ExtraParam> extraParams,
-						boolean needResponse, Destination destination) {
+						boolean needResponse, Destination destination, JavaType responseType) {
 		super(path, method, simpleParams, extraParams);
 		this.needResponse = needResponse;
 		this.destination = destination;
+		this.responseType = responseType;
 	}
 
 	public boolean needResponse() {
@@ -28,6 +32,10 @@ public final class OriginMethod extends ServiceMethod {
 
 	public Destination getDestination() {
 		return destination;
+	}
+
+	public JavaType getResponseType() {
+		return responseType;
 	}
 
 	@Override
