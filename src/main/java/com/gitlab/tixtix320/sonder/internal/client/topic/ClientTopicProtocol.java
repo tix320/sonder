@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
+import com.gitlab.tixtix320.kiwi.api.util.None;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
@@ -27,7 +28,7 @@ public class ClientTopicProtocol implements Protocol {
 
 	private final Map<String, Subject<Object>> topicSubjects;
 
-	private final Map<Long, Subject<Void>> responseSubjects;
+	private final Map<Long, Subject<None>> responseSubjects;
 
 	private final IDGenerator transferIdGenerator;
 
@@ -77,11 +78,11 @@ public class ClientTopicProtocol implements Protocol {
 			if (!(transferKey instanceof Number)) {
 				throw new InvalidHeaderException(Headers.TRANSFER_KEY, transferKey, Number.class);
 			}
-			Subject<Void> subject = responseSubjects.get(((Number) transferKey).longValue());
+			Subject<None> subject = responseSubjects.get(((Number) transferKey).longValue());
 			if (subject == null) {
 				throw new IllegalStateException("Invalid transfer key");
 			}
-			subject.next((Void) null);
+			subject.next(None.SELF);
 			subject.complete();
 		}
 	}
@@ -121,14 +122,14 @@ public class ClientTopicProtocol implements Protocol {
 		}
 
 		@Override
-		public Observable<Void> publish(Object data) {
+		public Observable<None> publish(Object data) {
 			long transferKey = transferIdGenerator.next();
 			Headers headers = Headers.builder()
 					.header(Headers.TOPIC, topic)
 					.header(Headers.TOPIC_ACTION, "publish")
 					.header(Headers.TRANSFER_KEY, transferKey)
 					.build();
-			Subject<Void> subject = Subject.single();
+			Subject<None> subject = Subject.single();
 			responseSubjects.put(transferKey, subject);
 			requests.next(new Transfer(headers, JSON_MAPPER.valueToTree(data)));
 			return subject.asObservable();

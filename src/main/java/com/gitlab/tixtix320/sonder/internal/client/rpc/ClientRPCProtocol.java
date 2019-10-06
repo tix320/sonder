@@ -18,6 +18,7 @@ import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
+import com.gitlab.tixtix320.kiwi.api.util.None;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
@@ -156,8 +157,8 @@ public final class ClientRPCProtocol implements Protocol {
 				}
 
 				JavaType responseType = originMethod.getResponseType();
-				if (responseType.getRawClass() == Void.class) {
-					subject.next((Object) null);
+				if (responseType.getRawClass() == None.class) {
+					subject.next(None.SELF);
 				}
 				else {
 					try {

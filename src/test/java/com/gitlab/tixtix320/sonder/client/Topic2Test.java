@@ -21,7 +21,7 @@ public class Topic2Test {
 			String message = bufferedReader.readLine();
 			long start = System.currentTimeMillis();
 			topicPublisher.publish(List.of(message))
-					.subscribe(aVoid -> System.out.println(System.currentTimeMillis() - start));
+					.subscribe(none -> System.out.println(System.currentTimeMillis() - start));
 		}
 	}
 }

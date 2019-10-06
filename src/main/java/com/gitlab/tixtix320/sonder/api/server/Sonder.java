@@ -11,6 +11,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -18,6 +19,7 @@ import com.fasterxml.jackson.databind.node.ValueNode;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
+import com.gitlab.tixtix320.sonder.api.common.topic.TopicPublisher;
 import com.gitlab.tixtix320.sonder.internal.common.communication.InvalidHeaderException;
 import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.ClientsSelector;
@@ -91,6 +93,20 @@ public final class Sonder implements Closeable {
 			throw new IllegalArgumentException(String.format("Protocol %s not registered", protocol.getName()));
 		}
 		return ((ServerRPCProtocol) protocol).getService(clazz);
+	}
+
+	/**
+	 * Register topic publisher for {@link ServerTopicProtocol} and return
+	 *
+	 * @return topic publisher
+	 * @throws IllegalArgumentException if {@link ServerTopicProtocol} not registered
+	 */
+	public <T> TopicPublisher<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
+		Protocol protocol = protocols.get("sonder-topic");
+		if (!(protocol instanceof ServerTopicProtocol)) {
+			throw new IllegalArgumentException(String.format("Protocol %s not registered", protocol.getName()));
+		}
+		return ((ServerTopicProtocol) protocol).registerTopicPublisher(topic, dataType);
 	}
 
 	@Override
