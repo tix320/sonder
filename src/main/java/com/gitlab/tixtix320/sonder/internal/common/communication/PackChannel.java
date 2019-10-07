@@ -88,7 +88,9 @@ public final class PackChannel implements Closeable {
 				}
 				else {
 					storage.addBytes(bytes.array(), start, length);
-					start = start + length;
+//					start = start + length;
+//					length = 0;
+					break;
 				}
 			}
 			else if (contentLength == null) {
@@ -105,7 +107,9 @@ public final class PackChannel implements Closeable {
 				}
 				else {
 					storage.addBytes(bytes.array(), start, length);
-					start = start + length;
+//					start = start + length;
+//					length = 0;
+				break;
 				}
 			}
 			else {
@@ -124,7 +128,9 @@ public final class PackChannel implements Closeable {
 				}
 				else {
 					storage.addBytes(bytes.array(), start, length);
-					start = start + length;
+//					start = start + length;
+//					length = 0;
+					break;
 				}
 			}
 		}
@@ -138,8 +144,9 @@ public final class PackChannel implements Closeable {
 
 	private static boolean isHeader(byte[] array, int start) {
 		int end = start + HEADER.length;
+		int index=0;
 		for (int i = start; i < end; i++) {
-			if (array[i] != HEADER[i]) {
+			if (array[i] != HEADER[index++]) {
 				return false;
 			}
 		}
