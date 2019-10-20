@@ -10,7 +10,7 @@
 
 	<groupId>com.gitlab.tixtix320</groupId>
 	<artifactId>sonder</artifactId>
-	<version>0.3-SNAPSHOT</version>
+	<version>0.3</version>
 	<packaging>jar</packaging>
 
 	<name>Sonder</name>
@@ -126,7 +126,7 @@
 		<dependency>
 			<groupId>com.gitlab.tixtix320</groupId>
 			<artifactId>kiwi</artifactId>
-			<version>0.5.2</version>
+			<version>0.5.3</version>
 		</dependency>
 
 		<dependency>
