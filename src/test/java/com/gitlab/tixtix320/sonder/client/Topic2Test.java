@@ -7,21 +7,20 @@ import java.util.List;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.gitlab.tixtix320.sonder.api.client.Clonder;
-import com.gitlab.tixtix320.sonder.api.common.topic.TopicPublisher;
+import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 
 public class Topic2Test {
 
 	public static void main(String[] args) throws IOException {
 		Clonder clonder = Clonder.withBuiltInProtocols("localhost", 8888, "com.gitlab.tixtix320.sonder.client");
 
-		TopicPublisher<List<String>> topicPublisher = clonder.registerTopicPublisher("foo", new TypeReference<>() {});
-		topicPublisher.asObservable().subscribe(System.out::println);
+		Topic<List<String>> topic = clonder.registerTopicPublisher("foo", new TypeReference<>() {});
+		topic.asObservable().subscribe(System.out::println);
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {
 			String message = bufferedReader.readLine();
 			long start = System.currentTimeMillis();
-			topicPublisher.publish(List.of(message))
-					.subscribe(none -> System.out.println(System.currentTimeMillis() - start));
+			topic.publish(List.of(message)).subscribe(none -> System.out.println(System.currentTimeMillis() - start));
 		}
 	}
 }

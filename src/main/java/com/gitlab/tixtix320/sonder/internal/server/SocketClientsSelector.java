@@ -80,10 +80,15 @@ public final class SocketClientsSelector implements ClientsSelector {
 			while (true) {
 				try {
 					selector.select();
-					Set<SelectionKey> selectedKeys = selector.selectedKeys();
-					Iterator<SelectionKey> iterator = selectedKeys.iterator();
-					while (iterator.hasNext()) {
-						SelectionKey selectionKey = iterator.next();
+				}
+				catch (IOException e) {
+					throw new RuntimeException(e);
+				}
+				Set<SelectionKey> selectedKeys = selector.selectedKeys();
+				Iterator<SelectionKey> iterator = selectedKeys.iterator();
+				while (iterator.hasNext()) {
+					SelectionKey selectionKey = iterator.next();
+					try {
 						if (selectionKey.isAcceptable()) {
 							SocketChannel clientChannel = serverChannel.accept();
 							clientChannel.configureBlocking(false);
@@ -109,11 +114,11 @@ public final class SocketClientsSelector implements ClientsSelector {
 								channel.read();
 							}
 							catch (IOException e) {
+								connections.remove(clientId);
 								if (channel.isOpen()) {
-									connections.remove(clientId);
 									channel.close();
-									throw e;
 								}
+								throw e;
 							}
 						}
 						else if (selectionKey.isWritable()) {
@@ -124,18 +129,30 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 							byte[] data = queue.poll();
 							if (data != null) {
-								channel.write(data);
+								try {
+									channel.write(data);
+								}
+								catch (IOException e) {
+									connections.remove(clientId);
+									if (channel.isOpen()) {
+										channel.close();
+									}
+									throw e;
+								}
 							}
 						}
 						else {
 							selectionKey.cancel();
 						}
+					}
+					catch (Exception e) {
+						e.printStackTrace();
+					}
+					finally {
 						iterator.remove();
 					}
 				}
-				catch (Exception e) {
-					e.printStackTrace();
-				}
+
 			}
 		}).exceptionally(throwable -> {
 			throwable.getCause().printStackTrace();

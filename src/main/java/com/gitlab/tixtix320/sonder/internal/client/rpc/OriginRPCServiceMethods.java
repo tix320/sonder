@@ -78,7 +78,7 @@ public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 		TypeFactory typeFactory = new ObjectMapper().getTypeFactory();
 		Type returnType = method.getGenericReturnType();
 		if (returnType instanceof Class) { // Observable
-			return typeFactory.constructSimpleType(Object.class, new JavaType[0]);
+			return typeFactory.constructType(Object.class);
 		}
 		else if (returnType instanceof ParameterizedType) { // Observable<...>
 			Type argument = ((ParameterizedType) returnType).getActualTypeArguments()[0]; // <...>

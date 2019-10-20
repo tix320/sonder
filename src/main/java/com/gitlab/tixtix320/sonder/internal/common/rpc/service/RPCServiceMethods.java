@@ -5,6 +5,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.*;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.gitlab.tixtix320.sonder.internal.common.StartupException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParamQualifier;
@@ -67,6 +69,7 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 
 		Map<Class<? extends Annotation>, ExtraParamDefinition> extraParamDefinitions = getExtraParamDefinitions();
 		Parameter[] parameters = method.getParameters();
+		TypeFactory typeFactory = new ObjectMapper().getTypeFactory();
 		for (int i = 0; i < parameters.length; i++) {
 			Parameter parameter = parameters[i];
 			boolean extraParamAnnotationExists = false;
@@ -90,11 +93,12 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 								annotation.annotationType().getSimpleName(), definition.expectedType.getName(),
 								method.getName(), method.getDeclaringClass()));
 					}
-					extraParams.add(new ExtraParam(i, parameter.getType(), annotation));
+					extraParams.add(
+							new ExtraParam(i, typeFactory.constructType(parameter.getParameterizedType()), annotation));
 				}
 			}
 			if (!extraParamAnnotationExists) { // is simple param
-				simpleParams.add(new Param(i, parameter.getType()));
+				simpleParams.add(new Param(i, typeFactory.constructType(parameter.getParameterizedType())));
 			}
 		}
 

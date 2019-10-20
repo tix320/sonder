@@ -18,8 +18,8 @@ public final class ByteArrayList {
 		else {
 			int newDataSize = Math.max(data.length, length) * 2;
 			byte[] newData = new byte[newDataSize];
-			System.arraycopy(data, 0, newData, 0, data.length);
-			System.arraycopy(bytes, start, newData, data.length, length);
+			System.arraycopy(data, 0, newData, 0, index);
+			System.arraycopy(bytes, start, newData, index, length);
 			data = newData;
 		}
 		index = index + length;

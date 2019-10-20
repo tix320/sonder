@@ -33,7 +33,14 @@ public class SocketServerConnection implements ServerConnection {
 			channel.write(data);
 		}
 		catch (IOException e) {
-			throw new RuntimeException("Cannot send data to server", e);
+			if (channel.isOpen()) {
+				try {
+					channel.close();
+				}
+				catch (IOException ex) {
+					throw new RuntimeException("Cannot send data to server", e);
+				}
+			}
 		}
 	}
 
@@ -50,16 +57,16 @@ public class SocketServerConnection implements ServerConnection {
 				}
 				catch (IOException e) {
 					if (channel.isOpen()) {
+						throw new RuntimeException("See cause", e);
+					}
+					else {
+						e.printStackTrace();
 						try {
 							channel.close();
 						}
 						catch (IOException ex) {
-							e.printStackTrace();
-							throw new RuntimeException("See cause", ex);
+							ex.printStackTrace();
 						}
-						throw new RuntimeException("See cause", e);
-					}
-					else {
 						break;
 					}
 				}

@@ -19,8 +19,7 @@ import com.fasterxml.jackson.databind.node.ValueNode;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
-import com.gitlab.tixtix320.sonder.api.common.topic.TopicPublisher;
-import com.gitlab.tixtix320.sonder.internal.common.communication.InvalidHeaderException;
+import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.ClientsSelector;
 import com.gitlab.tixtix320.sonder.internal.server.SocketClientsSelector;
@@ -57,19 +56,19 @@ public final class Sonder implements Closeable {
 
 		clientsSelector.requests().map(this::clientPackToTransfer).subscribe(this::processTransfer);
 		protocols.forEach((protocolName, protocol) -> protocol.transfers().subscribe(transfer -> {
-			Object destinationClientId = transfer.getHeaders().get(Headers.DESTINATION_CLIENT_ID);
-			if (!(destinationClientId instanceof Number)) {
-				throw new InvalidHeaderException(Headers.DESTINATION_CLIENT_ID, destinationClientId, Number.class);
-			}
+			Number destinationClientId = transfer.getHeaders().getNonNullNumber(Headers.DESTINATION_CLIENT_ID);
+
 			transfer = new Transfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
 					transfer.getContent());
+
+			byte[] data;
 			try {
-				clientsSelector.send(new ClientsSelector.ClientPack(((Number) destinationClientId).longValue(),
-						JSON_MAPPER.writeValueAsBytes(transfer)));
+				data = JSON_MAPPER.writeValueAsBytes(transfer);
 			}
 			catch (JsonProcessingException e) {
 				throw new IllegalStateException("Cannot write JSON", e);
 			}
+			clientsSelector.send(new ClientsSelector.ClientPack(destinationClientId.longValue(), data));
 		}));
 	}
 
@@ -101,7 +100,7 @@ public final class Sonder implements Closeable {
 	 * @return topic publisher
 	 * @throws IllegalArgumentException if {@link ServerTopicProtocol} not registered
 	 */
-	public <T> TopicPublisher<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
+	public <T> Topic<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
 		Protocol protocol = protocols.get("sonder-topic");
 		if (!(protocol instanceof ServerTopicProtocol)) {
 			throw new IllegalArgumentException(String.format("Protocol %s not registered", protocol.getName()));
@@ -147,10 +146,8 @@ public final class Sonder implements Closeable {
 	}
 
 	private void processTransfer(Transfer transfer) {
-		Object protocolName = transfer.getHeaders().get(Headers.PROTOCOL);
-		if (!(protocolName instanceof String)) {
-			throw new InvalidHeaderException(Headers.PROTOCOL, protocolName, String.class);
-		}
+		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
+
 		Protocol protocol = protocols.get(protocolName);
 		if (protocol == null) {
 			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));

@@ -3,13 +3,14 @@ package com.gitlab.tixtix320.sonder.internal.common.rpc.extra;
 import java.lang.annotation.Annotation;
 import java.util.Objects;
 
+import com.fasterxml.jackson.databind.JavaType;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.Param;
 
 public final class ExtraParam extends Param {
 
 	private final Annotation annotation;
 
-	public ExtraParam(int index, Class<?> type, Annotation annotation) {
+	public ExtraParam(int index, JavaType type, Annotation annotation) {
 		super(index, type);
 		this.annotation = annotation;
 	}

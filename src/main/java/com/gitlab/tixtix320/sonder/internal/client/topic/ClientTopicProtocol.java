@@ -15,8 +15,7 @@ import com.gitlab.tixtix320.kiwi.api.util.None;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
-import com.gitlab.tixtix320.sonder.api.common.topic.TopicPublisher;
-import com.gitlab.tixtix320.sonder.internal.common.communication.InvalidHeaderException;
+import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 
 public class ClientTopicProtocol implements Protocol {
 
@@ -50,13 +49,10 @@ public class ClientTopicProtocol implements Protocol {
 		Headers headers = transfer.getHeaders();
 		JsonNode contentNode = transfer.getContent();
 
-		Object topic = headers.get(Headers.TOPIC);
-		if (!(topic instanceof String)) {
-			throw new InvalidHeaderException(Headers.TOPIC, topic, String.class);
-		}
+		String topic = headers.getNonNullString(Headers.TOPIC);
 
-		Object isResponse = headers.get(Headers.IS_RESPONSE);
-		if (isResponse == null || (isResponse instanceof Boolean && !((boolean) isResponse))) {
+		Boolean isInvoke = headers.getBoolean(Headers.IS_INVOKE);
+		if (isInvoke != null && isInvoke) {
 			Subject<Object> subject = topicSubjects.get(topic);
 			if (subject == null) {
 				throw new IllegalStateException(String.format("Topic %s not found", topic));
@@ -74,11 +70,8 @@ public class ClientTopicProtocol implements Protocol {
 			}
 		}
 		else { // is response
-			Object transferKey = headers.get(Headers.TRANSFER_KEY);
-			if (!(transferKey instanceof Number)) {
-				throw new InvalidHeaderException(Headers.TRANSFER_KEY, transferKey, Number.class);
-			}
-			Subject<None> subject = responseSubjects.get(((Number) transferKey).longValue());
+			Number transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY);
+			Subject<None> subject = responseSubjects.get(transferKey.longValue());
 			if (subject == null) {
 				throw new IllegalStateException("Invalid transfer key");
 			}
@@ -104,20 +97,20 @@ public class ClientTopicProtocol implements Protocol {
 		responseSubjects.values().forEach(Subject::complete);
 	}
 
-	public <T> TopicPublisher<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
+	public <T> Topic<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
 		if (topicSubjects.containsKey(topic)) {
 			throw new IllegalArgumentException(String.format("Publisher for topic %s already registered", topic));
 		}
 		topicSubjects.put(topic, Subject.single());
 		dataTypesByTopic.put(topic, dataType);
-		return new TopicPublisherImpl<>(topic);
+		return new TopicImpl<>(topic);
 	}
 
-	private final class TopicPublisherImpl<T> implements TopicPublisher<T> {
+	private final class TopicImpl<T> implements Topic<T> {
 
 		private final String topic;
 
-		private TopicPublisherImpl(String topic) {
+		private TopicImpl(String topic) {
 			this.topic = topic;
 		}
 
@@ -128,6 +121,7 @@ public class ClientTopicProtocol implements Protocol {
 					.header(Headers.TOPIC, topic)
 					.header(Headers.TOPIC_ACTION, "publish")
 					.header(Headers.TRANSFER_KEY, transferKey)
+					.header(Headers.IS_INVOKE, true)
 					.build();
 			Subject<None> subject = Subject.single();
 			responseSubjects.put(transferKey, subject);
@@ -152,7 +146,7 @@ public class ClientTopicProtocol implements Protocol {
 		}
 
 		@Override
-		public String getTopic() {
+		public String getName() {
 			return topic;
 		}
 	}

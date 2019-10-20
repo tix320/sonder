@@ -17,8 +17,7 @@ import com.gitlab.tixtix320.kiwi.api.util.None;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
-import com.gitlab.tixtix320.sonder.api.common.topic.TopicPublisher;
-import com.gitlab.tixtix320.sonder.internal.common.communication.InvalidHeaderException;
+import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 
 public class ServerTopicProtocol implements Protocol {
 
@@ -43,35 +42,26 @@ public class ServerTopicProtocol implements Protocol {
 	public void handleTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
-		Object topic = headers.get(Headers.TOPIC);
-		if (!(topic instanceof String)) {
-			throw new InvalidHeaderException(Headers.TOPIC, topic, String.class);
-		}
+		String topic = headers.getNonNullString(Headers.TOPIC);
 
-		Object action = headers.get(Headers.TOPIC_ACTION);
-		if (!(action instanceof String)) {
-			throw new InvalidHeaderException(Headers.TOPIC_ACTION, action, String.class);
-		}
+		String action = headers.getNonNullString(Headers.TOPIC_ACTION);
 
-		Object sourceClientId = headers.get(Headers.SOURCE_CLIENT_ID);
-		if (!(sourceClientId instanceof Number)) {
-			throw new InvalidHeaderException(Headers.SOURCE_CLIENT_ID, sourceClientId, Number.class);
-		}
+		Number sourceClientId = headers.getNonNullNumber(Headers.SOURCE_CLIENT_ID);
 
-		Queue<Long> clients = topics.computeIfAbsent((String) topic, key -> new ConcurrentLinkedQueue<>());
-		if (action.equals("publish")) {
-			handleForServer(transfer);
-			publishToClients((String) topic, transfer, clients, ((Number) sourceClientId).longValue());
-
-		}
-		else if (action.equals("subscribe")) {
-			clients.add(((Number) sourceClientId).longValue());
-		}
-		else if (action.equals("unsubscribe")) {
-			clients.remove(((Number) sourceClientId).longValue());
-		}
-		else {
-			throw new IllegalStateException(String.format("Invalid topic action %s", action));
+		Queue<Long> clients = topics.computeIfAbsent(topic, key -> new ConcurrentLinkedQueue<>());
+		switch (action) {
+			case "publish":
+				handleForServer(transfer);
+				publishToClients(topic, transfer, clients, sourceClientId.longValue());
+				break;
+			case "subscribe":
+				clients.add(sourceClientId.longValue());
+				break;
+			case "unsubscribe":
+				clients.remove(sourceClientId.longValue());
+				break;
+			default:
+				throw new IllegalStateException(String.format("Invalid topic action %s", action));
 		}
 	}
 
@@ -113,13 +103,13 @@ public class ServerTopicProtocol implements Protocol {
 		requests.complete();
 	}
 
-	public <T> TopicPublisher<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
+	public <T> Topic<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
 		if (topicSubjects.containsKey(topic)) {
 			throw new IllegalArgumentException(String.format("Publisher for topic %s already registered", topic));
 		}
 		topicSubjects.put(topic, Subject.single());
 		dataTypesByTopic.put(topic, dataType);
-		return new TopicPublisherImpl<>(topic);
+		return new TopicImpl<>(topic);
 	}
 
 	private void publishToClients(String topic, Transfer transfer, Collection<Long> clients, long sourceClientId) {
@@ -129,6 +119,7 @@ public class ServerTopicProtocol implements Protocol {
 						.header(Headers.SOURCE_CLIENT_ID, sourceClientId)
 						.header(Headers.DESTINATION_CLIENT_ID, clientId)
 						.header(Headers.TOPIC, topic)
+						.header(Headers.IS_INVOKE, true)
 						.build();
 				requests.next(new Transfer(newHeaders, transfer.getContent()));
 			}
@@ -136,17 +127,16 @@ public class ServerTopicProtocol implements Protocol {
 		Headers newHeaders = Headers.builder()
 				.header(Headers.DESTINATION_CLIENT_ID, sourceClientId)
 				.header(Headers.TOPIC, topic)
-				.header(Headers.IS_RESPONSE, true)
 				.header(Headers.TRANSFER_KEY, transfer.getHeaders().get(Headers.TRANSFER_KEY))
 				.build();
 		requests.next(new Transfer(newHeaders, new TextNode("")));
 	}
 
-	private final class TopicPublisherImpl<T> implements TopicPublisher<T> {
+	private final class TopicImpl<T> implements Topic<T> {
 
 		private final String topic;
 
-		private TopicPublisherImpl(String topic) {
+		private TopicImpl(String topic) {
 			this.topic = topic;
 		}
 
@@ -157,6 +147,7 @@ public class ServerTopicProtocol implements Protocol {
 				Headers newHeaders = Headers.builder()
 						.header(Headers.DESTINATION_CLIENT_ID, clientId)
 						.header(Headers.TOPIC, topic)
+						.header(Headers.IS_INVOKE, true)
 						.build();
 				requests.next(new Transfer(newHeaders, JSON_MAPPER.valueToTree(data)));
 			}
@@ -172,7 +163,7 @@ public class ServerTopicProtocol implements Protocol {
 		}
 
 		@Override
-		public String getTopic() {
+		public String getName() {
 			return topic;
 		}
 	}

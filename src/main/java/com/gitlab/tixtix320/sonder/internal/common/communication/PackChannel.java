@@ -43,15 +43,20 @@ public final class PackChannel implements Closeable {
 		channel.write(buffer);
 	}
 
-	public void read() throws IOException {
+	/**
+	 * @throws IOException          If any I/O error occurs
+	 * @throws PackConsumeException If error occurs in pack consuming
+	 */
+	public void read() throws IOException, PackConsumeException {
+		buffer.position(0);
+		int bytesCount;
+
+		bytesCount = channel.read(buffer);
 		try {
-			buffer.position(0);
-			int bytesCount = channel.read(buffer);
 			consume(buffer, bytesCount);
 		}
-		catch (Exception e) {
-			reset();
-			throw e;
+		catch (Throwable e) {
+			throw new PackConsumeException("Error occurs while consuming pack", e);
 		}
 	}
 
@@ -88,8 +93,6 @@ public final class PackChannel implements Closeable {
 				}
 				else {
 					storage.addBytes(bytes.array(), start, length);
-//					start = start + length;
-//					length = 0;
 					break;
 				}
 			}
@@ -107,9 +110,7 @@ public final class PackChannel implements Closeable {
 				}
 				else {
 					storage.addBytes(bytes.array(), start, length);
-//					start = start + length;
-//					length = 0;
-				break;
+					break;
 				}
 			}
 			else {
@@ -128,8 +129,6 @@ public final class PackChannel implements Closeable {
 				}
 				else {
 					storage.addBytes(bytes.array(), start, length);
-//					start = start + length;
-//					length = 0;
 					break;
 				}
 			}
@@ -144,7 +143,7 @@ public final class PackChannel implements Closeable {
 
 	private static boolean isHeader(byte[] array, int start) {
 		int end = start + HEADER.length;
-		int index=0;
+		int index = 0;
 		for (int i = start; i < end; i++) {
 			if (array[i] != HEADER[index++]) {
 				return false;

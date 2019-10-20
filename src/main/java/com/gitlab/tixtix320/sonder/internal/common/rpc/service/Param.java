@@ -2,6 +2,8 @@ package com.gitlab.tixtix320.sonder.internal.common.rpc.service;
 
 import java.util.Objects;
 
+import com.fasterxml.jackson.databind.JavaType;
+
 /**
  * @author Tigran.Sargsyan on 08-Jan-19
  */
@@ -9,9 +11,9 @@ public class Param {
 
 	protected final int index;
 
-	protected final Class<?> type;
+	protected final JavaType type;
 
-	public Param(int index, Class<?> type) {
+	public Param(int index, JavaType type) {
 		this.index = index;
 		this.type = type;
 	}
@@ -20,7 +22,7 @@ public class Param {
 		return index;
 	}
 
-	public Class<?> getType() {
+	public JavaType getType() {
 		return type;
 	}
 

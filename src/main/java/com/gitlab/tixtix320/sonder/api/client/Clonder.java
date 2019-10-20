@@ -19,12 +19,11 @@ import com.fasterxml.jackson.databind.node.ValueNode;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
-import com.gitlab.tixtix320.sonder.api.common.topic.TopicPublisher;
+import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 import com.gitlab.tixtix320.sonder.internal.client.ServerConnection;
 import com.gitlab.tixtix320.sonder.internal.client.SocketServerConnection;
 import com.gitlab.tixtix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.gitlab.tixtix320.sonder.internal.client.topic.ClientTopicProtocol;
-import com.gitlab.tixtix320.sonder.internal.common.communication.InvalidHeaderException;
 import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.rpc.ServerRPCProtocol;
 
@@ -60,12 +59,15 @@ public final class Clonder implements Closeable {
 		protocols.forEach((protocolName, protocol) -> protocol.transfers().subscribe(transfer -> {
 			transfer = new Transfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
 					transfer.getContent());
+
+			byte[] data;
 			try {
-				connection.send(JSON_MAPPER.writeValueAsBytes(transfer));
+				data = JSON_MAPPER.writeValueAsBytes(transfer);
 			}
 			catch (JsonProcessingException e) {
 				throw new IllegalStateException("Cannot write JSON", e);
 			}
+			connection.send(data);
 		}));
 	}
 
@@ -98,7 +100,7 @@ public final class Clonder implements Closeable {
 	 * @return topic publisher
 	 * @throws IllegalArgumentException if {@link ClientTopicProtocol} not registered
 	 */
-	public <T> TopicPublisher<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
+	public <T> Topic<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
 		Protocol protocol = protocols.get("sonder-topic");
 		if (!(protocol instanceof ClientTopicProtocol)) {
 			throw new IllegalArgumentException(String.format("Protocol %s not registered", protocol.getName()));
@@ -144,10 +146,7 @@ public final class Clonder implements Closeable {
 	}
 
 	private void processTransfer(Transfer transfer) {
-		Object protocolName = transfer.getHeaders().get(Headers.PROTOCOL);
-		if (!(protocolName instanceof String)) {
-			throw new InvalidHeaderException(Headers.PROTOCOL, protocolName, String.class);
-		}
+		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
 		Protocol protocol = protocols.get(protocolName);
 		if (protocol == null) {
 			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
