@@ -3,7 +3,6 @@ package com.gitlab.tixtix320.sonder.internal.client;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.CompletableFuture;
 
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.sonder.internal.common.communication.PackChannel;
@@ -50,7 +49,7 @@ public class SocketServerConnection implements ServerConnection {
 	}
 
 	private void start() {
-		CompletableFuture.runAsync(() -> {
+		new Thread(() -> {
 			while (true) {
 				try {
 					channel.read();
@@ -74,10 +73,7 @@ public class SocketServerConnection implements ServerConnection {
 					e.printStackTrace();
 				}
 			}
-		}).exceptionally(throwable -> {
-			throwable.getCause().printStackTrace();
-			return null;
-		});
+		}).start();
 
 	}
 }

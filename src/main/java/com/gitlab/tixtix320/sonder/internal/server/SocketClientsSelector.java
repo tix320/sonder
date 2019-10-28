@@ -10,7 +10,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -75,8 +74,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 			throw new RuntimeException("Cannot open server socket channel", e);
 		}
 
-		CompletableFuture.runAsync(() -> {
-			//noinspection InfiniteLoopStatement
+		new Thread(() -> {
 			while (true) {
 				try {
 					selector.select();
@@ -154,9 +152,6 @@ public final class SocketClientsSelector implements ClientsSelector {
 				}
 
 			}
-		}).exceptionally(throwable -> {
-			throwable.getCause().printStackTrace();
-			return null;
-		});
+		}).start();
 	}
 }
