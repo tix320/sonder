@@ -18,12 +18,13 @@ import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
 import com.gitlab.tixtix320.sonder.internal.common.communication.PackChannel;
+import com.gitlab.tixtix320.sonder.internal.common.communication.SocketConnectionException;
 
 public final class SocketClientsSelector implements ClientsSelector {
 
 	private final Selector selector;
 
-	private final Subject<ClientPack> requests;
+	private final Subject<ClientPack> incomingRequests;
 
 	private final Map<Long, PackChannel> connections;
 
@@ -33,7 +34,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	public SocketClientsSelector(InetSocketAddress address) {
 		this.selector = Try.supplyOrRethrow(Selector::open);
-		this.requests = Subject.single();
+		this.incomingRequests = Subject.single();
 		this.connections = new ConcurrentHashMap<>();
 		this.messageQueues = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1);
@@ -41,8 +42,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 	}
 
 	@Override
-	public Observable<ClientPack> requests() {
-		return requests.asObservable();
+	public Observable<ClientPack> incomingRequests() {
+		return incomingRequests.asObservable();
 	}
 
 	@Override
@@ -57,8 +58,9 @@ public final class SocketClientsSelector implements ClientsSelector {
 	}
 
 	@Override
-	public void close() throws IOException {
-		requests.complete();
+	public void close()
+			throws IOException {
+		incomingRequests.complete();
 		selector.close();
 	}
 
@@ -71,7 +73,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 			serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 		}
 		catch (IOException e) {
-			throw new RuntimeException("Cannot open server socket channel", e);
+			throw new SocketConnectionException("Cannot open server socket channel", e);
 		}
 
 		new Thread(() -> {
@@ -80,7 +82,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 					selector.select();
 				}
 				catch (IOException e) {
-					throw new RuntimeException(e);
+					throw new SocketConnectionException("The problem is occurred in selector work", e);
 				}
 				Set<SelectionKey> selectedKeys = selector.selectedKeys();
 				Iterator<SelectionKey> iterator = selectedKeys.iterator();
@@ -97,7 +99,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 							PackChannel packChannel = new PackChannel(clientChannel);
 							packChannel.packs()
-									.subscribe(bytes -> requests.next(new ClientPack(connectedClientID, bytes)));
+									.subscribe(
+											bytes -> incomingRequests.next(new ClientPack(connectedClientID, bytes)));
 							connections.put(connectedClientID, packChannel);
 
 							ConcurrentLinkedQueue<byte[]> queue = new ConcurrentLinkedQueue<>();
@@ -113,9 +116,6 @@ public final class SocketClientsSelector implements ClientsSelector {
 							}
 							catch (IOException e) {
 								connections.remove(clientId);
-								if (channel.isOpen()) {
-									channel.close();
-								}
 								throw e;
 							}
 						}
@@ -132,9 +132,6 @@ public final class SocketClientsSelector implements ClientsSelector {
 								}
 								catch (IOException e) {
 									connections.remove(clientId);
-									if (channel.isOpen()) {
-										channel.close();
-									}
 									throw e;
 								}
 							}

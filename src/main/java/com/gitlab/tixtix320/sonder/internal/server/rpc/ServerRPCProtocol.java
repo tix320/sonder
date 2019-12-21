@@ -21,8 +21,8 @@ import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
-import com.gitlab.tixtix320.sonder.internal.common.PathNotFoundException;
-import com.gitlab.tixtix320.sonder.internal.common.StartupException;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.PathNotFoundException;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.StartupException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
@@ -87,7 +87,7 @@ public final class ServerRPCProtocol implements Protocol {
 	}
 
 	@Override
-	public void handleTransfer(Transfer transfer) {
+	public void handleIncomingTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
 		Number destinationClientId = headers.getNumber(Headers.DESTINATION_CLIENT_ID);
@@ -106,7 +106,7 @@ public final class ServerRPCProtocol implements Protocol {
 	}
 
 	@Override
-	public Observable<Transfer> transfers() {
+	public Observable<Transfer> outgoingTransfers() {
 		return requests.asObservable();
 	}
 

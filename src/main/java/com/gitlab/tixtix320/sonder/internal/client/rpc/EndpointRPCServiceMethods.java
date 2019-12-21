@@ -9,7 +9,7 @@ import java.util.Map;
 import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.sonder.api.common.rpc.Endpoint;
 import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
-import com.gitlab.tixtix320.sonder.internal.common.StartupException;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.StartupException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.EndpointMethod;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.Param;

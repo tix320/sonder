@@ -7,7 +7,7 @@ import java.util.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
-import com.gitlab.tixtix320.sonder.internal.common.StartupException;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.StartupException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParamQualifier;
 

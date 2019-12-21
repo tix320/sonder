@@ -11,7 +11,16 @@ import com.gitlab.tixtix320.sonder.internal.common.util.ByteArrayList;
 
 public final class PackChannel implements Closeable {
 
-	private static final byte[] HEADER = {105, 99, 111, 110, 116, 114, 111, 108};
+	private static final byte[] HEADER = {
+			105,
+			99,
+			111,
+			110,
+			116,
+			114,
+			111,
+			108
+	};
 
 	private static final int CONTENT_LENGTH_BYTES = 4;
 
@@ -34,7 +43,8 @@ public final class PackChannel implements Closeable {
 		this.storage = new ByteArrayList();
 	}
 
-	public void write(byte[] bytes) throws IOException {
+	public void write(byte[] bytes)
+			throws IOException {
 		ByteBuffer buffer = ByteBuffer.allocate(HEADER.length + CONTENT_LENGTH_BYTES + bytes.length);
 		buffer.put(HEADER, 0, HEADER.length);
 		buffer.putInt(bytes.length);
@@ -47,7 +57,8 @@ public final class PackChannel implements Closeable {
 	 * @throws IOException          If any I/O error occurs
 	 * @throws PackConsumeException If error occurs in pack consuming
 	 */
-	public void read() throws IOException, PackConsumeException {
+	public void read()
+			throws IOException, PackConsumeException {
 		buffer.position(0);
 		int bytesCount;
 
@@ -69,7 +80,8 @@ public final class PackChannel implements Closeable {
 	}
 
 	@Override
-	public void close() throws IOException {
+	public void close()
+			throws IOException {
 		buffer.clear();
 		packs.complete();
 		channel.close();

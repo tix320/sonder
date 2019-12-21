@@ -22,8 +22,9 @@ import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
-import com.gitlab.tixtix320.sonder.internal.common.PathNotFoundException;
+import com.gitlab.tixtix320.sonder.internal.client.communication.BuiltInProtocol;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.IncompatibleTypeException;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.PathNotFoundException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.*;
@@ -50,7 +51,7 @@ public final class ClientRPCProtocol implements Protocol {
 
 	private final Map<Long, Subject<Object>> responseSubjects;
 
-	private final Subject<Transfer> requests;
+	private final Subject<Transfer> outgoingRequests;
 
 	public ClientRPCProtocol(List<Class<?>> classes) {
 		OriginRPCServiceMethods originServiceMethods = new OriginRPCServiceMethods(classes);
@@ -84,11 +85,11 @@ public final class ClientRPCProtocol implements Protocol {
 		this.responseSubjects = new ConcurrentHashMap<>();
 		this.transferIdGenerator = new IDGenerator();
 
-		this.requests = Subject.single();
+		this.outgoingRequests = Subject.single();
 	}
 
 	@Override
-	public void handleTransfer(Transfer transfer) {
+	public void handleIncomingTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
 		Boolean isInvoke = headers.getBoolean(Headers.IS_INVOKE);
@@ -101,18 +102,19 @@ public final class ClientRPCProtocol implements Protocol {
 	}
 
 	@Override
-	public Observable<Transfer> transfers() {
-		return requests.asObservable();
+	public Observable<Transfer> outgoingTransfers() {
+		return outgoingRequests.asObservable();
 	}
 
 	@Override
 	public String getName() {
-		return "sonder-RPC";
+		return BuiltInProtocol.RPC.getName();
 	}
 
 	@Override
-	public void close() throws IOException {
-		requests.complete();
+	public void close()
+			throws IOException {
+		outgoingRequests.complete();
 		responseSubjects.values().forEach(Subject::complete);
 	}
 
@@ -160,12 +162,12 @@ public final class ClientRPCProtocol implements Protocol {
 
 			Subject<Object> responseSubject = Subject.single();
 			responseSubjects.put(transferKey, responseSubject);
-			requests.next(new Transfer(headers, JSON_MAPPER.valueToTree(simpleArgs)));
+			outgoingRequests.next(new Transfer(headers, JSON_MAPPER.valueToTree(simpleArgs)));
 			return responseSubject.asObservable();
 		}
 		else {
 			Headers headers = builder.header(Headers.NEED_RESPONSE, false).build();
-			requests.next(new Transfer(headers, JSON_MAPPER.valueToTree(simpleArgs)));
+			outgoingRequests.next(new Transfer(headers, JSON_MAPPER.valueToTree(simpleArgs)));
 			return null;
 		}
 	}
@@ -211,7 +213,7 @@ public final class ClientRPCProtocol implements Protocol {
 						.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY))
 						.header(Headers.DESTINATION_CLIENT_ID, sourceClientId)
 						.build();
-				requests.next(new Transfer(newHeaders, JSON_MAPPER.valueToTree(result)));
+				outgoingRequests.next(new Transfer(newHeaders, JSON_MAPPER.valueToTree(result)));
 			}
 		}
 		else {
@@ -240,7 +242,7 @@ public final class ClientRPCProtocol implements Protocol {
 						.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY))
 						.header(Headers.DESTINATION_CLIENT_ID, sourceClientId)
 						.build();
-				requests.next(new Transfer(newHeaders, JSON_MAPPER.valueToTree(result)));
+				outgoingRequests.next(new Transfer(newHeaders, JSON_MAPPER.valueToTree(result)));
 			}
 		}
 	}

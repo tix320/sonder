@@ -84,8 +84,10 @@ public final class Headers implements Serializable {
 
 	@Override
 	public boolean equals(Object o) {
-		if (this == o) return true;
-		if (o == null || getClass() != o.getClass()) return false;
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
 		Headers headers = (Headers) o;
 		return values.equals(headers.values);
 	}
@@ -135,7 +137,8 @@ public final class Headers implements Serializable {
 		}
 
 		@Override
-		public void serialize(Headers headers, JsonGenerator gen, SerializerProvider provider) throws IOException {
+		public void serialize(Headers headers, JsonGenerator gen, SerializerProvider provider)
+				throws IOException {
 			gen.writeStartObject();
 			for (Map.Entry<String, Object> entry : headers.values.entrySet()) {
 				gen.writeObjectField(entry.getKey(), entry.getValue());

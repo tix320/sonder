@@ -6,7 +6,7 @@ import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 
 public interface ClientsSelector extends Closeable {
 
-	Observable<ClientPack> requests();
+	Observable<ClientPack> incomingRequests();
 
 	void send(ClientPack clientPack);
 

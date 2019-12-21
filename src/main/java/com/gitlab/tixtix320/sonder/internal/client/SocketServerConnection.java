@@ -2,12 +2,15 @@ package com.gitlab.tixtix320.sonder.internal.client;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
 
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.sonder.internal.common.communication.PackChannel;
+import com.gitlab.tixtix320.sonder.internal.common.communication.SocketConnectionException;
 
-public class SocketServerConnection implements ServerConnection {
+public class SocketServerConnection
+		implements ServerConnection {
 
 	private final PackChannel channel;
 
@@ -22,7 +25,7 @@ public class SocketServerConnection implements ServerConnection {
 	}
 
 	@Override
-	public Observable<byte[]> requests() {
+	public Observable<byte[]> incomingRequests() {
 		return channel.packs();
 	}
 
@@ -31,20 +34,24 @@ public class SocketServerConnection implements ServerConnection {
 		try {
 			channel.write(data);
 		}
+		catch (ClosedChannelException e) {
+			throw new SocketConnectionException("Socket connection is closed", e);
+		}
 		catch (IOException e) {
-			if (channel.isOpen()) {
-				try {
-					channel.close();
-				}
-				catch (IOException ex) {
-					throw new RuntimeException("Cannot send data to server", e);
-				}
+			try {
+				channel.close();
+				throw new SocketConnectionException("The problem is occurred while sending data", e);
+			}
+			catch (IOException ex) {
+				e.printStackTrace();
+				throw new SocketConnectionException("The problem is occurred while closing socket", ex);
 			}
 		}
 	}
 
 	@Override
-	public void close() throws IOException {
+	public void close()
+			throws IOException {
 		channel.close();
 	}
 
@@ -54,19 +61,17 @@ public class SocketServerConnection implements ServerConnection {
 				try {
 					channel.read();
 				}
+				catch (ClosedChannelException e) {
+					throw new SocketConnectionException("Socket connection is closed", e);
+				}
 				catch (IOException e) {
-					if (channel.isOpen()) {
-						throw new RuntimeException("See cause", e);
+					try {
+						channel.close();
+						throw new SocketConnectionException("The problem is occurred while reading data", e);
 					}
-					else {
+					catch (IOException ex) {
 						e.printStackTrace();
-						try {
-							channel.close();
-						}
-						catch (IOException ex) {
-							ex.printStackTrace();
-						}
-						break;
+						throw new SocketConnectionException("The problem is occurred while closing socket", ex);
 					}
 				}
 				catch (Exception e) {

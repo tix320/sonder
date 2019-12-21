@@ -29,17 +29,17 @@ public class ServerTopicProtocol implements Protocol {
 
 	private final Map<String, TypeReference<?>> dataTypesByTopic;
 
-	private final Subject<Transfer> requests;
+	private final Subject<Transfer> outgoingRequests;
 
 	public ServerTopicProtocol() {
 		this.topics = new ConcurrentHashMap<>();
 		this.topicSubjects = new ConcurrentHashMap<>();
 		this.dataTypesByTopic = new ConcurrentHashMap<>();
-		this.requests = Subject.single();
+		this.outgoingRequests = Subject.single();
 	}
 
 	@Override
-	public void handleTransfer(Transfer transfer) {
+	public void handleIncomingTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
 		String topic = headers.getNonNullString(Headers.TOPIC);
@@ -89,8 +89,8 @@ public class ServerTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public Observable<Transfer> transfers() {
-		return requests.asObservable();
+	public Observable<Transfer> outgoingTransfers() {
+		return outgoingRequests.asObservable();
 	}
 
 	@Override
@@ -99,8 +99,9 @@ public class ServerTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void close() throws IOException {
-		requests.complete();
+	public void close()
+			throws IOException {
+		outgoingRequests.complete();
 	}
 
 	public <T> Topic<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
@@ -121,7 +122,7 @@ public class ServerTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.IS_INVOKE, true)
 						.build();
-				requests.next(new Transfer(newHeaders, transfer.getContent()));
+				outgoingRequests.next(new Transfer(newHeaders, transfer.getContent()));
 			}
 		}
 		Headers newHeaders = Headers.builder()
@@ -129,7 +130,7 @@ public class ServerTopicProtocol implements Protocol {
 				.header(Headers.TOPIC, topic)
 				.header(Headers.TRANSFER_KEY, transfer.getHeaders().get(Headers.TRANSFER_KEY))
 				.build();
-		requests.next(new Transfer(newHeaders, new TextNode("")));
+		outgoingRequests.next(new Transfer(newHeaders, new TextNode("")));
 	}
 
 	private final class TopicImpl<T> implements Topic<T> {
@@ -149,7 +150,7 @@ public class ServerTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.IS_INVOKE, true)
 						.build();
-				requests.next(new Transfer(newHeaders, JSON_MAPPER.valueToTree(data)));
+				outgoingRequests.next(new Transfer(newHeaders, JSON_MAPPER.valueToTree(data)));
 			}
 			return Observable.of(None.SELF);
 		}

@@ -23,6 +23,7 @@ import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.ClientsSelector;
 import com.gitlab.tixtix320.sonder.internal.server.SocketClientsSelector;
+import com.gitlab.tixtix320.sonder.internal.server.communication.BuiltInProtocol;
 import com.gitlab.tixtix320.sonder.internal.server.rpc.ServerRPCProtocol;
 import com.gitlab.tixtix320.sonder.internal.server.topic.ServerTopicProtocol;
 
@@ -54,8 +55,8 @@ public final class Sonder implements Closeable {
 		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 
-		clientsSelector.requests().map(this::clientPackToTransfer).subscribe(this::processTransfer);
-		protocols.forEach((protocolName, protocol) -> protocol.transfers().subscribe(transfer -> {
+		clientsSelector.incomingRequests().map(this::clientPackToTransfer).subscribe(this::processTransfer);
+		protocols.forEach((protocolName, protocol) -> protocol.outgoingTransfers().subscribe(transfer -> {
 			Number destinationClientId = transfer.getHeaders().getNonNullNumber(Headers.DESTINATION_CLIENT_ID);
 
 			transfer = new Transfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
@@ -74,8 +75,11 @@ public final class Sonder implements Closeable {
 
 	public void registerProtocol(Protocol protocol) {
 		String protocolName = protocol.getName();
+		if (BuiltInProtocol.NAMES.contains(protocolName)) {
+			throw new IllegalArgumentException(String.format("Protocol name %s is reserved", protocolName));
+		}
 		if (protocols.containsKey(protocolName)) {
-			throw new IllegalArgumentException(String.format("Protocol %s already exists", protocolName));
+			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));
 		}
 		protocols.put(protocolName, protocol);
 	}
@@ -84,12 +88,13 @@ public final class Sonder implements Closeable {
 	 * Get service from {@link ServerRPCProtocol}
 	 *
 	 * @return service
+	 *
 	 * @throws IllegalArgumentException if {@link ServerRPCProtocol} not registered
 	 */
 	public <T> T getRPCService(Class<T> clazz) {
-		Protocol protocol = protocols.get("sonder-RPC");
-		if (!(protocol instanceof ServerRPCProtocol)) {
-			throw new IllegalArgumentException(String.format("Protocol %s not registered", protocol.getName()));
+		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
+		if (protocol == null) {
+			throw new IllegalStateException("RPC protocol not registered");
 		}
 		return ((ServerRPCProtocol) protocol).getService(clazz);
 	}
@@ -98,18 +103,20 @@ public final class Sonder implements Closeable {
 	 * Register topic publisher for {@link ServerTopicProtocol} and return
 	 *
 	 * @return topic publisher
+	 *
 	 * @throws IllegalArgumentException if {@link ServerTopicProtocol} not registered
 	 */
 	public <T> Topic<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
-		Protocol protocol = protocols.get("sonder-topic");
-		if (!(protocol instanceof ServerTopicProtocol)) {
-			throw new IllegalArgumentException(String.format("Protocol %s not registered", protocol.getName()));
+		Protocol protocol = protocols.get(BuiltInProtocol.TOPIC.getName());
+		if (protocol == null) {
+			throw new IllegalStateException("Topic protocol not registered");
 		}
 		return ((ServerTopicProtocol) protocol).registerTopicPublisher(topic, dataType);
 	}
 
 	@Override
-	public void close() throws IOException {
+	public void close()
+			throws IOException {
 		clientsSelector.close();
 	}
 
@@ -152,6 +159,6 @@ public final class Sonder implements Closeable {
 		if (protocol == null) {
 			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
 		}
-		protocol.handleTransfer(transfer);
+		protocol.handleIncomingTransfer(transfer);
 	}
 }

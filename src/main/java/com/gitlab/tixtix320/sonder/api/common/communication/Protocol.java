@@ -6,9 +6,9 @@ import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 
 public interface Protocol extends Closeable {
 
-	void handleTransfer(Transfer transfer);
+	void handleIncomingTransfer(Transfer transfer);
 
-	Observable<Transfer> transfers();
+	Observable<Transfer> outgoingTransfers();
 
 	String getName();
 }

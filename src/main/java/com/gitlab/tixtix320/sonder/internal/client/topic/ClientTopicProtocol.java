@@ -16,10 +16,9 @@ import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
+import com.gitlab.tixtix320.sonder.internal.client.communication.BuiltInProtocol;
 
 public class ClientTopicProtocol implements Protocol {
-
-	private static final Object NONE = new Object();
 
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
@@ -31,7 +30,7 @@ public class ClientTopicProtocol implements Protocol {
 
 	private final IDGenerator transferIdGenerator;
 
-	private final Map<String, Object> subscriptions; // this is used via Set
+	private final Map<String, None> subscriptions; // this is used as Set
 
 	private final Subject<Transfer> requests;
 
@@ -45,7 +44,7 @@ public class ClientTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void handleTransfer(Transfer transfer) {
+	public void handleIncomingTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 		JsonNode contentNode = transfer.getContent();
 
@@ -81,17 +80,18 @@ public class ClientTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public Observable<Transfer> transfers() {
+	public Observable<Transfer> outgoingTransfers() {
 		return requests.asObservable();
 	}
 
 	@Override
 	public String getName() {
-		return "sonder-topic";
+		return BuiltInProtocol.TOPIC.getName();
 	}
 
 	@Override
-	public void close() throws IOException {
+	public void close()
+			throws IOException {
 		requests.complete();
 		topicSubjects.values().forEach(Subject::complete);
 		responseSubjects.values().forEach(Subject::complete);
@@ -137,7 +137,7 @@ public class ClientTopicProtocol implements Protocol {
 						.header(Headers.TOPIC_ACTION, "subscribe")
 						.build();
 				requests.next(new Transfer(headers, new TextNode("")));
-				return NONE;
+				return None.SELF;
 			});
 
 			@SuppressWarnings("unchecked")
