@@ -1,10 +1,10 @@
-package com.gitlab.tixtix320.sonder.internal.client.communication;
+package com.gitlab.tixtix320.sonder.internal.common.communication;
 
 import java.util.List;
 
 public enum BuiltInProtocol {
-	RPC("clonder-RPC"),
-	TOPIC("clonder-topic");
+	RPC("sonder-RPC"),
+	TOPIC("sonder-topic");
 
 	public static final List<String> NAMES = List.of(RPC.name, TOPIC.name);
 

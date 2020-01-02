@@ -115,7 +115,7 @@ public class ServerTopicProtocol implements Protocol {
 
 	private void publishToClients(String topic, Transfer transfer, Collection<Long> clients, long sourceClientId) {
 		for (Long clientId : clients) {
-			if (sourceClientId != clientId) {
+			if (clientId != sourceClientId) {
 				Headers newHeaders = Headers.builder()
 						.header(Headers.SOURCE_CLIENT_ID, sourceClientId)
 						.header(Headers.DESTINATION_CLIENT_ID, clientId)

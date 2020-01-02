@@ -1,4 +1,4 @@
-package com.gitlab.tixtix320.sonder.server;
+package com.gitlab.tixtix320.sonder;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -16,7 +16,8 @@ public final class ServerTest {
 
 	public static void main(String[] args)
 			throws InterruptedException, IOException {
-		Sonder sonder = Sonder.withBuiltInProtocols(Integer.parseInt(args[0]), "com.gitlab.tixtix320.sonder.server");
+		Thread.sleep(5000);
+		Sonder sonder = Sonder.withBuiltInProtocols(Integer.parseInt(args[0]), "com.gitlab.tixtix320.sonder.api");
 
 		Topic<List<String>> topic = sonder.registerTopic("foo", new TypeReference<>() {});
 		topic.asObservable().subscribe(list -> System.out.println((list.get(0) + 3)));

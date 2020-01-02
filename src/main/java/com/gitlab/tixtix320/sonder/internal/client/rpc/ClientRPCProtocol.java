@@ -22,7 +22,7 @@ import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
-import com.gitlab.tixtix320.sonder.internal.client.communication.BuiltInProtocol;
+import com.gitlab.tixtix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.PathNotFoundException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraArg;

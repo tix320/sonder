@@ -16,7 +16,7 @@ import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
-import com.gitlab.tixtix320.sonder.internal.client.communication.BuiltInProtocol;
+import com.gitlab.tixtix320.sonder.internal.common.communication.BuiltInProtocol;
 
 public class ClientTopicProtocol implements Protocol {
 

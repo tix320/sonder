@@ -14,11 +14,12 @@ import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
  */
 public final class Topic1Test {
 
-	public static void main(String[] args) throws IOException, InterruptedException {
+	public static void main(String[] args)
+			throws IOException, InterruptedException {
 		Clonder clonder = Clonder.withBuiltInProtocols("localhost", 8888, "com.gitlab.tixtix320.sonder.client");
 
 		clonder.getRPCService(A.class).send("lmfaoo").subscribe(integers -> System.out.println(integers));
-		Topic<List<String>> topic = clonder.registerTopicPublisher("foo", new TypeReference<>() {});
+		Topic<List<String>> topic = clonder.registerTopic("foo", new TypeReference<>() {});
 		topic.asObservable().subscribe(list -> System.out.println((list.get(0) + 3)));
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {

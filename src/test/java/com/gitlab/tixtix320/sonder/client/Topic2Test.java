@@ -11,10 +11,11 @@ import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 
 public class Topic2Test {
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args)
+			throws IOException {
 		Clonder clonder = Clonder.withBuiltInProtocols("localhost", 8888, "com.gitlab.tixtix320.sonder.client");
 
-		Topic<List<String>> topic = clonder.registerTopicPublisher("foo", new TypeReference<>() {});
+		Topic<List<String>> topic = clonder.registerTopic("foo", new TypeReference<>() {});
 		topic.asObservable().subscribe(System.out::println);
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {

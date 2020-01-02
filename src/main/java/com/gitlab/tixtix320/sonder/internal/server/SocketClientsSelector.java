@@ -18,11 +18,14 @@ import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
 import com.gitlab.tixtix320.sonder.internal.common.communication.PackChannel;
+import com.gitlab.tixtix320.sonder.internal.common.communication.PackConsumeException;
 import com.gitlab.tixtix320.sonder.internal.common.communication.SocketConnectionException;
 
 public final class SocketClientsSelector implements ClientsSelector {
 
 	private final Selector selector;
+
+	private final ServerSocketChannel serverChannel;
 
 	private final Subject<ClientPack> incomingRequests;
 
@@ -38,7 +41,18 @@ public final class SocketClientsSelector implements ClientsSelector {
 		this.connections = new ConcurrentHashMap<>();
 		this.messageQueues = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1);
-		start(address);
+
+		try {
+			serverChannel = ServerSocketChannel.open();
+			serverChannel.bind(address);
+			serverChannel.configureBlocking(false);
+			serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+		}
+		catch (IOException e) {
+			throw new SocketConnectionException("Cannot open server socket channel", e);
+		}
+
+		start();
 	}
 
 	@Override
@@ -64,18 +78,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		selector.close();
 	}
 
-	private void start(InetSocketAddress address) {
-		ServerSocketChannel serverChannel;
-		try {
-			serverChannel = ServerSocketChannel.open();
-			serverChannel.bind(address);
-			serverChannel.configureBlocking(false);
-			serverChannel.register(selector, SelectionKey.OP_ACCEPT);
-		}
-		catch (IOException e) {
-			throw new SocketConnectionException("Cannot open server socket channel", e);
-		}
-
+	private void start() {
 		new Thread(() -> {
 			while (true) {
 				try {
@@ -90,51 +93,13 @@ public final class SocketClientsSelector implements ClientsSelector {
 					SelectionKey selectionKey = iterator.next();
 					try {
 						if (selectionKey.isAcceptable()) {
-							SocketChannel clientChannel = serverChannel.accept();
-							clientChannel.configureBlocking(false);
-							long connectedClientID = clientIdGenerator.next();
-
-							clientChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE,
-									connectedClientID);
-
-							PackChannel packChannel = new PackChannel(clientChannel);
-							packChannel.packs()
-									.subscribe(
-											bytes -> incomingRequests.next(new ClientPack(connectedClientID, bytes)));
-							connections.put(connectedClientID, packChannel);
-
-							ConcurrentLinkedQueue<byte[]> queue = new ConcurrentLinkedQueue<>();
-
-							messageQueues.put(connectedClientID, queue);
+							accept();
 						}
 						else if (selectionKey.isReadable()) {
-							Long clientId = (Long) selectionKey.attachment();
-
-							PackChannel channel = connections.get(clientId);
-							try {
-								channel.read();
-							}
-							catch (IOException e) {
-								connections.remove(clientId);
-								throw e;
-							}
+							read(selectionKey);
 						}
 						else if (selectionKey.isWritable()) {
-							Long clientId = (Long) selectionKey.attachment();
-							PackChannel channel = connections.get(clientId);
-
-							Queue<byte[]> queue = messageQueues.get(clientId);
-
-							byte[] data = queue.poll();
-							if (data != null) {
-								try {
-									channel.write(data);
-								}
-								catch (IOException e) {
-									connections.remove(clientId);
-									throw e;
-								}
-							}
+							write(selectionKey);
 						}
 						else {
 							selectionKey.cancel();
@@ -150,5 +115,59 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 			}
 		}).start();
+	}
+
+	private void accept()
+			throws IOException {
+		SocketChannel clientChannel = serverChannel.accept();
+		clientChannel.configureBlocking(false);
+		long connectedClientID = clientIdGenerator.next();
+
+		clientChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connectedClientID);
+
+		PackChannel packChannel = new PackChannel(clientChannel);
+		packChannel.packs().subscribe(bytes -> incomingRequests.next(new ClientPack(connectedClientID, bytes)));
+		connections.put(connectedClientID, packChannel);
+
+		messageQueues.put(connectedClientID, new ConcurrentLinkedQueue<>());
+	}
+
+	private void read(SelectionKey selectionKey)
+			throws PackConsumeException, IOException {
+		Long clientId = (Long) selectionKey.attachment();
+
+		PackChannel channel = connections.get(clientId);
+		try {
+			channel.read();
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+			connections.remove(clientId);
+			if (channel.isOpen()) {
+				channel.close();
+			}
+		}
+	}
+
+	private void write(SelectionKey selectionKey)
+			throws IOException {
+		Long clientId = (Long) selectionKey.attachment();
+		PackChannel channel = connections.get(clientId);
+
+		Queue<byte[]> queue = messageQueues.get(clientId);
+
+		byte[] data = queue.poll();
+		if (data != null) {
+			try {
+				channel.write(data);
+			}
+			catch (IOException e) {
+				e.printStackTrace();
+				connections.remove(clientId);
+				if (channel.isOpen()) {
+					channel.close();
+				}
+			}
+		}
 	}
 }

@@ -22,9 +22,9 @@ import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 import com.gitlab.tixtix320.sonder.internal.client.ServerConnection;
 import com.gitlab.tixtix320.sonder.internal.client.SocketServerConnection;
-import com.gitlab.tixtix320.sonder.internal.client.communication.BuiltInProtocol;
 import com.gitlab.tixtix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.gitlab.tixtix320.sonder.internal.client.topic.ClientTopicProtocol;
+import com.gitlab.tixtix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.rpc.ServerRPCProtocol;
 
@@ -103,9 +103,9 @@ public final class Clonder implements Closeable {
 	 *
 	 * @return topic publisher
 	 *
-	 * @throws IllegalArgumentException if {@link ClientTopicProtocol} not registered
+	 * @throws IllegalStateException if {@link ClientTopicProtocol} not registered
 	 */
-	public <T> Topic<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
+	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
 		Protocol protocol = protocols.get(BuiltInProtocol.TOPIC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("Topic protocol not registered");
