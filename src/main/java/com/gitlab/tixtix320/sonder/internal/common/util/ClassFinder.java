@@ -2,6 +2,7 @@ package com.gitlab.tixtix320.sonder.internal.common.util;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
@@ -51,11 +52,18 @@ public final class ClassFinder {
 				throw new IllegalStateException("wtf");
 			}
 
-			String jarPath = resourceName.substring(5, jarExtensionIndex + 4); // truncate file:
+			String substring = resourceName.substring(0, jarExtensionIndex + 4); // keep jar path
+			Path jarPath;
+			try {
+				jarPath = Path.of(new URL(substring).toURI());
+			}
+			catch (URISyntaxException | MalformedURLException e) {
+				throw new IllegalStateException(e);
+			}
 
 			JarFile jar;
 			try {
-				jar = new JarFile(jarPath);
+				jar = new JarFile(jarPath.toFile());
 			}
 			catch (IOException e) {
 				throw new RuntimeException(e);

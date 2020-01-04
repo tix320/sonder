@@ -59,14 +59,15 @@ public final class PackChannel implements Closeable {
 	 */
 	public void read()
 			throws IOException, PackConsumeException {
-		buffer.position(0);
 		int bytesCount;
 
+		buffer.position(0);
 		bytesCount = channel.read(buffer);
 		try {
 			consume(buffer, bytesCount);
 		}
 		catch (Throwable e) {
+			reset();
 			throw new PackConsumeException("Error occurs while consuming pack", e);
 		}
 	}
