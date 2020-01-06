@@ -25,6 +25,7 @@ import com.gitlab.tixtix320.sonder.internal.client.SocketServerConnection;
 import com.gitlab.tixtix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.gitlab.tixtix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.gitlab.tixtix320.sonder.internal.common.communication.BuiltInProtocol;
+import com.gitlab.tixtix320.sonder.internal.common.communication.Pack;
 import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.rpc.ServerRPCProtocol;
 
@@ -61,14 +62,17 @@ public final class Clonder implements Closeable {
 			transfer = new Transfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
 					transfer.getContent());
 
-			byte[] data;
+			byte[] headers;
 			try {
-				data = JSON_MAPPER.writeValueAsBytes(transfer);
+				headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
 			}
 			catch (JsonProcessingException e) {
 				throw new IllegalStateException("Cannot write JSON", e);
 			}
-			connection.send(data);
+
+			byte[] content = transfer.getContent();
+
+			connection.send(new Pack(headers, content));
 		}));
 	}
 
@@ -119,36 +123,23 @@ public final class Clonder implements Closeable {
 		connection.close();
 	}
 
-	private Transfer convertDataPackToTransfer(byte[] dataPack) {
-		JsonNode data;
+	private Transfer convertDataPackToTransfer(Pack dataPack) {
+		JsonNode headersNode;
 		try {
-			data = JSON_MAPPER.readTree(dataPack);
+			headersNode = JSON_MAPPER.readTree(dataPack.getHeaders());
 		}
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
 
-		if (!(data instanceof ObjectNode)) {
-			throw new IllegalStateException(String.format("Data must be JSON object, but was %s", data));
+		if (!(headersNode instanceof ObjectNode)) {
+			throw new IllegalStateException(String.format("Headers must be JSON object, but was %s", headersNode));
 		}
 
-		ObjectNode dataObject = (ObjectNode) data;
-		JsonNode headers = dataObject.get("headers");
-		if (!(headers instanceof ObjectNode)) {
-			throw new IllegalStateException(String.format("Headers must be JSON object, but was %s", headers));
-		}
-		ObjectNode headersObject = (ObjectNode) headers;
-		Iterator<Map.Entry<String, JsonNode>> iterator = headersObject.fields();
-		Headers.HeadersBuilder builder = Headers.builder();
-		while (iterator.hasNext()) {
-			Map.Entry<String, JsonNode> entry = iterator.next();
-			JsonNode value = entry.getValue();
-			if (value instanceof ValueNode) { // ignore non primitive headers
-				builder.header(entry.getKey(), JSON_MAPPER.convertValue(value, Object.class));
-			}
-		}
-		JsonNode content = dataObject.get("content");
-		return new Transfer(builder.build(), content);
+		Headers headers = convertObjectNodeToHeaders((ObjectNode) headersNode);
+		byte[] content = dataPack.getContent();
+
+		return new Transfer(headers, content);
 	}
 
 	private void processTransfer(Transfer transfer) {
@@ -158,5 +149,19 @@ public final class Clonder implements Closeable {
 			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
 		}
 		protocol.handleIncomingTransfer(transfer);
+	}
+
+	private static Headers convertObjectNodeToHeaders(ObjectNode node) {
+		Iterator<Map.Entry<String, JsonNode>> iterator = node.fields();
+		Headers.HeadersBuilder builder = Headers.builder();
+		while (iterator.hasNext()) {
+			Map.Entry<String, JsonNode> entry = iterator.next();
+			JsonNode value = entry.getValue();
+			if (value instanceof ValueNode) { // ignore non primitive headers
+				builder.header(entry.getKey(), JSON_MAPPER.convertValue(value, Object.class));
+			}
+		}
+
+		return builder.build();
 	}
 }

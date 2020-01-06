@@ -19,8 +19,12 @@ public final class EndpointMethod extends ServiceMethod {
 
 	private final MethodHandle methodHandle;
 
-	public EndpointMethod(String path, Method method, List<Param> simpleParams, List<ExtraParam> extraParams) {
+	private final boolean isBinaryResult;
+
+	public EndpointMethod(String path, Method method, List<Param> simpleParams, List<ExtraParam> extraParams,
+						  boolean isBinaryResult) {
 		super(path, method, simpleParams, extraParams);
+		this.isBinaryResult = isBinaryResult;
 		try {
 			this.methodHandle = MethodHandles.publicLookup().unreflect(method);
 		}
@@ -29,6 +33,10 @@ public final class EndpointMethod extends ServiceMethod {
 					String.format("Cannot access to class %s, you must open your module must be open.",
 							method.getDeclaringClass()), e);
 		}
+	}
+
+	public boolean isBinaryResult() {
+		return isBinaryResult;
 	}
 
 	public Object invoke(Object instance, Object[] args) {

@@ -1,13 +1,11 @@
 package com.gitlab.tixtix320.sonder.internal.client.topic;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.TextNode;
+import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
@@ -46,7 +44,7 @@ public class ClientTopicProtocol implements Protocol {
 	@Override
 	public void handleIncomingTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
-		JsonNode contentNode = transfer.getContent();
+		byte[] content = transfer.getContent();
 
 		String topic = headers.getNonNullString(Headers.TOPIC);
 
@@ -58,14 +56,14 @@ public class ClientTopicProtocol implements Protocol {
 			}
 
 			TypeReference<?> dataType = dataTypesByTopic.get(topic);
+			Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
 			try {
-				Object object = JSON_MAPPER.convertValue(contentNode, dataType);
-				subject.next(object);
+				subject.next(contentObject);
 			}
 			catch (IllegalArgumentException e) {
 				throw new IllegalStateException(
 						String.format("Registered topic's (%s) data type (%s) is not compatible with received JSON %s",
-								topic, dataType.getType().getTypeName(), contentNode), e);
+								topic, dataType.getType().getTypeName(), contentObject), e);
 			}
 		}
 		else { // is response
@@ -90,8 +88,7 @@ public class ClientTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void close()
-			throws IOException {
+	public void close() {
 		requests.complete();
 		topicSubjects.values().forEach(Subject::complete);
 		responseSubjects.values().forEach(Subject::complete);
@@ -125,7 +122,7 @@ public class ClientTopicProtocol implements Protocol {
 					.build();
 			Subject<None> subject = Subject.single();
 			responseSubjects.put(transferKey, subject);
-			requests.next(new Transfer(headers, JSON_MAPPER.valueToTree(data)));
+			requests.next(new Transfer(headers, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
 			return subject.asObservable();
 		}
 
@@ -136,7 +133,7 @@ public class ClientTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.TOPIC_ACTION, "subscribe")
 						.build();
-				requests.next(new Transfer(headers, new TextNode("")));
+				requests.next(new Transfer(headers, new byte[0]));
 				return None.SELF;
 			});
 

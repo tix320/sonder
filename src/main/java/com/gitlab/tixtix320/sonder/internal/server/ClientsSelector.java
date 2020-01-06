@@ -13,15 +13,22 @@ public interface ClientsSelector extends Closeable {
 	class ClientPack {
 		private final long clientId;
 
+		private final byte[] headers;
+
 		private final byte[] data;
 
-		public ClientPack(long clientId, byte[] data) {
+		public ClientPack(long clientId, byte[] headers, byte[] data) {
 			this.clientId = clientId;
+			this.headers = headers;
 			this.data = data;
 		}
 
 		public long getClientId() {
 			return clientId;
+		}
+
+		public byte[] getHeaders() {
+			return headers;
 		}
 
 		public byte[] getData() {

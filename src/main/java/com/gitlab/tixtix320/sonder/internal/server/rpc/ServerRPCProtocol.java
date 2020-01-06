@@ -17,13 +17,16 @@ import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
 import com.gitlab.tixtix320.kiwi.api.util.None;
+import com.gitlab.tixtix320.sonder.api.common.communication.ContentType;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
+import com.gitlab.tixtix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
+import com.gitlab.tixtix320.sonder.internal.common.communication.UnsupportedContentTypeException;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.PathNotFoundException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.StartupException;
-import com.gitlab.tixtix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.*;
@@ -116,7 +119,8 @@ public final class ServerRPCProtocol implements Protocol {
 	}
 
 	@Override
-	public void close() throws IOException {
+	public void close()
+			throws IOException {
 		requests.complete();
 		responseSubjects.values().forEach(Subject::complete);
 	}
@@ -156,6 +160,16 @@ public final class ServerRPCProtocol implements Protocol {
 				.header(Headers.DESTINATION_CLIENT_ID, clientId)
 				.header(Headers.IS_INVOKE, true);
 
+		byte[] content;
+		if (method.isBinaryInvocation()) {
+			builder.contentType(ContentType.BINARY);
+			content = (byte[]) simpleArgs.get(0);
+		}
+		else {
+			builder.contentType(ContentType.JSON);
+			content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs));
+		}
+
 		if (method.needResponse()) {
 			Long transferKey = transferIdGenerator.next();
 			Headers headers = builder.header(Headers.TRANSFER_KEY, transferKey)
@@ -163,60 +177,92 @@ public final class ServerRPCProtocol implements Protocol {
 					.build();
 			Subject<Object> responseSubject = Subject.single();
 			responseSubjects.put(transferKey, responseSubject);
-			requests.next(new Transfer(headers, JSON_MAPPER.valueToTree(simpleArgs)));
+			requests.next(new Transfer(headers, content));
 			return responseSubject.asObservable();
 		}
 		else {
 			Headers headers = builder.header(Headers.NEED_RESPONSE, false).build();
-			requests.next(new Transfer(headers, JSON_MAPPER.valueToTree(simpleArgs)));
+			requests.next(new Transfer(headers, content));
 			return null;
 		}
 	}
 
 	private void processInvocation(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
-		JsonNode contentNode = transfer.getContent();
+		byte[] content = transfer.getContent();
 
 		String path = headers.getNonNullString(Headers.PATH);
 
-		EndpointMethod method = endpointsByPath.get(path);
-		if (method == null) {
+		EndpointMethod endpointMethod = endpointsByPath.get(path);
+		if (endpointMethod == null) {
 			throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
 		}
 
-		Number sourceClientId = headers.getNonNullNumber(Headers.SOURCE_CLIENT_ID);
 
-		if (!(contentNode instanceof ArrayNode)) {
-			throw new IllegalStateException(String.format("Content must be JSON array, but was %s", contentNode));
-		}
-		ArrayNode argsNode = (ArrayNode) contentNode;
+		Number sourceClientId = headers.getNumber(Headers.SOURCE_CLIENT_ID);
 
-		List<Param> simpleParams = method.getSimpleParams();
+		List<Param> simpleParams = endpointMethod.getSimpleParams();
 		Object[] simpleArgs = new Object[simpleParams.size()];
-		for (int i = 0; i < argsNode.size(); i++) {
-			JsonNode argNode = argsNode.get(i);
-			Param param = simpleParams.get(i);
-			simpleArgs[i] = Try.supplyOrRethrow(() -> JSON_MAPPER.convertValue(argNode, param.getType()));
+
+		ContentType contentType = headers.getContentType();
+
+		switch (contentType) {
+			case BINARY:
+				if (simpleArgs.length != 1) {
+					throw new IllegalStateException(String.format(
+							"The request type is byte[]. Consequently endpoint method %s(%s) must have only one parameter with type byte[]",
+							endpointMethod.getRawMethod().getName(), endpointMethod.getRawClass().getName()));
+				}
+				simpleArgs[0] = content;
+				break;
+			case JSON:
+				ArrayNode argsNode;
+				try {
+					argsNode = JSON_MAPPER.readValue(content, ArrayNode.class);
+				}
+				catch (IOException e) {
+					throw new IllegalStateException(e);
+				}
+				for (int i = 0; i < argsNode.size(); i++) {
+					JsonNode argNode = argsNode.get(i);
+					Param param = simpleParams.get(i);
+					simpleArgs[i] = Try.supplyOrRethrow(() -> JSON_MAPPER.convertValue(argNode, param.getType()));
+				}
+				break;
+			default:
+				throw new UnsupportedContentTypeException(contentType);
 		}
-		Object[] args = appendExtraArgs(simpleArgs, method.getExtraParams(),
+
+		Object[] args = appendExtraArgs(simpleArgs, endpointMethod.getExtraParams(),
 				Map.of(ClientID.class, sourceClientId.longValue()));
 
-		Object serviceInstance = endpointServices.get(method.getRawClass());
-		Object result = method.invoke(serviceInstance, args);
+		Object serviceInstance = endpointServices.get(endpointMethod.getRawClass());
+		Object result = endpointMethod.invoke(serviceInstance, args);
+
+		HeadersBuilder builder = Headers.builder();
+		byte[] transferContent;
+		if (endpointMethod.isBinaryResult()) {
+			builder.contentType(ContentType.BINARY);
+			transferContent = (byte[]) result;
+		}
+		else {
+			builder.contentType(ContentType.JSON);
+			transferContent = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(result));
+		}
+
 		Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
 		if (needResponse != null && needResponse) {
-			Headers newHeaders = Headers.builder()
-					.header(Headers.PATH, path)
+			Headers newHeaders = builder.header(Headers.PATH, path)
 					.header(Headers.DESTINATION_CLIENT_ID, sourceClientId)
 					.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY))
 					.build();
-			requests.next(new Transfer(newHeaders, JSON_MAPPER.valueToTree(result)));
+			requests.next(new Transfer(newHeaders, transferContent));
 		}
 	}
 
 	private void processResult(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
-		JsonNode contentNode = transfer.getContent();
+		byte[] content = transfer.getContent();
 
 		String path = headers.getNonNullString(Headers.PATH);
 
@@ -234,15 +280,24 @@ public final class ServerRPCProtocol implements Protocol {
 			}
 			else {
 				Object result;
-				try {
-					result = JSON_MAPPER.convertValue(contentNode, responseType);
+				ContentType contentType = headers.getContentType();
+				switch (contentType) {
+					case BINARY:
+						result = content;
+						break;
+					case JSON:
+						try {
+							result = JSON_MAPPER.readValue(content, responseType);
+						}
+						catch (IOException e) {
+							throw new IncompatibleTypeException(
+									String.format("Expected type %s cannot deserialized from given bytes",
+											responseType.getGenericSignature()), e);
+						}
+						break;
+					default:
+						throw new UnsupportedContentTypeException(contentType);
 				}
-				catch (IllegalArgumentException e) {
-					throw new IncompatibleTypeException(
-							String.format("Expected type %s is not compatible with received JSON %s",
-									responseType.getGenericSignature(), contentNode), e);
-				}
-
 				try {
 					subject.next(result);
 				}

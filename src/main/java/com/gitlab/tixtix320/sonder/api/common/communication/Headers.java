@@ -26,6 +26,10 @@ public final class Headers implements Serializable {
 		return values.get(key);
 	}
 
+	public ContentType getContentType() {
+		return ContentType.valueOf(getNonNullString(Headers.CONTENT_TYPE));
+	}
+
 	public String getNonNullString(String key) {
 		Object value = values.get(key);
 		if (value instanceof String) {
@@ -114,6 +118,11 @@ public final class Headers implements Serializable {
 			return this;
 		}
 
+		public HeadersBuilder contentType(ContentType contentType) {
+			values.put(CONTENT_TYPE, contentType.name());
+			return this;
+		}
+
 		public Headers build() {
 			return new Headers(values);
 		}
@@ -129,6 +138,7 @@ public final class Headers implements Serializable {
 	public static final String NEED_RESPONSE = "need-response";
 	public static final String TOPIC = "topic";
 	public static final String TOPIC_ACTION = "topic-action";
+	public static final String CONTENT_TYPE = "content-type";
 
 	public static class HeadersSerializer extends StdSerializer<Headers> {
 

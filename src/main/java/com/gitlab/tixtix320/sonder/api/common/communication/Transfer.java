@@ -2,17 +2,15 @@ package com.gitlab.tixtix320.sonder.api.common.communication;
 
 import java.io.Serializable;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
 public final class Transfer implements Serializable {
 
 	private static final long serialVersionUID = -3285743284096636666L;
 
 	private final Headers headers;
 
-	private final JsonNode content;
+	private final byte[] content;
 
-	public Transfer(Headers headers, JsonNode content) {
+	public Transfer(Headers headers, byte[] content) {
 		this.headers = headers;
 		this.content = content;
 	}
@@ -21,7 +19,7 @@ public final class Transfer implements Serializable {
 		return headers;
 	}
 
-	public JsonNode getContent() {
+	public byte[] getContent() {
 		return content;
 	}
 }

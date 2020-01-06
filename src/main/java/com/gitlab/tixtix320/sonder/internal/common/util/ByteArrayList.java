@@ -6,7 +6,7 @@ public final class ByteArrayList {
 
 	private int index;
 
-	public ByteArrayList() {
+	public ByteArrayList(int initialSize) {
 		this.data = new byte[512];
 		this.index = 0;
 	}

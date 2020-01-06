@@ -21,6 +21,7 @@ import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 import com.gitlab.tixtix320.sonder.internal.common.communication.BuiltInProtocol;
+import com.gitlab.tixtix320.sonder.internal.common.communication.Pack;
 import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.ClientsSelector;
 import com.gitlab.tixtix320.sonder.internal.server.SocketClientsSelector;
@@ -62,14 +63,17 @@ public final class Sonder implements Closeable {
 			transfer = new Transfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
 					transfer.getContent());
 
-			byte[] data;
+			byte[] headers;
 			try {
-				data = JSON_MAPPER.writeValueAsBytes(transfer);
+				headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
 			}
 			catch (JsonProcessingException e) {
 				throw new IllegalStateException("Cannot write JSON", e);
 			}
-			clientsSelector.send(new ClientsSelector.ClientPack(destinationClientId.longValue(), data));
+
+			byte[] content = transfer.getContent();
+
+			clientsSelector.send(new ClientsSelector.ClientPack(destinationClientId.longValue(), headers, content));
 		}));
 	}
 
@@ -121,35 +125,25 @@ public final class Sonder implements Closeable {
 	}
 
 	private Transfer clientPackToTransfer(ClientsSelector.ClientPack clientPack) {
-		JsonNode data;
+		Pack dataPack = new Pack(clientPack.getHeaders(), clientPack.getData());
+
+		JsonNode headersNode;
 		try {
-			data = JSON_MAPPER.readTree(clientPack.getData());
+			headersNode = JSON_MAPPER.readTree(dataPack.getHeaders());
 		}
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
-		if (!(data instanceof ObjectNode)) {
-			throw new IllegalStateException(String.format("data must be JSON object, but was %s", data));
+
+		if (!(headersNode instanceof ObjectNode)) {
+			throw new IllegalStateException(String.format("Headers must be JSON object, but was %s", headersNode));
 		}
 
-		ObjectNode dataObject = (ObjectNode) data;
-		JsonNode headers = dataObject.get("headers");
-		if (!(headers instanceof ObjectNode)) {
-			throw new IllegalStateException(String.format("Headers must be JSON object, but was %s", headers));
-		}
-		ObjectNode headersObject = (ObjectNode) headers;
-		Iterator<Map.Entry<String, JsonNode>> iterator = headersObject.fields();
-		Headers.HeadersBuilder builder = Headers.builder();
-		while (iterator.hasNext()) {
-			Map.Entry<String, JsonNode> entry = iterator.next();
-			JsonNode value = entry.getValue();
-			if (value instanceof ValueNode) { // ignore non primitive headers
-				builder.header(entry.getKey(), JSON_MAPPER.convertValue(value, Object.class));
-			}
-		}
-		builder.header(Headers.SOURCE_CLIENT_ID, clientPack.getClientId());
-		JsonNode content = dataObject.get("content");
-		return new Transfer(builder.build(), content);
+		Headers headers = convertObjectNodeToHeaders((ObjectNode) headersNode);
+		headers = headers.compose().header(Headers.SOURCE_CLIENT_ID, clientPack.getClientId()).build();
+		byte[] content = dataPack.getContent();
+
+		return new Transfer(headers, content);
 	}
 
 	private void processTransfer(Transfer transfer) {
@@ -160,5 +154,19 @@ public final class Sonder implements Closeable {
 			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
 		}
 		protocol.handleIncomingTransfer(transfer);
+	}
+
+	private static Headers convertObjectNodeToHeaders(ObjectNode node) {
+		Iterator<Map.Entry<String, JsonNode>> iterator = node.fields();
+		Headers.HeadersBuilder builder = Headers.builder();
+		while (iterator.hasNext()) {
+			Map.Entry<String, JsonNode> entry = iterator.next();
+			JsonNode value = entry.getValue();
+			if (value instanceof ValueNode) { // ignore non primitive headers
+				builder.header(entry.getKey(), JSON_MAPPER.convertValue(value, Object.class));
+			}
+		}
+
+		return builder.build();
 	}
 }

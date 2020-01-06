@@ -66,7 +66,7 @@ public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 	protected OriginMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
 											   List<ExtraParam> extraParams) {
 		return new OriginMethod(path, method, simpleParams, extraParams, needResponse(method),
-				getDestination(extraParams), constructResponseType(method));
+				getDestination(extraParams), constructResponseType(method), isBinaryInvocation(simpleParams));
 	}
 
 	private JavaType constructResponseType(Method method) {
@@ -82,6 +82,14 @@ public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 		else {
 			throw new IllegalStateException();
 		}
+	}
+
+	private boolean isBinaryInvocation(List<Param> simpleParams) {
+		if (simpleParams.size() == 1) {
+			Param param = simpleParams.get(0);
+			return param.getType().getRawClass() == byte[].class;
+		}
+		return false;
 	}
 
 	@Override

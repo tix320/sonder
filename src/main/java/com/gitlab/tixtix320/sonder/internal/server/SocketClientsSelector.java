@@ -17,6 +17,7 @@ import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
+import com.gitlab.tixtix320.sonder.internal.common.communication.Pack;
 import com.gitlab.tixtix320.sonder.internal.common.communication.PackChannel;
 import com.gitlab.tixtix320.sonder.internal.common.communication.PackConsumeException;
 import com.gitlab.tixtix320.sonder.internal.common.communication.SocketConnectionException;
@@ -31,7 +32,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final Map<Long, PackChannel> connections;
 
-	private final Map<Long, Queue<byte[]>> messageQueues;
+	private final Map<Long, Queue<Pack>> messageQueues;
 
 	private final IDGenerator clientIdGenerator;
 
@@ -64,11 +65,11 @@ public final class SocketClientsSelector implements ClientsSelector {
 	public void send(ClientPack clientPack) {
 		long clientId = clientPack.getClientId();
 
-		Queue<byte[]> queue = messageQueues.get(clientId);
+		Queue<Pack> queue = messageQueues.get(clientId);
 		if (queue == null) {
 			throw new IllegalArgumentException(String.format("Client by id %s not found", clientId));
 		}
-		queue.add(clientPack.getData());
+		queue.add(new Pack(clientPack.getHeaders(), clientPack.getData()));
 	}
 
 	@Override
@@ -126,7 +127,9 @@ public final class SocketClientsSelector implements ClientsSelector {
 		clientChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connectedClientID);
 
 		PackChannel packChannel = new PackChannel(clientChannel);
-		packChannel.packs().subscribe(bytes -> incomingRequests.next(new ClientPack(connectedClientID, bytes)));
+		packChannel.packs()
+				.subscribe(pack -> incomingRequests.next(
+						new ClientPack(connectedClientID, pack.getHeaders(), pack.getContent())));
 		connections.put(connectedClientID, packChannel);
 
 		messageQueues.put(connectedClientID, new ConcurrentLinkedQueue<>());
@@ -154,9 +157,9 @@ public final class SocketClientsSelector implements ClientsSelector {
 		Long clientId = (Long) selectionKey.attachment();
 		PackChannel channel = connections.get(clientId);
 
-		Queue<byte[]> queue = messageQueues.get(clientId);
+		Queue<Pack> queue = messageQueues.get(clientId);
 
-		byte[] data = queue.poll();
+		Pack data = queue.poll();
 		if (data != null) {
 			try {
 				channel.write(data);

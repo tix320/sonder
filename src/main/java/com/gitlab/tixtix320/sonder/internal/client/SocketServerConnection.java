@@ -6,11 +6,11 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
 
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
+import com.gitlab.tixtix320.sonder.internal.common.communication.Pack;
 import com.gitlab.tixtix320.sonder.internal.common.communication.PackChannel;
 import com.gitlab.tixtix320.sonder.internal.common.communication.SocketConnectionException;
 
-public class SocketServerConnection
-		implements ServerConnection {
+public class SocketServerConnection implements ServerConnection {
 
 	private final PackChannel channel;
 
@@ -25,14 +25,14 @@ public class SocketServerConnection
 	}
 
 	@Override
-	public Observable<byte[]> incomingRequests() {
+	public Observable<Pack> incomingRequests() {
 		return channel.packs();
 	}
 
 	@Override
-	public void send(byte[] data) {
+	public void send(Pack pack) {
 		try {
-			channel.write(data);
+			channel.write(pack);
 		}
 		catch (ClosedChannelException e) {
 			throw new SocketConnectionException("Socket connection is closed", e);

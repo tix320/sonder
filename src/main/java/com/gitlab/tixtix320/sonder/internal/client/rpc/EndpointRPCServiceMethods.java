@@ -63,11 +63,15 @@ public class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointMethod>
 	@Override
 	protected EndpointMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
 												 List<ExtraParam> extraParams) {
-		return new EndpointMethod(path, method, simpleParams, extraParams);
+		return new EndpointMethod(path, method, simpleParams, extraParams, isBinaryResult(method));
 	}
 
 	@Override
 	protected Map<Class<? extends Annotation>, ExtraParamDefinition> getExtraParamDefinitions() {
 		return Map.of(ClientID.class, new RPCServiceMethods.ExtraParamDefinition(ClientID.class, Long.class, false));
+	}
+
+	private boolean isBinaryResult(Method method) {
+		return method.getReturnType() == byte[].class;
 	}
 }

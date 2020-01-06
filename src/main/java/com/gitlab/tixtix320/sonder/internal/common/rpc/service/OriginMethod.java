@@ -18,12 +18,16 @@ public final class OriginMethod extends ServiceMethod {
 
 	private final JavaType responseType;
 
+	private final boolean isBinaryInvocation;
+
 	public OriginMethod(String path, Method method, List<Param> simpleParams, List<ExtraParam> extraParams,
-						boolean needResponse, Destination destination, JavaType responseType) {
+						boolean needResponse, Destination destination, JavaType responseType,
+						boolean isBinaryInvocation) {
 		super(path, method, simpleParams, extraParams);
 		this.needResponse = needResponse;
 		this.destination = destination;
 		this.responseType = responseType;
+		this.isBinaryInvocation = isBinaryInvocation;
 	}
 
 	public boolean needResponse() {
@@ -38,11 +42,18 @@ public final class OriginMethod extends ServiceMethod {
 		return responseType;
 	}
 
+	public boolean isBinaryInvocation() {
+		return isBinaryInvocation;
+	}
+
 	@Override
 	public boolean equals(Object o) {
-		if (this == o) return true;
-		if (o == null || getClass() != o.getClass()) return false;
-		if (!super.equals(o)) return false;
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
+		if (!super.equals(o))
+			return false;
 		OriginMethod that = (OriginMethod) o;
 		return needResponse == that.needResponse && destination == that.destination;
 	}
@@ -54,10 +65,25 @@ public final class OriginMethod extends ServiceMethod {
 
 	@Override
 	public String toString() {
-		return "OriginMethod{" + "needResponse=" + needResponse + ", destination=" + destination + ", path='" + path + '\'' + ", rawMethod=" + rawMethod + ", simpleParams=" + simpleParams + ", extraParams=" + extraParams + '}';
+		return "OriginMethod{"
+			   + "needResponse="
+			   + needResponse
+			   + ", destination="
+			   + destination
+			   + ", path='"
+			   + path
+			   + '\''
+			   + ", rawMethod="
+			   + rawMethod
+			   + ", simpleParams="
+			   + simpleParams
+			   + ", extraParams="
+			   + extraParams
+			   + '}';
 	}
 
 	public enum Destination {
-		CLIENT, SERVER
+		CLIENT,
+		SERVER
 	}
 }

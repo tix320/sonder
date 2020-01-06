@@ -1,6 +1,5 @@
 package com.gitlab.tixtix320.sonder.internal.server.topic;
 
-import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Queue;
@@ -8,9 +7,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.TextNode;
+import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.None;
@@ -67,7 +65,7 @@ public class ServerTopicProtocol implements Protocol {
 
 	public void handleForServer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
-		JsonNode contentNode = transfer.getContent();
+		byte[] content = transfer.getContent();
 
 		String topic = (String) headers.get(Headers.TOPIC);
 
@@ -77,14 +75,14 @@ public class ServerTopicProtocol implements Protocol {
 		}
 
 		TypeReference<?> dataType = dataTypesByTopic.get(topic);
+		Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
 		try {
-			Object object = JSON_MAPPER.convertValue(contentNode, dataType);
-			subject.next(object);
+			subject.next(contentObject);
 		}
 		catch (IllegalArgumentException e) {
 			throw new IllegalStateException(
 					String.format("Registered topic's (%s) data type (%s) is not compatible with received JSON %s",
-							topic, dataType.getType().getTypeName(), contentNode), e);
+							topic, dataType.getType().getTypeName(), contentObject), e);
 		}
 	}
 
@@ -99,8 +97,7 @@ public class ServerTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void close()
-			throws IOException {
+	public void close() {
 		outgoingRequests.complete();
 	}
 
@@ -130,7 +127,7 @@ public class ServerTopicProtocol implements Protocol {
 				.header(Headers.TOPIC, topic)
 				.header(Headers.TRANSFER_KEY, transfer.getHeaders().get(Headers.TRANSFER_KEY))
 				.build();
-		outgoingRequests.next(new Transfer(newHeaders, new TextNode("")));
+		outgoingRequests.next(new Transfer(newHeaders, new byte[0]));
 	}
 
 	private final class TopicImpl<T> implements Topic<T> {
@@ -150,7 +147,8 @@ public class ServerTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.IS_INVOKE, true)
 						.build();
-				outgoingRequests.next(new Transfer(newHeaders, JSON_MAPPER.valueToTree(data)));
+				outgoingRequests.next(
+						new Transfer(newHeaders, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
 			}
 			return Observable.of(None.SELF);
 		}
