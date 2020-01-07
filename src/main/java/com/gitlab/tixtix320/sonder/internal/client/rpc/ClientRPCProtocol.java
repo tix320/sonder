@@ -47,9 +47,9 @@ public final class ClientRPCProtocol implements Protocol {
 
 	private final Map<String, EndpointMethod> endpointsByPath;
 
-	private final IDGenerator transferIdGenerator;
-
 	private final Map<Long, Subject<Object>> responseSubjects;
+
+	private final IDGenerator transferIdGenerator;
 
 	private final Subject<Transfer> outgoingRequests;
 
@@ -154,30 +154,46 @@ public final class ClientRPCProtocol implements Protocol {
 				throw new IllegalStateException(String.format("Unknown enum type %s", method.getDestination()));
 		}
 
-		byte[] content;
-		if (method.isBinaryInvocation()) {
-			builder.contentType(ContentType.BINARY);
-			content = (byte[]) simpleArgs.get(0);
-		}
-		else {
-			builder.contentType(ContentType.JSON);
-			content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs));
+		Transfer transfer;
+		switch (method.requestDataType()) {
+			case ARGUMENTS:
+				builder.contentType(ContentType.JSON);
+				byte[] content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs));
+				transfer = new StaticTransfer(builder.build(), content);
+				break;
+			case BINARY:
+				builder.contentType(ContentType.BINARY);
+				transfer = new StaticTransfer(builder.build(), (byte[]) simpleArgs.get(0));
+				break;
+			case TRANSFER:
+				builder.contentType(ContentType.TRANSFER);
+				transfer = (Transfer) simpleArgs.get(0);
+				break;
+			default:
+				throw new IllegalStateException();
 		}
 
 		if (method.needResponse()) {
 			long transferKey = transferIdGenerator.next();
-			Headers headers = builder.header(Headers.TRANSFER_KEY, transferKey)
+			Headers headers = transfer.getHeaders()
+					.compose()
+					.header(Headers.TRANSFER_KEY, transferKey)
 					.header(Headers.NEED_RESPONSE, true)
 					.build();
 
+			transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+
 			Subject<Object> responseSubject = Subject.single();
 			responseSubjects.put(transferKey, responseSubject);
-			outgoingRequests.next(new StaticTransfer(headers, content));
+			outgoingRequests.next(transfer);
 			return responseSubject.asObservable();
 		}
 		else {
-			Headers headers = builder.header(Headers.NEED_RESPONSE, false).build();
-			outgoingRequests.next(new StaticTransfer(headers, content));
+			Headers headers = transfer.getHeaders().compose().header(Headers.NEED_RESPONSE, false).build();
+
+			transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+
+			outgoingRequests.next(transfer);
 			return null;
 		}
 	}
@@ -185,7 +201,6 @@ public final class ClientRPCProtocol implements Protocol {
 	private void processInvocation(Transfer transfer)
 			throws IOException {
 		Headers headers = transfer.getHeaders();
-		byte[] content = transfer.readAll();
 
 		String path = headers.getNonNullString(Headers.PATH);
 
@@ -205,15 +220,16 @@ public final class ClientRPCProtocol implements Protocol {
 			case BINARY:
 				if (simpleArgs.length != 1) {
 					throw new IllegalStateException(String.format(
-							"The request type is byte[]. Consequently endpoint method %s(%s) must have only one parameter with type byte[]",
-							endpointMethod.getRawMethod().getName(), endpointMethod.getRawClass().getName()));
+							"The content type is %s. Consequently endpoint method %s(%s) must have only one parameter with type byte[]",
+							ContentType.BINARY.name(), endpointMethod.getRawMethod().getName(),
+							endpointMethod.getRawClass().getName()));
 				}
-				simpleArgs[0] = content;
+				simpleArgs[0] = transfer.readAll();
 				break;
 			case JSON:
 				ArrayNode argsNode;
 				try {
-					argsNode = JSON_MAPPER.readValue(content, ArrayNode.class);
+					argsNode = JSON_MAPPER.readValue(transfer.readAll(), ArrayNode.class);
 				}
 				catch (IOException e) {
 					throw new IllegalStateException(e);
@@ -223,6 +239,15 @@ public final class ClientRPCProtocol implements Protocol {
 					Param param = simpleParams.get(i);
 					simpleArgs[i] = Try.supplyOrRethrow(() -> JSON_MAPPER.convertValue(argNode, param.getType()));
 				}
+				break;
+			case TRANSFER:
+				if (simpleArgs.length != 1) {
+					throw new IllegalStateException(String.format(
+							"The content type is %s. Consequently endpoint method %s(%s) must have only one parameter with type %s",
+							ContentType.TRANSFER.name(), endpointMethod.getRawMethod().getName(),
+							endpointMethod.getRawClass().getName(), Transfer.class.getName()));
+				}
+				simpleArgs[0] = transfer;
 				break;
 			default:
 				throw new UnsupportedContentTypeException(contentType);
@@ -235,31 +260,38 @@ public final class ClientRPCProtocol implements Protocol {
 		Object[] args = appendExtraArgs(simpleArgs, endpointMethod.getExtraParams(), extraArgs);
 		Object result = endpointMethod.invoke(serviceInstance, args);
 
-		HeadersBuilder builder = Headers.builder();
-		byte[] transferContent;
-		if (endpointMethod.isBinaryResult()) {
-			builder.contentType(ContentType.BINARY);
-			transferContent = (byte[]) result;
-		}
-		else {
-			builder.contentType(ContentType.JSON);
-			transferContent = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(result));
-		}
-
 		Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
 		if (needResponse != null && needResponse) {
-			Headers newHeaders = builder.header(Headers.PATH, path)
+			HeadersBuilder builder = Headers.builder();
+			builder.header(Headers.PATH, path)
 					.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY))
-					.header(Headers.DESTINATION_CLIENT_ID, sourceClientId)
-					.build();
-			outgoingRequests.next(new StaticTransfer(newHeaders, transferContent));
+					.header(Headers.DESTINATION_CLIENT_ID, sourceClientId);
+
+			switch (endpointMethod.resultType()) {
+				case OBJECT:
+					builder.contentType(ContentType.JSON);
+					byte[] transferContent = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(result));
+					outgoingRequests.next(new StaticTransfer(builder.build(), transferContent));
+					break;
+				case BINARY:
+					builder.contentType(ContentType.BINARY);
+					outgoingRequests.next(new StaticTransfer(builder.build(), (byte[]) result));
+					break;
+				case TRANSFER:
+					builder.contentType(ContentType.TRANSFER);
+					Transfer resultTransfer = (Transfer) result;
+					outgoingRequests.next(new ChannelTransfer(builder.build(), resultTransfer.channel(),
+							resultTransfer.getContentLength()));
+					break;
+				default:
+					throw new IllegalStateException();
+			}
 		}
 	}
 
 	private void processResult(Transfer transfer)
 			throws IOException {
 		final Headers headers = transfer.getHeaders();
-		final byte[] content = transfer.readAll();
 
 		String path = headers.getNonNullString(Headers.PATH);
 
@@ -281,17 +313,20 @@ public final class ClientRPCProtocol implements Protocol {
 				ContentType contentType = headers.getContentType();
 				switch (contentType) {
 					case BINARY:
-						result = content;
+						result = Try.supplyOrRethrow(transfer::readAll);
 						break;
 					case JSON:
 						try {
-							result = JSON_MAPPER.readValue(content, responseType);
+							result = JSON_MAPPER.readValue(transfer.readAll(), responseType);
 						}
 						catch (IOException e) {
 							throw new IncompatibleTypeException(
 									String.format("Expected type %s cannot deserialized from given bytes",
 											responseType.getGenericSignature()), e);
 						}
+						break;
+					case TRANSFER:
+						result = transfer;
 						break;
 					default:
 						throw new UnsupportedContentTypeException(contentType);

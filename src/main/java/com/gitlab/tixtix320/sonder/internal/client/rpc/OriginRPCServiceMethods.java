@@ -12,11 +12,13 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
+import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.rpc.Origin;
 import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.StartupException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.OriginMethod;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.service.OriginMethod.RequestDataType;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.Param;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.RPCServiceMethods;
 
@@ -52,7 +54,7 @@ public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 				m -> String.format("Failed to resolve origin method '%s'(%s), there are the following errors. ",
 						m.getName(), m.getDeclaringClass()), StartupException.throwWhen(
 						m -> m.getReturnType() != void.class && m.getReturnType() != Observable.class,
-						"Return type must be void or Observable"),
+						String.format("Return type must be void or %s", Observable.class.getName())),
 				StartupException.throwWhen(not(m -> Modifier.isPublic(m.getModifiers())), "Must be public"));
 	}
 
@@ -66,7 +68,7 @@ public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 	protected OriginMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
 											   List<ExtraParam> extraParams) {
 		return new OriginMethod(path, method, simpleParams, extraParams, needResponse(method),
-				getDestination(extraParams), constructResponseType(method), isBinaryInvocation(simpleParams));
+				getDestination(extraParams), constructResponseType(method), requestDataType(simpleParams));
 	}
 
 	@Override
@@ -93,12 +95,17 @@ public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 		return method.getReturnType() != void.class;
 	}
 
-	private boolean isBinaryInvocation(List<Param> simpleParams) {
+	private RequestDataType requestDataType(List<Param> simpleParams) {
 		if (simpleParams.size() == 1) {
 			Param param = simpleParams.get(0);
-			return param.getType().getRawClass() == byte[].class;
+			if (param.getType().getRawClass() == byte[].class) {
+				return RequestDataType.BINARY;
+			}
+			else if (param.getType().getRawClass() == Transfer.class) {
+				return RequestDataType.TRANSFER;
+			}
 		}
-		return false;
+		return RequestDataType.ARGUMENTS;
 	}
 
 	private OriginMethod.Destination getDestination(List<ExtraParam> extraParams) {

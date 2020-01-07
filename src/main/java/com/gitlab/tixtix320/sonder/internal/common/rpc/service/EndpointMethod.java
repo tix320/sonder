@@ -19,12 +19,12 @@ public final class EndpointMethod extends ServiceMethod {
 
 	private final MethodHandle methodHandle;
 
-	private final boolean isBinaryResult;
+	private final ResultType resultType;
 
 	public EndpointMethod(String path, Method method, List<Param> simpleParams, List<ExtraParam> extraParams,
-						  boolean isBinaryResult) {
+						  ResultType resultType) {
 		super(path, method, simpleParams, extraParams);
-		this.isBinaryResult = isBinaryResult;
+		this.resultType = resultType;
 		try {
 			this.methodHandle = MethodHandles.publicLookup().unreflect(method);
 		}
@@ -35,8 +35,8 @@ public final class EndpointMethod extends ServiceMethod {
 		}
 	}
 
-	public boolean isBinaryResult() {
-		return isBinaryResult;
+	public ResultType resultType() {
+		return resultType;
 	}
 
 	public Object invoke(Object instance, Object[] args) {
@@ -91,5 +91,11 @@ public final class EndpointMethod extends ServiceMethod {
 			   + ", extraParams="
 			   + extraParams
 			   + '}';
+	}
+
+	public enum ResultType {
+		OBJECT,
+		BINARY,
+		TRANSFER
 	}
 }

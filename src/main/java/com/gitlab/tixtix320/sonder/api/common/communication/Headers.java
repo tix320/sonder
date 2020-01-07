@@ -2,6 +2,7 @@ package com.gitlab.tixtix320.sonder.api.common.communication;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -15,6 +16,8 @@ import com.gitlab.tixtix320.sonder.internal.common.communication.InvalidHeaderEx
 @JsonSerialize(using = Headers.HeadersSerializer.class)
 public final class Headers implements Serializable {
 	private static final long serialVersionUID = 4379459480293747097L;
+
+	public static final Headers EMPTY = new Headers(Collections.emptyMap());
 
 	private final Map<String, Object> values;
 

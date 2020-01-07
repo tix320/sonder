@@ -18,16 +18,16 @@ public final class OriginMethod extends ServiceMethod {
 
 	private final JavaType responseType;
 
-	private final boolean isBinaryInvocation;
+	private final RequestDataType requestDataType;
 
 	public OriginMethod(String path, Method method, List<Param> simpleParams, List<ExtraParam> extraParams,
 						boolean needResponse, Destination destination, JavaType responseType,
-						boolean isBinaryInvocation) {
+						RequestDataType requestDataType) {
 		super(path, method, simpleParams, extraParams);
 		this.needResponse = needResponse;
 		this.destination = destination;
 		this.responseType = responseType;
-		this.isBinaryInvocation = isBinaryInvocation;
+		this.requestDataType = requestDataType;
 	}
 
 	public boolean needResponse() {
@@ -42,8 +42,8 @@ public final class OriginMethod extends ServiceMethod {
 		return responseType;
 	}
 
-	public boolean isBinaryInvocation() {
-		return isBinaryInvocation;
+	public RequestDataType requestDataType() {
+		return requestDataType;
 	}
 
 	@Override
@@ -85,5 +85,11 @@ public final class OriginMethod extends ServiceMethod {
 	public enum Destination {
 		CLIENT,
 		SERVER
+	}
+
+	public enum RequestDataType {
+		ARGUMENTS,
+		BINARY,
+		TRANSFER
 	}
 }

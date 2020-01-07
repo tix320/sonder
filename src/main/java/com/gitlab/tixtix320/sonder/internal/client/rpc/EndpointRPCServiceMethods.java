@@ -7,11 +7,13 @@ import java.util.List;
 import java.util.Map;
 
 import com.gitlab.tixtix320.kiwi.api.check.Try;
+import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.rpc.Endpoint;
 import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.StartupException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.EndpointMethod;
+import com.gitlab.tixtix320.sonder.internal.common.rpc.service.EndpointMethod.ResultType;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.Param;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.service.RPCServiceMethods;
 
@@ -63,7 +65,7 @@ public class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointMethod>
 	@Override
 	protected EndpointMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
 												 List<ExtraParam> extraParams) {
-		return new EndpointMethod(path, method, simpleParams, extraParams, isBinaryResult(method));
+		return new EndpointMethod(path, method, simpleParams, extraParams, resultType(method));
 	}
 
 	@Override
@@ -71,7 +73,16 @@ public class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointMethod>
 		return Map.of(ClientID.class, new RPCServiceMethods.ExtraParamDefinition(ClientID.class, Long.class, false));
 	}
 
-	private boolean isBinaryResult(Method method) {
-		return method.getReturnType() == byte[].class;
+	private ResultType resultType(Method method) {
+		Class<?> returnType = method.getReturnType();
+		if (returnType == byte[].class) {
+			return ResultType.BINARY;
+		}
+		else if (returnType == Transfer.class) {
+			return ResultType.TRANSFER;
+		}
+		else {
+			return ResultType.OBJECT;
+		}
 	}
 }
