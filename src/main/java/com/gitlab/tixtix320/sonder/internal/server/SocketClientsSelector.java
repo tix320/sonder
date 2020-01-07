@@ -17,9 +17,9 @@ import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
+import com.gitlab.tixtix320.sonder.internal.common.communication.InvalidPackException;
 import com.gitlab.tixtix320.sonder.internal.common.communication.Pack;
 import com.gitlab.tixtix320.sonder.internal.common.communication.PackChannel;
-import com.gitlab.tixtix320.sonder.internal.common.communication.PackConsumeException;
 import com.gitlab.tixtix320.sonder.internal.common.communication.SocketConnectionException;
 
 public final class SocketClientsSelector implements ClientsSelector {
@@ -69,7 +69,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		if (queue == null) {
 			throw new IllegalArgumentException(String.format("Client by id %s not found", clientId));
 		}
-		queue.add(new Pack(clientPack.getHeaders(), clientPack.getData()));
+		queue.add(clientPack.getPack());
 	}
 
 	@Override
@@ -127,16 +127,14 @@ public final class SocketClientsSelector implements ClientsSelector {
 		clientChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connectedClientID);
 
 		PackChannel packChannel = new PackChannel(clientChannel);
-		packChannel.packs()
-				.subscribe(pack -> incomingRequests.next(
-						new ClientPack(connectedClientID, pack.getHeaders(), pack.getContent())));
+		packChannel.packs().subscribe(pack -> incomingRequests.next(new ClientPack(connectedClientID, pack)));
 		connections.put(connectedClientID, packChannel);
 
 		messageQueues.put(connectedClientID, new ConcurrentLinkedQueue<>());
 	}
 
 	private void read(SelectionKey selectionKey)
-			throws PackConsumeException, IOException {
+			throws InvalidPackException, IOException {
 		Long clientId = (Long) selectionKey.attachment();
 
 		PackChannel channel = connections.get(clientId);

@@ -1,5 +1,6 @@
 package com.gitlab.tixtix320.sonder.internal.server.topic;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Queue;
@@ -12,9 +13,7 @@ import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.None;
-import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
-import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
-import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
+import com.gitlab.tixtix320.sonder.api.common.communication.*;
 import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 
 public class ServerTopicProtocol implements Protocol {
@@ -37,7 +36,8 @@ public class ServerTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void handleIncomingTransfer(Transfer transfer) {
+	public void handleIncomingTransfer(Transfer transfer)
+			throws IOException {
 		Headers headers = transfer.getHeaders();
 
 		String topic = headers.getNonNullString(Headers.TOPIC);
@@ -47,10 +47,12 @@ public class ServerTopicProtocol implements Protocol {
 		Number sourceClientId = headers.getNonNullNumber(Headers.SOURCE_CLIENT_ID);
 
 		Queue<Long> clients = topics.computeIfAbsent(topic, key -> new ConcurrentLinkedQueue<>());
+
+		Transfer staticTransfer = new StaticTransfer(headers, transfer.readAll());
 		switch (action) {
 			case "publish":
-				handleForServer(transfer);
-				publishToClients(topic, transfer, clients, sourceClientId.longValue());
+				handleForServer(staticTransfer);
+				publishToClients(topic, staticTransfer, clients, sourceClientId.longValue());
 				break;
 			case "subscribe":
 				clients.add(sourceClientId.longValue());
@@ -63,9 +65,10 @@ public class ServerTopicProtocol implements Protocol {
 		}
 	}
 
-	public void handleForServer(Transfer transfer) {
+	public void handleForServer(Transfer transfer)
+			throws IOException {
 		Headers headers = transfer.getHeaders();
-		byte[] content = transfer.getContent();
+		byte[] content = transfer.readAll();
 
 		String topic = (String) headers.get(Headers.TOPIC);
 
@@ -119,7 +122,7 @@ public class ServerTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.IS_INVOKE, true)
 						.build();
-				outgoingRequests.next(new Transfer(newHeaders, transfer.getContent()));
+				outgoingRequests.next(new ChannelTransfer(newHeaders, transfer.channel(), transfer.getContentLength()));
 			}
 		}
 		Headers newHeaders = Headers.builder()
@@ -127,7 +130,7 @@ public class ServerTopicProtocol implements Protocol {
 				.header(Headers.TOPIC, topic)
 				.header(Headers.TRANSFER_KEY, transfer.getHeaders().get(Headers.TRANSFER_KEY))
 				.build();
-		outgoingRequests.next(new Transfer(newHeaders, new byte[0]));
+		outgoingRequests.next(new StaticTransfer(newHeaders, new byte[0]));
 	}
 
 	private final class TopicImpl<T> implements Topic<T> {
@@ -148,7 +151,7 @@ public class ServerTopicProtocol implements Protocol {
 						.header(Headers.IS_INVOKE, true)
 						.build();
 				outgoingRequests.next(
-						new Transfer(newHeaders, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
+						new StaticTransfer(newHeaders, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
 			}
 			return Observable.of(None.SELF);
 		}

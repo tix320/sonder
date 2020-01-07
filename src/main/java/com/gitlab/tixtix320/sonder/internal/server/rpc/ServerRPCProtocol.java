@@ -17,11 +17,8 @@ import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
 import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
 import com.gitlab.tixtix320.kiwi.api.util.None;
-import com.gitlab.tixtix320.sonder.api.common.communication.ContentType;
-import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
+import com.gitlab.tixtix320.sonder.api.common.communication.*;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers.HeadersBuilder;
-import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
-import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.rpc.extra.ClientID;
 import com.gitlab.tixtix320.sonder.internal.common.communication.UnsupportedContentTypeException;
 import com.gitlab.tixtix320.sonder.internal.common.rpc.IncompatibleTypeException;
@@ -90,7 +87,8 @@ public final class ServerRPCProtocol implements Protocol {
 	}
 
 	@Override
-	public void handleIncomingTransfer(Transfer transfer) {
+	public void handleIncomingTransfer(Transfer transfer)
+			throws IOException {
 		Headers headers = transfer.getHeaders();
 
 		Number destinationClientId = headers.getNumber(Headers.DESTINATION_CLIENT_ID);
@@ -177,19 +175,20 @@ public final class ServerRPCProtocol implements Protocol {
 					.build();
 			Subject<Object> responseSubject = Subject.single();
 			responseSubjects.put(transferKey, responseSubject);
-			requests.next(new Transfer(headers, content));
+			requests.next(new StaticTransfer(headers, content));
 			return responseSubject.asObservable();
 		}
 		else {
 			Headers headers = builder.header(Headers.NEED_RESPONSE, false).build();
-			requests.next(new Transfer(headers, content));
+			requests.next(new StaticTransfer(headers, content));
 			return null;
 		}
 	}
 
-	private void processInvocation(Transfer transfer) {
+	private void processInvocation(Transfer transfer)
+			throws IOException {
 		Headers headers = transfer.getHeaders();
-		byte[] content = transfer.getContent();
+		byte[] content = transfer.readAll();
 
 		String path = headers.getNonNullString(Headers.PATH);
 
@@ -256,13 +255,14 @@ public final class ServerRPCProtocol implements Protocol {
 					.header(Headers.DESTINATION_CLIENT_ID, sourceClientId)
 					.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY))
 					.build();
-			requests.next(new Transfer(newHeaders, transferContent));
+			requests.next(new StaticTransfer(newHeaders, transferContent));
 		}
 	}
 
-	private void processResult(Transfer transfer) {
+	private void processResult(Transfer transfer)
+			throws IOException {
 		Headers headers = transfer.getHeaders();
-		byte[] content = transfer.getContent();
+		byte[] content = transfer.readAll();
 
 		String path = headers.getNonNullString(Headers.PATH);
 

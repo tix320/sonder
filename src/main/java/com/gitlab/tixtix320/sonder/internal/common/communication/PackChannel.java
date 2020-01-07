@@ -4,10 +4,12 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
+import java.nio.channels.ReadableByteChannel;
 
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.kiwi.api.observable.subject.Subject;
-import com.gitlab.tixtix320.sonder.internal.common.util.ByteArrayList;
+import com.gitlab.tixtix320.sonder.internal.common.util.EmptyReadableByteChannel;
+import com.gitlab.tixtix320.sonder.internal.common.util.LimitedReadableByteChannel;
 
 public final class PackChannel implements Closeable {
 
@@ -28,66 +30,99 @@ public final class PackChannel implements Closeable {
 
 	private final ByteChannel channel;
 
-	private final ByteBuffer buffer;
+	private final ByteBuffer protocolHeaderBuffer;
+
+	private final ByteBuffer headersLengthBuffer;
+
+	private final ByteBuffer contentLengthBuffer;
+
+	private ByteBuffer headersBuffer;
 
 	private final Subject<Pack> packs;
 
-	private final ByteArrayList storage;
-
-	private Integer headersLength;
-
-	private Integer contentLength;
-
 	private State state;
 
-	private int remainingBytes;
+	private int contentLength;
 
 	public PackChannel(ByteChannel channel) {
 		this.channel = channel;
-		this.buffer = ByteBuffer.allocate(1024 * 1024);
+		this.protocolHeaderBuffer = ByteBuffer.allocate(PROTOCOL_HEADER_BYTES.length);
+		this.headersLengthBuffer = ByteBuffer.allocate(HEADERS_LENGTH_BYTES);
+		this.contentLengthBuffer = ByteBuffer.allocate(CONTENT_LENGTH_BYTES);
+		this.headersBuffer = ByteBuffer.allocate(0);
 		this.packs = Subject.single();
-		this.storage = new ByteArrayList(1024 * 1024);
 		this.state = State.PROTOCOL_HEADER;
-		this.remainingBytes = PROTOCOL_HEADER_BYTES.length;
+		this.contentLength = 0;
 	}
 
 	public void write(Pack pack)
 			throws IOException {
-		byte[] headersBytes = pack.getHeaders();
-		byte[] contentBytes = pack.getContent();
-		ByteBuffer buffer = ByteBuffer.allocate(PROTOCOL_HEADER_BYTES.length
-												+ HEADERS_LENGTH_BYTES
-												+ CONTENT_LENGTH_BYTES
-												+ headersBytes.length
-												+ contentBytes.length);
-		buffer.put(PROTOCOL_HEADER_BYTES, 0, PROTOCOL_HEADER_BYTES.length);
-		buffer.putInt(headersBytes.length);
-		buffer.putInt(contentBytes.length);
-		buffer.put(headersBytes, 0, headersBytes.length);
-		buffer.put(contentBytes, 0, contentBytes.length);
-		buffer.flip();
+		writeHeaders(pack.getHeaders(), pack.getContentLength());
+		writeContent(pack.channel(), pack.getContentLength());
+	}
 
-		while (buffer.hasRemaining()) {
-			channel.write(buffer);
+	private void writeHeaders(byte[] headers, int contentLength)
+			throws IOException {
+		int headersLength = headers.length;
+
+		ByteBuffer headersWriteBuffer = ByteBuffer.allocate(
+				PROTOCOL_HEADER_BYTES.length + HEADERS_LENGTH_BYTES + CONTENT_LENGTH_BYTES + headersLength);
+
+		headersWriteBuffer.put(PROTOCOL_HEADER_BYTES, 0, PROTOCOL_HEADER_BYTES.length);
+		headersWriteBuffer.putInt(headersLength);
+		headersWriteBuffer.putInt(contentLength);
+		headersWriteBuffer.put(headers, 0, headersLength);
+		headersWriteBuffer.flip();
+
+		while (headersWriteBuffer.hasRemaining()) {
+			channel.write(headersWriteBuffer);
+		}
+	}
+
+	private void writeContent(ReadableByteChannel contentChannel, int contentLength)
+			throws IOException {
+		int capacity = 1024 * 64;
+		ByteBuffer contentWriteBuffer = ByteBuffer.allocate(capacity);
+
+		int remainingBytes = contentLength;
+
+		while (remainingBytes != 0) {
+			contentWriteBuffer.clear();
+			int limit = Math.min(capacity, remainingBytes);
+			contentWriteBuffer.limit(limit);
+			int count = contentChannel.read(contentWriteBuffer);
+			if (count < 0) {
+				throw new InvalidPackException(
+						String.format("Content channel ended, but but still remaining %s bytes", remainingBytes));
+			}
+			remainingBytes -= count;
+			contentWriteBuffer.position(0);
+			while (contentWriteBuffer.hasRemaining()) {
+				this.channel.write(contentWriteBuffer);
+			}
 		}
 	}
 
 	/**
 	 * @throws IOException          If any I/O error occurs
-	 * @throws PackConsumeException If error occurs in pack consuming
+	 * @throws InvalidPackException If invalid pack is consumed
 	 */
 	public void read()
-			throws IOException, PackConsumeException {
-		int bytesCount;
+			throws IOException, InvalidPackException {
+		if (state == State.last()) {
+			return;
+		}
 
-		buffer.position(0);
-		bytesCount = channel.read(buffer);
 		try {
-			consume(buffer, bytesCount);
+			consume();
+		}
+		catch (IOException | InvalidPackException e) {
+			reset();
+			throw e;
 		}
 		catch (Throwable e) {
 			reset();
-			throw new PackConsumeException("Error occurs while consuming pack", e);
+			throw new IllegalStateException("Error occurs while consuming pack", e);
 		}
 	}
 
@@ -102,133 +137,101 @@ public final class PackChannel implements Closeable {
 	@Override
 	public void close()
 			throws IOException {
-		buffer.clear();
 		packs.complete();
 		channel.close();
 	}
 
-	private void consume(ByteBuffer buffer, int length) {
-		byte[] bytes = buffer.array();
-		int start = 0;
+	private void consume()
+			throws IOException, InvalidPackException {
 		cycle:
 		while (true) {
 			switch (state) {
 				case PROTOCOL_HEADER:
-					if (length >= remainingBytes) {
-						boolean isHeader = isHeader(buffer.array(), start);
-						if (!isHeader) {
-							throw new IllegalStateException("Invalid protocol header");
-						}
-						storage.addBytes(buffer.array(), start, remainingBytes);
-						start = start + remainingBytes;
-						length = length - remainingBytes;
+					channel.read(protocolHeaderBuffer);
 
-						state = state.next();
-						remainingBytes = HEADERS_LENGTH_BYTES;
-					}
-					else {
-						readAvailableBytesToStorage(bytes, start, length);
+					if (protocolHeaderBuffer.hasRemaining()) {
 						break cycle;
 					}
+
+					boolean isHeader = isHeader(protocolHeaderBuffer.array(), 0);
+					if (!isHeader) {
+						throw new InvalidPackException("Invalid protocol header");
+					}
+
+					state = state.next();
 					break;
 				case HEADERS_LENGTH:
-					if (length >= remainingBytes) {
-						headersLength = buffer.getInt(start);
-						if (headersLength <= 0) {
-							throw new IllegalStateException(String.format("Invalid headers length: %s", headersLength));
-						}
-						storage.addBytes(buffer.array(), start, remainingBytes);
-						start = start + remainingBytes;
-						length = length - remainingBytes;
+					channel.read(headersLengthBuffer);
 
-						state = state.next();
-						remainingBytes = CONTENT_LENGTH_BYTES;
-					}
-					else {
-						readAvailableBytesToStorage(bytes, start, length);
+					if (headersLengthBuffer.hasRemaining()) {
 						break cycle;
 					}
+
+					headersLengthBuffer.flip();
+					int headersLength = headersLengthBuffer.getInt();
+					if (headersLength <= 0) {
+						throw new InvalidPackException(String.format("Invalid headers length: %s", headersLength));
+					}
+
+					state = state.next();
+					headersBuffer = ByteBuffer.allocate(headersLength);
 					break;
 				case CONTENT_LENGTH:
-					if (length >= remainingBytes) {
-						contentLength = buffer.getInt(start);
-						if (contentLength < 0) {
-							throw new IllegalStateException(String.format("Invalid content length: %s", contentLength));
-						}
-						storage.addBytes(buffer.array(), start, remainingBytes);
-						start = start + remainingBytes;
-						length = length - remainingBytes;
+					channel.read(contentLengthBuffer);
 
-						state = state.next();
-						remainingBytes = headersLength;
-					}
-					else {
-						readAvailableBytesToStorage(bytes, start, length);
+					if (contentLengthBuffer.hasRemaining()) {
 						break cycle;
 					}
+
+					contentLengthBuffer.flip();
+					contentLength = contentLengthBuffer.getInt();
+					if (contentLength < 0) {
+						throw new InvalidPackException(String.format("Invalid content length: %s", contentLength));
+					}
+
+					state = state.next();
 					break;
 				case HEADERS:
-					if (length >= remainingBytes) {
-						storage.addBytes(buffer.array(), start, remainingBytes);
-						start = start + remainingBytes;
-						length = length - remainingBytes;
+					channel.read(headersBuffer);
 
-						state = state.next();
-						remainingBytes = contentLength;
-					}
-					else {
-						readAvailableBytesToStorage(bytes, start, length);
+					if (headersBuffer.hasRemaining()) {
 						break cycle;
 					}
-					break;
-				case CONTENT:
-					if (length >= remainingBytes) {
-						storage.addBytes(buffer.array(), start, remainingBytes);
-						start = start + remainingBytes;
-						length = length - remainingBytes;
 
-						state = state.next();
-						remainingBytes = 0;
-					}
-					else {
-						readAvailableBytesToStorage(bytes, start, length);
-						break cycle;
-					}
-					break;
-				case READY:
-					next();
-					reset();
-					break;
+					byte[] headers = headersBuffer.array();
+
+					state = state.next();
+					constructPack(headers, contentLength);
+					break cycle;
 				default:
-					throw new IllegalStateException();
+					throw new IllegalStateException(state.name());
 			}
 
 		}
 	}
 
-	private void readAvailableBytesToStorage(byte[] bytes, int start, int length) {
-		storage.addBytes(bytes, start, length);
-		remainingBytes = remainingBytes - length;
-	}
-
 	private void reset() {
-		storage.clear();
-		state = State.PROTOCOL_HEADER;
-		remainingBytes = PROTOCOL_HEADER_BYTES.length;
-		headersLength = null;
-		contentLength = null;
+		state = State.first();
+		protocolHeaderBuffer.clear();
+		headersLengthBuffer.clear();
+		contentLengthBuffer.clear();
+		headersBuffer.clear();
 	}
 
-	private void next() {
-		byte[] data = storage.asArray();
-		byte[] requestHeaders = new byte[headersLength];
-		System.arraycopy(data, PROTOCOL_HEADER_BYTES.length + HEADERS_LENGTH_BYTES + CONTENT_LENGTH_BYTES,
-				requestHeaders, 0, headersLength);
-		byte[] requestContent = new byte[contentLength];
-		System.arraycopy(data,
-				PROTOCOL_HEADER_BYTES.length + HEADERS_LENGTH_BYTES + CONTENT_LENGTH_BYTES + headersLength,
-				requestContent, 0, contentLength);
-		packs.next(new Pack(requestHeaders, requestContent));
+	private void constructPack(byte[] headers, int contentLength) {
+		ReadableByteChannel channel;
+		if (contentLength == 0) {
+			channel = EmptyReadableByteChannel.SELF;
+			reset();
+		}
+		else {
+			LimitedReadableByteChannel limitedChannel = new LimitedReadableByteChannel(this.channel, contentLength);
+			limitedChannel.onFinish().subscribe(none -> reset());
+			channel = limitedChannel;
+		}
+
+		Pack pack = new Pack(headers, channel, contentLength);
+		packs.next(pack);
 	}
 
 	private static boolean isHeader(byte[] array, int start) {
@@ -270,16 +273,18 @@ public final class PackChannel implements Closeable {
 		CONTENT {
 			@Override
 			public State next() {
-				return READY;
-			}
-		},
-		READY {
-			@Override
-			public State next() {
-				return PROTOCOL_HEADER;
+				throw new IllegalStateException();
 			}
 		};
 
 		public abstract State next();
+
+		public static State first() {
+			return PROTOCOL_HEADER;
+		}
+
+		public static State last() {
+			return CONTENT;
+		}
 	}
 }

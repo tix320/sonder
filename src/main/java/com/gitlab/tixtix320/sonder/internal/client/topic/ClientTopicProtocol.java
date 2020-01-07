@@ -1,5 +1,6 @@
 package com.gitlab.tixtix320.sonder.internal.client.topic;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -12,6 +13,7 @@ import com.gitlab.tixtix320.kiwi.api.util.IDGenerator;
 import com.gitlab.tixtix320.kiwi.api.util.None;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
+import com.gitlab.tixtix320.sonder.api.common.communication.StaticTransfer;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 import com.gitlab.tixtix320.sonder.internal.common.communication.BuiltInProtocol;
@@ -42,9 +44,11 @@ public class ClientTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void handleIncomingTransfer(Transfer transfer) {
+	public void handleIncomingTransfer(Transfer transfer)
+			throws IOException {
 		Headers headers = transfer.getHeaders();
-		byte[] content = transfer.getContent();
+
+		byte[] content = transfer.readAll();
 
 		String topic = headers.getNonNullString(Headers.TOPIC);
 
@@ -122,7 +126,7 @@ public class ClientTopicProtocol implements Protocol {
 					.build();
 			Subject<None> subject = Subject.single();
 			responseSubjects.put(transferKey, subject);
-			requests.next(new Transfer(headers, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
+			requests.next(new StaticTransfer(headers, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
 			return subject.asObservable();
 		}
 
@@ -133,7 +137,7 @@ public class ClientTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.TOPIC_ACTION, "subscribe")
 						.build();
-				requests.next(new Transfer(headers, new byte[0]));
+				requests.next(new StaticTransfer(headers, new byte[0]));
 				return None.SELF;
 			});
 

@@ -1,25 +1,15 @@
 package com.gitlab.tixtix320.sonder.api.common.communication;
 
-import java.io.Serializable;
+import java.io.IOException;
+import java.nio.channels.ReadableByteChannel;
 
-public final class Transfer implements Serializable {
+public interface Transfer {
 
-	private static final long serialVersionUID = -3285743284096636666L;
+	Headers getHeaders();
 
-	private final Headers headers;
+	ReadableByteChannel channel();
 
-	private final byte[] content;
+	int getContentLength();
 
-	public Transfer(Headers headers, byte[] content) {
-		this.headers = headers;
-		this.content = content;
-	}
-
-	public Headers getHeaders() {
-		return headers;
-	}
-
-	public byte[] getContent() {
-		return content;
-	}
+	byte[] readAll() throws IOException;
 }

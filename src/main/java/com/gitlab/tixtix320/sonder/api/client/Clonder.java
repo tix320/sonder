@@ -3,6 +3,7 @@ package com.gitlab.tixtix320.sonder.api.client;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.channels.ReadableByteChannel;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ValueNode;
+import com.gitlab.tixtix320.sonder.api.common.communication.ChannelTransfer;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
@@ -59,8 +61,9 @@ public final class Clonder implements Closeable {
 
 		connection.incomingRequests().map(this::convertDataPackToTransfer).subscribe(this::processTransfer);
 		protocols.forEach((protocolName, protocol) -> protocol.outgoingTransfers().subscribe(transfer -> {
-			transfer = new Transfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
-					transfer.getContent());
+			transfer = new ChannelTransfer(
+					transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(), transfer.channel(),
+					transfer.getContentLength());
 
 			byte[] headers;
 			try {
@@ -70,9 +73,9 @@ public final class Clonder implements Closeable {
 				throw new IllegalStateException("Cannot write JSON", e);
 			}
 
-			byte[] content = transfer.getContent();
+			ReadableByteChannel channel = transfer.channel();
 
-			connection.send(new Pack(headers, content));
+			connection.send(new Pack(headers, channel, transfer.getContentLength()));
 		}));
 	}
 
@@ -137,9 +140,9 @@ public final class Clonder implements Closeable {
 		}
 
 		Headers headers = convertObjectNodeToHeaders((ObjectNode) headersNode);
-		byte[] content = dataPack.getContent();
+		ReadableByteChannel channel = dataPack.channel();
 
-		return new Transfer(headers, content);
+		return new ChannelTransfer(headers, channel, dataPack.getContentLength());
 	}
 
 	private void processTransfer(Transfer transfer) {
@@ -148,7 +151,12 @@ public final class Clonder implements Closeable {
 		if (protocol == null) {
 			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
 		}
-		protocol.handleIncomingTransfer(transfer);
+		try {
+			protocol.handleIncomingTransfer(transfer);
+		}
+		catch (IOException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	private static Headers convertObjectNodeToHeaders(ObjectNode node) {
