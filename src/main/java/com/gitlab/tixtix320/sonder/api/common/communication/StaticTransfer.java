@@ -25,7 +25,7 @@ public final class StaticTransfer implements Transfer {
 	}
 
 	@Override
-	public int getContentLength() {
+	public long getContentLength() {
 		return content.length;
 	}
 

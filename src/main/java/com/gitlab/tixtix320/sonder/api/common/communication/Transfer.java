@@ -9,7 +9,7 @@ public interface Transfer {
 
 	ReadableByteChannel channel();
 
-	int getContentLength();
+	long getContentLength();
 
 	byte[] readAll() throws IOException;
 }

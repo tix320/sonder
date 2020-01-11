@@ -10,9 +10,9 @@ public class ChannelTransfer implements Transfer {
 
 	private final ReadableByteChannel channel;
 
-	private final int contentLength;
+	private final long contentLength;
 
-	public ChannelTransfer(Headers headers, ReadableByteChannel channel, int contentLength) {
+	public ChannelTransfer(Headers headers, ReadableByteChannel channel, long contentLength) {
 		this.headers = headers;
 		this.channel = channel;
 		this.contentLength = contentLength;
@@ -29,20 +29,25 @@ public class ChannelTransfer implements Transfer {
 	}
 
 	@Override
-	public int getContentLength() {
+	public long getContentLength() {
 		return contentLength;
 	}
 
 	@Override
 	public byte[] readAll()
 			throws IOException {
+		if (contentLength > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException(
+					"Cannot read all bytes, due there are larger than Integer.MAX_VALUE");
+		}
+
 		ReadableByteChannel channel = channel();
-		ByteBuffer buffer = ByteBuffer.allocate(getContentLength());
+		ByteBuffer buffer = ByteBuffer.allocate((int) contentLength);
 		while (buffer.hasRemaining()) {
 			int read = channel.read(buffer);
 			if (read < 0) {
 				throw new IllegalStateException(
-						String.format("Content channel ended, but but still remaining %s bytes", buffer.remaining()));
+						String.format("Content channel ended, but still remaining %s bytes", buffer.remaining()));
 			}
 		}
 		return buffer.array();

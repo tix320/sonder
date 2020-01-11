@@ -8,9 +8,9 @@ public final class Pack {
 
 	private final ReadableByteChannel channel;
 
-	private final int contentLength;
+	private final long contentLength;
 
-	public Pack(byte[] headers, ReadableByteChannel channel, int contentLength) {
+	public Pack(byte[] headers, ReadableByteChannel channel, long contentLength) {
 		this.headers = headers;
 		this.channel = channel;
 		this.contentLength = contentLength;
@@ -24,7 +24,7 @@ public final class Pack {
 		return channel;
 	}
 
-	public int getContentLength() {
+	public long getContentLength() {
 		return contentLength;
 	}
 }
