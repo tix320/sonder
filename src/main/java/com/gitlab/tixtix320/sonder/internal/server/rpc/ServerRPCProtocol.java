@@ -172,6 +172,8 @@ public final class ServerRPCProtocol implements Protocol {
 			case TRANSFER:
 				builder.contentType(ContentType.TRANSFER);
 				transfer = (Transfer) simpleArgs.get(0);
+				transfer = new ChannelTransfer(transfer.getHeaders().compose().headers(builder.build()).build(),
+						transfer.channel(), transfer.getContentLength());
 				break;
 			default:
 				throw new IllegalStateException();
@@ -287,8 +289,9 @@ public final class ServerRPCProtocol implements Protocol {
 				case TRANSFER:
 					builder.contentType(ContentType.TRANSFER);
 					Transfer resultTransfer = (Transfer) result;
-					outgoingRequests.next(new ChannelTransfer(builder.build(), resultTransfer.channel(),
-							resultTransfer.getContentLength()));
+					outgoingRequests.next(
+							new ChannelTransfer(resultTransfer.getHeaders().compose().headers(builder.build()).build(),
+									resultTransfer.channel(), resultTransfer.getContentLength()));
 					break;
 				default:
 					throw new IllegalStateException();

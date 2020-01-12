@@ -131,6 +131,11 @@ public final class Headers implements Serializable {
 			return this;
 		}
 
+		public HeadersBuilder headers(Headers headers) {
+			values.putAll(headers.values);
+			return this;
+		}
+
 		public HeadersBuilder contentType(ContentType contentType) {
 			values.put(CONTENT_TYPE, contentType.name());
 			return this;
