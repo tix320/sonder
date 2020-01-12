@@ -3,6 +3,7 @@ package com.gitlab.tixtix320.sonder.client;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
 import java.util.List;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -16,7 +17,7 @@ public final class Topic1Test {
 
 	public static void main(String[] args)
 			throws IOException, InterruptedException {
-		Clonder clonder = Clonder.withBuiltInProtocols("localhost", 8888, "com.gitlab.tixtix320.sonder.client");
+		Clonder clonder = Clonder.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
 
 		clonder.getRPCService(A.class).send("lmfaoo").subscribe(integers -> System.out.println(integers));
 		Topic<List<String>> topic = clonder.registerTopic("foo", new TypeReference<>() {});

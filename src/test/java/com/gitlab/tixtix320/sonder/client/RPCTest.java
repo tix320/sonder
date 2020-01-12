@@ -3,13 +3,17 @@ package com.gitlab.tixtix320.sonder.client;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
 
 import com.gitlab.tixtix320.sonder.api.client.Clonder;
 
 public class RPCTest {
 
-	public static void main(String[] args) throws IOException, InterruptedException {
-		Clonder clonder = Clonder.withBuiltInProtocols("localhost", 8888, "com.gitlab.tixtix320.sonder.client");
+	public static void main(String[] args)
+			throws IOException, InterruptedException {
+		Clonder clonder = Clonder.forAddress(new InetSocketAddress("localhost", 8888))
+				.withRPCProtocol("com.gitlab.tixtix320.sonder.client")
+				.build();
 
 		A a = clonder.getRPCService(A.class);
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));

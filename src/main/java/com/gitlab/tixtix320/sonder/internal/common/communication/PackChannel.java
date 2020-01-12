@@ -61,13 +61,6 @@ public final class PackChannel implements Closeable {
 
 	private final AtomicLong contentLength;
 
-	public PackChannel(ByteChannel channel) {
-		this(channel, Duration.ofSeconds(5), contentLength -> {
-			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
-			return Duration.ofSeconds(timout);
-		});
-	}
-
 	public PackChannel(ByteChannel channel, Duration headersTimeoutDuration,
 					   LongFunction<Duration> contentTimeoutDurationFactory) {
 		this.channel = channel;

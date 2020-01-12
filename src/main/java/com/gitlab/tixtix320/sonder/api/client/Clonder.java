@@ -4,34 +4,23 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.ReadableByteChannel;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
-import java.util.stream.Stream;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.ValueNode;
 import com.gitlab.tixtix320.sonder.api.common.communication.ChannelTransfer;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
 import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 import com.gitlab.tixtix320.sonder.internal.client.ServerConnection;
-import com.gitlab.tixtix320.sonder.internal.client.SocketServerConnection;
 import com.gitlab.tixtix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.gitlab.tixtix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.gitlab.tixtix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.gitlab.tixtix320.sonder.internal.common.communication.Pack;
-import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.rpc.ServerRPCProtocol;
-
-import static java.util.stream.Collectors.toMap;
 
 /**
  * @author tix32 on 20-Dec-18
@@ -44,18 +33,11 @@ public final class Clonder implements Closeable {
 
 	private final ServerConnection connection;
 
-	public static Clonder withBuiltInProtocols(String host, int port, String... packagesToScan) {
-		List<Class<?>> classes = ClassFinder.getPackageClasses(packagesToScan);
-		Map<String, Protocol> protocols = Stream.of(new ClientRPCProtocol(classes), new ClientTopicProtocol())
-				.collect(toMap(Protocol::getName, Function.identity()));
-		return new Clonder(new SocketServerConnection(new InetSocketAddress(host, port)), protocols);
+	public static ClonderBuilder forAddress(InetSocketAddress inetSocketAddress) {
+		return new ClonderBuilder(inetSocketAddress);
 	}
 
-	public static Clonder withProtocols(String host, int port, Map<String, Protocol> protocols) {
-		return new Clonder(new SocketServerConnection(new InetSocketAddress(host, port)), protocols);
-	}
-
-	private Clonder(ServerConnection connection, Map<String, Protocol> protocols) {
+	Clonder(ServerConnection connection, Map<String, Protocol> protocols) {
 		this.connection = connection;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 

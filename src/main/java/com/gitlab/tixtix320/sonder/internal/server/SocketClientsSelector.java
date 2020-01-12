@@ -6,12 +6,14 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.time.Duration;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.LongFunction;
 
 import com.gitlab.tixtix320.kiwi.api.check.Try;
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
@@ -36,12 +38,19 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final IDGenerator clientIdGenerator;
 
-	public SocketClientsSelector(InetSocketAddress address) {
+	private final Duration headersTimeoutDuration;
+
+	private final LongFunction<Duration> contentTimeoutDurationFactory;
+
+	public SocketClientsSelector(InetSocketAddress address, Duration headersTimeoutDuration,
+								 LongFunction<Duration> contentTimeoutDurationFactory) {
 		this.selector = Try.supplyOrRethrow(Selector::open);
 		this.incomingRequests = Subject.single();
 		this.connections = new ConcurrentHashMap<>();
 		this.messageQueues = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1);
+		this.headersTimeoutDuration = headersTimeoutDuration;
+		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 
 		try {
 			serverChannel = ServerSocketChannel.open();
@@ -126,7 +135,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 		clientChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connectedClientID);
 
-		PackChannel packChannel = new PackChannel(clientChannel);
+		PackChannel packChannel = new PackChannel(clientChannel, headersTimeoutDuration, contentTimeoutDurationFactory);
 		connections.put(connectedClientID, packChannel);
 		messageQueues.put(connectedClientID, new ConcurrentLinkedQueue<>());
 		packChannel.packs().subscribe(pack -> incomingRequests.next(new ClientPack(connectedClientID, pack)));

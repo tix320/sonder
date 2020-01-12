@@ -4,15 +4,13 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.ReadableByteChannel;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
-import java.util.stream.Stream;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gitlab.tixtix320.sonder.api.client.ClonderBuilder;
 import com.gitlab.tixtix320.sonder.api.common.communication.ChannelTransfer;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
@@ -20,13 +18,9 @@ import com.gitlab.tixtix320.sonder.api.common.communication.Transfer;
 import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
 import com.gitlab.tixtix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.gitlab.tixtix320.sonder.internal.common.communication.Pack;
-import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.ClientsSelector;
-import com.gitlab.tixtix320.sonder.internal.server.SocketClientsSelector;
 import com.gitlab.tixtix320.sonder.internal.server.rpc.ServerRPCProtocol;
 import com.gitlab.tixtix320.sonder.internal.server.topic.ServerTopicProtocol;
-
-import static java.util.stream.Collectors.toMap;
 
 /**
  * @author Tigran.Sargsyan on 11-Dec-18
@@ -39,18 +33,11 @@ public final class Sonder implements Closeable {
 
 	private final ClientsSelector clientsSelector;
 
-	public static Sonder withBuiltInProtocols(int port, String... packagesToScan) {
-		List<Class<?>> classes = ClassFinder.getPackageClasses(packagesToScan);
-		Map<String, Protocol> protocols = Stream.of(new ServerRPCProtocol(classes), new ServerTopicProtocol())
-				.collect(toMap(Protocol::getName, Function.identity()));
-		return new Sonder(new SocketClientsSelector(new InetSocketAddress(port)), protocols);
+	public static SonderBuilder forAddress(InetSocketAddress inetSocketAddress) {
+		return new SonderBuilder(inetSocketAddress);
 	}
 
-	public static Sonder withProtocols(int port, Map<String, Protocol> protocols) {
-		return new Sonder(new SocketClientsSelector(new InetSocketAddress(port)), protocols);
-	}
-
-	private Sonder(ClientsSelector clientsSelector, Map<String, Protocol> protocols) {
+	Sonder(ClientsSelector clientsSelector, Map<String, Protocol> protocols) {
 		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 

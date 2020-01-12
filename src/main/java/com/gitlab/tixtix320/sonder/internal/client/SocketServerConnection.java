@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
+import java.time.Duration;
+import java.util.function.LongFunction;
 
 import com.gitlab.tixtix320.kiwi.api.observable.Observable;
 import com.gitlab.tixtix320.sonder.internal.common.communication.Pack;
@@ -14,9 +16,11 @@ public class SocketServerConnection implements ServerConnection {
 
 	private final PackChannel channel;
 
-	public SocketServerConnection(InetSocketAddress address) {
+	public SocketServerConnection(InetSocketAddress address, Duration headersTimeoutDuration,
+								  LongFunction<Duration> contentTimeoutDurationFactory) {
 		try {
-			channel = new PackChannel(SocketChannel.open(address));
+			channel = new PackChannel(SocketChannel.open(address), headersTimeoutDuration,
+					contentTimeoutDurationFactory);
 		}
 		catch (IOException e) {
 			throw new RuntimeException(e);
