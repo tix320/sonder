@@ -11,5 +11,9 @@ public interface Transfer {
 
 	long getContentLength();
 
-	byte[] readAll() throws IOException;
+	byte[] readAll()
+			throws IOException;
+
+	void readAllInVain()
+			throws IOException;
 }

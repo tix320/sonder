@@ -94,6 +94,7 @@ public final class EndpointMethod extends ServiceMethod {
 	}
 
 	public enum ResultType {
+		VOID,
 		OBJECT,
 		BINARY,
 		TRANSFER

@@ -127,19 +127,13 @@ public final class Clonder implements Closeable {
 	}
 
 	private Transfer convertDataPackToTransfer(Pack dataPack) {
-		JsonNode headersNode;
+		Headers headers;
 		try {
-			headersNode = JSON_MAPPER.readTree(dataPack.getHeaders());
+			headers = JSON_MAPPER.readValue(dataPack.getHeaders(), Headers.class);
 		}
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
-
-		if (!(headersNode instanceof ObjectNode)) {
-			throw new IllegalStateException(String.format("Headers must be JSON object, but was %s", headersNode));
-		}
-
-		Headers headers = convertObjectNodeToHeaders((ObjectNode) headersNode);
 		ReadableByteChannel channel = dataPack.channel();
 
 		return new ChannelTransfer(headers, channel, dataPack.getContentLength());
@@ -157,19 +151,5 @@ public final class Clonder implements Closeable {
 		catch (IOException e) {
 			throw new RuntimeException(e);
 		}
-	}
-
-	private static Headers convertObjectNodeToHeaders(ObjectNode node) {
-		Iterator<Map.Entry<String, JsonNode>> iterator = node.fields();
-		Headers.HeadersBuilder builder = Headers.builder();
-		while (iterator.hasNext()) {
-			Map.Entry<String, JsonNode> entry = iterator.next();
-			JsonNode value = entry.getValue();
-			if (value instanceof ValueNode) { // ignore non primitive headers
-				builder.header(entry.getKey(), JSON_MAPPER.convertValue(value, Object.class));
-			}
-		}
-
-		return builder.build();
 	}
 }

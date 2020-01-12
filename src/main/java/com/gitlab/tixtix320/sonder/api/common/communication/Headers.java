@@ -2,20 +2,30 @@ package com.gitlab.tixtix320.sonder.api.common.communication;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
+import java.util.Map.Entry;
 
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ValueNode;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import com.gitlab.tixtix320.sonder.internal.common.communication.InvalidHeaderException;
 
 @JsonSerialize(using = Headers.HeadersSerializer.class)
+@JsonDeserialize(using = Headers.HeadersDeserializer.class)
 public final class Headers implements Serializable {
 	private static final long serialVersionUID = 4379459480293747097L;
+
+	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
 	public static final Headers EMPTY = new Headers(Collections.emptyMap());
 
@@ -157,6 +167,35 @@ public final class Headers implements Serializable {
 				gen.writeObjectField(entry.getKey(), entry.getValue());
 			}
 			gen.writeEndObject();
+		}
+	}
+
+	public static class HeadersDeserializer extends StdDeserializer<Headers> {
+
+		public HeadersDeserializer() {
+			super(Headers.class);
+		}
+
+		@Override
+		public Headers deserialize(JsonParser p, DeserializationContext ctxt)
+				throws IOException, JsonProcessingException {
+			JsonNode node = p.getCodec().readTree(p);
+
+			if (!(node instanceof ObjectNode)) {
+				throw new IllegalStateException(String.format("Headers must be JSON object, but was %s", node));
+			}
+
+			Iterator<Entry<String, JsonNode>> iterator = node.fields();
+			Headers.HeadersBuilder builder = Headers.builder();
+			while (iterator.hasNext()) {
+				Map.Entry<String, JsonNode> entry = iterator.next();
+				JsonNode value = entry.getValue();
+				if (value instanceof ValueNode) { // ignore non primitive headers
+					builder.header(entry.getKey(), JSON_MAPPER.convertValue(value, Object.class));
+				}
+			}
+
+			return builder.build();
 		}
 	}
 }

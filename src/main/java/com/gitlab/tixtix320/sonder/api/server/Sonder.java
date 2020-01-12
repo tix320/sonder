@@ -4,7 +4,6 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.ReadableByteChannel;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,10 +12,7 @@ import java.util.stream.Stream;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.ValueNode;
 import com.gitlab.tixtix320.sonder.api.common.communication.ChannelTransfer;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
@@ -131,19 +127,13 @@ public final class Sonder implements Closeable {
 	private Transfer clientPackToTransfer(ClientsSelector.ClientPack clientPack) {
 		Pack dataPack = clientPack.getPack();
 
-		JsonNode headersNode;
+		Headers headers;
 		try {
-			headersNode = JSON_MAPPER.readTree(dataPack.getHeaders());
+			headers = JSON_MAPPER.readValue(dataPack.getHeaders(), Headers.class);
 		}
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
-
-		if (!(headersNode instanceof ObjectNode)) {
-			throw new IllegalStateException(String.format("Headers must be JSON object, but was %s", headersNode));
-		}
-
-		Headers headers = convertObjectNodeToHeaders((ObjectNode) headersNode);
 		headers = headers.compose().header(Headers.SOURCE_CLIENT_ID, clientPack.getClientId()).build();
 		ReadableByteChannel channel = dataPack.channel();
 
@@ -163,19 +153,5 @@ public final class Sonder implements Closeable {
 		catch (IOException e) {
 			throw new RuntimeException(e);
 		}
-	}
-
-	private static Headers convertObjectNodeToHeaders(ObjectNode node) {
-		Iterator<Map.Entry<String, JsonNode>> iterator = node.fields();
-		Headers.HeadersBuilder builder = Headers.builder();
-		while (iterator.hasNext()) {
-			Map.Entry<String, JsonNode> entry = iterator.next();
-			JsonNode value = entry.getValue();
-			if (value instanceof ValueNode) { // ignore non primitive headers
-				builder.header(entry.getKey(), JSON_MAPPER.convertValue(value, Object.class));
-			}
-		}
-
-		return builder.build();
 	}
 }

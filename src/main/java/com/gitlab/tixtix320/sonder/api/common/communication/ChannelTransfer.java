@@ -52,4 +52,20 @@ public class ChannelTransfer implements Transfer {
 		}
 		return buffer.array();
 	}
+
+	@Override
+	public void readAllInVain()
+			throws IOException {
+		ReadableByteChannel channel = channel();
+		ByteBuffer buffer = ByteBuffer.allocate(1024 * 64);
+		long remaining = contentLength;
+		while (remaining > 0) {
+			int read = channel.read(buffer);
+			if (read < 0) {
+				throw new IllegalStateException(
+						String.format("Content channel ended, but still remaining %s bytes", remaining));
+			}
+			remaining -= read;
+		}
+	}
 }

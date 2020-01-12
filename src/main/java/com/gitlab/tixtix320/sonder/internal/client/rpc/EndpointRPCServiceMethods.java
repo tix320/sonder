@@ -75,7 +75,10 @@ public class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointMethod>
 
 	private ResultType resultType(Method method) {
 		Class<?> returnType = method.getReturnType();
-		if (returnType == byte[].class) {
+		if (returnType == void.class) {
+			return ResultType.VOID;
+		}
+		else if (returnType == byte[].class) {
 			return ResultType.BINARY;
 		}
 		else if (returnType == Transfer.class) {

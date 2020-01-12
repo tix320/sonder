@@ -48,16 +48,18 @@ public class ServerTopicProtocol implements Protocol {
 
 		Queue<Long> clients = topics.computeIfAbsent(topic, key -> new ConcurrentLinkedQueue<>());
 
-		Transfer staticTransfer = new StaticTransfer(headers, transfer.readAll());
 		switch (action) {
 			case "publish":
+				Transfer staticTransfer = new StaticTransfer(headers, transfer.readAll());
 				handleForServer(staticTransfer);
 				publishToClients(topic, staticTransfer, clients, sourceClientId.longValue());
 				break;
 			case "subscribe":
+				transfer.readAllInVain();
 				clients.add(sourceClientId.longValue());
 				break;
 			case "unsubscribe":
+				transfer.readAllInVain();
 				clients.remove(sourceClientId.longValue());
 				break;
 			default:

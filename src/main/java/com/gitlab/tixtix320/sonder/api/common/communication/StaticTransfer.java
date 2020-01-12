@@ -34,4 +34,10 @@ public final class StaticTransfer implements Transfer {
 			throws IOException {
 		return content;
 	}
+
+	@Override
+	public void readAllInVain()
+			throws IOException {
+
+	}
 }

@@ -127,10 +127,9 @@ public final class SocketClientsSelector implements ClientsSelector {
 		clientChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connectedClientID);
 
 		PackChannel packChannel = new PackChannel(clientChannel);
-		packChannel.packs().subscribe(pack -> incomingRequests.next(new ClientPack(connectedClientID, pack)));
 		connections.put(connectedClientID, packChannel);
-
 		messageQueues.put(connectedClientID, new ConcurrentLinkedQueue<>());
+		packChannel.packs().subscribe(pack -> incomingRequests.next(new ClientPack(connectedClientID, pack)));
 	}
 
 	private void read(SelectionKey selectionKey)

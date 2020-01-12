@@ -66,8 +66,7 @@ public class LimitedReadableByteChannel implements ReadableByteChannel {
 	}
 
 	@Override
-	public synchronized void close()
-			throws IOException {
+	public synchronized void close() {
 		isOpen = false;
 	}
 
@@ -81,5 +80,16 @@ public class LimitedReadableByteChannel implements ReadableByteChannel {
 
 	private boolean isFinished() {
 		return remaining == 0;
+	}
+
+	@Override
+	public String toString() {
+		return "LimitedReadableByteChannel"
+			   + super.hashCode()
+			   + " {remaining="
+			   + remaining
+			   + ", isOpen="
+			   + isOpen
+			   + '}';
 	}
 }

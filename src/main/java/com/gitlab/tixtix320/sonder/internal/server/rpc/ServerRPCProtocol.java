@@ -271,6 +271,10 @@ public final class ServerRPCProtocol implements Protocol {
 					.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY));
 
 			switch (endpointMethod.resultType()) {
+				case VOID:
+					builder.contentType(ContentType.BINARY);
+					outgoingRequests.next(new StaticTransfer(builder.build(), new byte[0]));
+					break;
 				case OBJECT:
 					builder.contentType(ContentType.JSON);
 					byte[] transferContent = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(result));
@@ -308,7 +312,13 @@ public final class ServerRPCProtocol implements Protocol {
 
 			JavaType responseType = originMethod.getResponseType();
 			if (responseType.getRawClass() == None.class) {
+				Try.runOrRethrow(transfer::readAllInVain);
 				subject.next(None.SELF);
+			}
+			else if (transfer.getContentLength() == 0) {
+				throw new IllegalStateException(
+						String.format("Response content is empty, and it cannot be converted to type %s",
+								responseType));
 			}
 			else {
 				Object result;
