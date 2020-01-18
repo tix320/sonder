@@ -94,12 +94,16 @@ public final class Clonder implements Closeable {
 	 *
 	 * @throws IllegalStateException if {@link ClientTopicProtocol} not registered
 	 */
-	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
+	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
 		Protocol protocol = protocols.get(BuiltInProtocol.TOPIC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("Topic protocol not registered");
 		}
-		return ((ClientTopicProtocol) protocol).registerTopicPublisher(topic, dataType);
+		return ((ClientTopicProtocol) protocol).registerTopic(topic, dataType, bufferSize);
+	}
+
+	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
+		return registerTopic(topic, dataType, 0);
 	}
 
 	@Override

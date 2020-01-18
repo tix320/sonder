@@ -98,11 +98,11 @@ public class ClientTopicProtocol implements Protocol {
 		responseSubjects.values().forEach(Subject::complete);
 	}
 
-	public <T> Topic<T> registerTopicPublisher(String topic, TypeReference<T> dataType) {
+	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
 		if (topicSubjects.containsKey(topic)) {
 			throw new IllegalArgumentException(String.format("Publisher for topic %s already registered", topic));
 		}
-		topicSubjects.put(topic, Subject.single());
+		topicSubjects.put(topic, bufferSize > 0 ? Subject.buffered(bufferSize) : Subject.single());
 		dataTypesByTopic.put(topic, dataType);
 		return new TopicImpl<>(topic);
 	}

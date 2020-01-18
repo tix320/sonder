@@ -10,7 +10,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.gitlab.tixtix320.sonder.api.client.ClonderBuilder;
 import com.gitlab.tixtix320.sonder.api.common.communication.ChannelTransfer;
 import com.gitlab.tixtix320.sonder.api.common.communication.Headers;
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
@@ -97,12 +96,16 @@ public final class Sonder implements Closeable {
 	 *
 	 * @throws IllegalStateException if {@link ServerTopicProtocol} not registered
 	 */
-	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
+	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
 		Protocol protocol = protocols.get(BuiltInProtocol.TOPIC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("Topic protocol not registered");
 		}
-		return ((ServerTopicProtocol) protocol).registerTopicPublisher(topic, dataType);
+		return ((ServerTopicProtocol) protocol).registerTopic(topic, dataType, bufferSize);
+	}
+
+	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
+		return registerTopic(topic, dataType, 0);
 	}
 
 	@Override
