@@ -2,6 +2,12 @@
 
 Sonder is a Java library for building TCP client-server applications on high level abstraction.
 
+## Requirements
+
+```
+Java 11 or higher.
+```
+
 ## Dependency
 
 ```xml
@@ -12,7 +18,7 @@ Sonder is a Java library for building TCP client-server applications on high lev
 </dependency>
 ```
 
-##Features
+## Features
 
 ##### RPC
 ```
