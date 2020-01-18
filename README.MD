@@ -12,9 +12,9 @@ Java 11 or higher.
 
 ```xml
 <dependency>
-	<groupId>com.gitlab.tixtix320</groupId>
+	<groupId>com.github.tix320</groupId>
 	<artifactId>sonder</artifactId>
-	<version>0.11.1</version>
+	<version>0.12.0</version>
 </dependency>
 ```
 
@@ -48,17 +48,17 @@ Java 11 or higher.
   
  ##### Server Main
 ```java
-package com.gitlab.tixtix320.sonder.readme.server;
+package com.github.tix320.sonder.readme.server;
 
 import java.net.InetSocketAddress;
 
-import com.gitlab.tixtix320.sonder.api.server.Sonder;
+import com.github.tix320.sonder.api.server.Sonder;
 
 public class ServerTest {
 
 	public static void main(String[] args) {
 		Sonder sonder = Sonder.forAddress(new InetSocketAddress(8888))
-				.withRPCProtocol("com.gitlab.tixtix320.sonder.readme.server")
+				.withRPCProtocol("com.github.tix320.sonder.readme.server")
 				.build();
 	}
 }
@@ -66,9 +66,9 @@ public class ServerTest {
 
  ##### Server Endpoint
 ```java
-package com.gitlab.tixtix320.sonder.readme.server;
+package com.github.tix320.sonder.readme.server;
 
-import com.gitlab.tixtix320.sonder.api.common.rpc.Endpoint;
+import com.github.tix320.sonder.api.common.rpc.Endpoint;
 
 @Endpoint("myService")
 public class MyEndpoint {
@@ -84,16 +84,16 @@ public class MyEndpoint {
 
  ##### Client Main
 ```java
-package com.gitlab.tixtix320.sonder.readme.client;
+package com.github.tix320.sonder.readme.client;
 
 import java.net.InetSocketAddress;
 
-import com.gitlab.tixtix320.sonder.api.client.Clonder;
+import com.github.tix320.sonder.api.client.Clonder;
 
 public class ClientTest {
 	public static void main(String[] args) {
 		Clonder clonder = Clonder.forAddress(new InetSocketAddress("localhost", 8888))
-				.withRPCProtocol("com.gitlab.tixtix320.sonder.readme.client")
+				.withRPCProtocol("com.github.tix320.sonder.readme.client")
 				.build();
 		MyService myService = clonder.getRPCService(MyService.class);
 		myService.getLengthOfString("my first rpc call").subscribe(System.out::println);
@@ -104,10 +104,10 @@ public class ClientTest {
 
  ##### Client RPC interface
 ```java
-package com.gitlab.tixtix320.sonder.readme.client;
+package com.github.tix320.sonder.readme.client;
 
-import com.gitlab.tixtix320.kiwi.api.observable.Observable;
-import com.gitlab.tixtix320.sonder.api.common.rpc.Origin;
+import com.github.tix320.kiwi.api.observable.Observable;
+import com.github.tix320.sonder.api.common.rpc.Origin;
 
 @Origin("myService")
 public interface MyService {
@@ -124,15 +124,15 @@ public interface MyService {
 
 
 ```java
-package com.gitlab.tixtix320.sonder.readme.server;
+package com.github.tix320.sonder.readme.server;
 
 import java.net.InetSocketAddress;
 import java.util.List;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.gitlab.tixtix320.sonder.api.client.Clonder;
-import com.gitlab.tixtix320.sonder.api.common.topic.Topic;
-import com.gitlab.tixtix320.sonder.api.server.Sonder;
+import com.github.tix320.sonder.api.client.Clonder;
+import com.github.tix320.sonder.api.common.topic.Topic;
+import com.github.tix320.sonder.api.server.Sonder;
 
 public class ServerTest {
 

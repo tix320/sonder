@@ -8,14 +8,14 @@
 		<version>9</version>
 	</parent>
 
-	<groupId>com.gitlab.tixtix320</groupId>
+	<groupId>com.github.tix320</groupId>
 	<artifactId>sonder</artifactId>
 	<version>0.11.2-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
 	<name>Sonder</name>
 	<description>TCP client-server</description>
-	<url>https://gitlab.com/tixtix320/sonder</url>
+	<url>https://github.com/tix320/sonder</url>
 
 	<licenses>
 		<license>
@@ -26,9 +26,9 @@
 	</licenses>
 
 	<scm>
-		<url>https://gitlab.com/tixtix320.sonder</url>
-		<connection>scm:git:https://gitlab.com/tixtix320/sonder</connection>
-		<developerConnection>scm:git:https://gitlab.com/tixtix320/sonder</developerConnection>
+		<url>https://github.com/tix320.sonder</url>
+		<connection>scm:git:https://github.com/tix320/sonder</connection>
+		<developerConnection>scm:git:https://github.com/tix320/sonder</developerConnection>
 	</scm>
 
 	<developers>
@@ -127,9 +127,9 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>com.gitlab.tixtix320</groupId>
+			<groupId>com.github.tix320</groupId>
 			<artifactId>kiwi</artifactId>
-			<version>0.5.4</version>
+			<version>0.6.0</version>
 		</dependency>
 
 		<dependency>
