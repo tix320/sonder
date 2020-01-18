@@ -22,6 +22,9 @@ import com.gitlab.tixtix320.sonder.internal.server.rpc.ServerRPCProtocol;
 import com.gitlab.tixtix320.sonder.internal.server.topic.ServerTopicProtocol;
 
 /**
+ * Entry point class for your server side app.
+ * Create server builder by calling method {@link #forAddress}.
+ *
  * @author Tigran.Sargsyan on 11-Dec-18
  */
 public final class Sonder implements Closeable {

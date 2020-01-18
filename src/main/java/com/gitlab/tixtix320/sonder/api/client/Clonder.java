@@ -23,6 +23,9 @@ import com.gitlab.tixtix320.sonder.internal.common.communication.Pack;
 import com.gitlab.tixtix320.sonder.internal.server.rpc.ServerRPCProtocol;
 
 /**
+ * Entry point class for your client side app.
+ * Create client builder by calling method {@link #forAddress}.
+ *
  * @author tix32 on 20-Dec-18
  */
 public final class Clonder implements Closeable {

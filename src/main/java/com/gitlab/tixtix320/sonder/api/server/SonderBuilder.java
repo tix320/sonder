@@ -8,8 +8,6 @@ import java.util.Map;
 import java.util.function.LongFunction;
 
 import com.gitlab.tixtix320.sonder.api.common.communication.Protocol;
-import com.gitlab.tixtix320.sonder.internal.client.rpc.ClientRPCProtocol;
-import com.gitlab.tixtix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.gitlab.tixtix320.sonder.internal.common.util.ClassFinder;
 import com.gitlab.tixtix320.sonder.internal.server.SocketClientsSelector;
 import com.gitlab.tixtix320.sonder.internal.server.rpc.ServerRPCProtocol;
@@ -28,10 +26,10 @@ public final class SonderBuilder {
 	public SonderBuilder(InetSocketAddress inetSocketAddress) {
 		this.inetSocketAddress = inetSocketAddress;
 		this.protocols = new HashMap<>();
-		this.headersTimeoutDuration = Duration.ofSeconds(5);
+		this.headersTimeoutDuration = Duration.ofSeconds(Integer.MAX_VALUE);
 		this.contentTimeoutDurationFactory = contentLength -> {
-			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
-			return Duration.ofSeconds(timout);
+			// long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
+			return Duration.ofSeconds(Integer.MAX_VALUE);
 		};
 	}
 
