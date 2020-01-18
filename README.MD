@@ -34,7 +34,7 @@ Java 11 or higher.
 
 ## Usage
 
-### RPC
+### RPC example
 
 
  Bellow was created serve on port 8888 and specify packages of rpc endpoints.
@@ -117,7 +117,10 @@ public interface MyService {
 }
 ```
 
-### Topics
+
+
+
+### Topic example
 
 
 ```java
