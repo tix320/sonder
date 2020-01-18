@@ -14,21 +14,21 @@ Sonder is a Java library for building TCP client-server applications on high lev
 
 ##Features
 
-#####RPC
+##### RPC
 ```
  * Transfer any object (via json)
  * Transfer binary data
  * Transfer via channel end to end without processing
 ```
 
-#####Topics (publish/subscribe)
+##### Topics (publish/subscribe)
 ```
  * Transfer any object (via json)
 ```
 
 ## Usage
 
-#####RPC
+##### RPC
 
 
  Bellow was created serve on port 8888 and specify packages of rpc endpoints.
@@ -40,7 +40,7 @@ Sonder is a Java library for building TCP client-server applications on high lev
   Identically for his method.
   In most cases 'origin' methods returns Observable, due this call is asynchronous, and yo can subscribe and process response, when will be available.
   
- #####Server Main
+ ##### Server Main
 ```java
 package com.gitlab.tixtix320.sonder.readme.server;
 
@@ -58,7 +58,7 @@ public class ServerTest {
 }
 ```
 
- #####Server Endpoint
+ ##### Server Endpoint
 ```java
 package com.gitlab.tixtix320.sonder.readme.server;
 
@@ -76,7 +76,7 @@ public class MyEndpoint {
 
 ```
 
- #####Client Main
+ ##### Client Main
 ```java
 package com.gitlab.tixtix320.sonder.readme.client;
 
@@ -111,7 +111,7 @@ public interface MyService {
 }
 ```
 
-#####Topics
+##### Topics
 
 
 ```java
@@ -143,7 +143,7 @@ class Client1Test {
 		});
 
        /*
-       Output is ((order not guaranteed))
+       Output is (order not guaranteed)
        [e, d, f]
        Data was sended to subscribers
         */
@@ -168,7 +168,7 @@ class Client2Test {
 }
 ```
 
-#Summary
+# Summary
 Here is a very small example of how a library is easily configured and used.
 Of course, you can also send requests from the server to the client,
 or even from one client to another by specifying the client ID.
