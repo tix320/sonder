@@ -3,3 +3,4 @@ target/
 sonder.iml
 pom.xml.releaseBackup
 release.properties
+/src/test/java/com/gitlab/tixtix320/sonder/readme/
