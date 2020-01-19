@@ -48,6 +48,22 @@ Java 11 or higher.
   Identically for his method.
   In most cases 'origin' methods returns Observable, due this call is asynchronous, and yo can subscribe and process response, when will be available.
   
+  ##### Server Endpoint
+```java
+package com.github.tix320.sonder.readme.server;
+
+import com.github.tix320.sonder.api.common.rpc.Endpoint;
+
+@Endpoint("myService")
+public class MyEndpoint {
+
+	@Endpoint("myMethod")
+	public Integer getLengthOfString(String s) {
+		return s.length();
+	}
+}
+``` 
+  
  ##### Server Main
 ```java
 package com.github.tix320.sonder.readme.server;
@@ -66,22 +82,20 @@ public class ServerTest {
 }
 ```
 
- ##### Server Endpoint
+
+ ##### Client RPC interface
 ```java
-package com.github.tix320.sonder.readme.server;
+package com.github.tix320.sonder.readme.client;
 
-import com.github.tix320.sonder.api.common.rpc.Endpoint;
+import com.github.tix320.kiwi.api.observable.Observable;
+import com.github.tix320.sonder.api.common.rpc.Origin;
 
-@Endpoint("myService")
-public class MyEndpoint {
+@Origin("myService")
+public interface MyService {
 
-	@Endpoint("myMethod")
-	public Integer getLengthOfString(String s) {
-		return s.length();
-	}
+	@Origin("myMethod")
+	Observable<Integer> getLengthOfString(String s);
 }
-
-
 ```
 
  ##### Client Main
@@ -103,24 +117,6 @@ public class ClientTest {
 }
 
 ```
-
- ##### Client RPC interface
-```java
-package com.github.tix320.sonder.readme.client;
-
-import com.github.tix320.kiwi.api.observable.Observable;
-import com.github.tix320.sonder.api.common.rpc.Origin;
-
-@Origin("myService")
-public interface MyService {
-
-	@Origin("myMethod")
-	Observable<Integer> getLengthOfString(String s);
-}
-```
-
-
-
 
 ### Topic example
 
