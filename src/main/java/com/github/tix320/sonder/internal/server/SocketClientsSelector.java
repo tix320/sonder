@@ -15,14 +15,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.LongFunction;
 
-import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
-import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.observable.Observable;
 import com.github.tix320.kiwi.api.observable.subject.Subject;
 import com.github.tix320.kiwi.api.util.IDGenerator;
+import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
+import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
 
 public final class SocketClientsSelector implements ClientsSelector {
 
@@ -101,6 +101,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 				Iterator<SelectionKey> iterator = selectedKeys.iterator();
 				while (iterator.hasNext()) {
 					SelectionKey selectionKey = iterator.next();
+					iterator.remove();
 					try {
 						if (selectionKey.isAcceptable()) {
 							accept();
@@ -117,9 +118,6 @@ public final class SocketClientsSelector implements ClientsSelector {
 					}
 					catch (Exception e) {
 						e.printStackTrace();
-					}
-					finally {
-						iterator.remove();
 					}
 				}
 
@@ -151,10 +149,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		}
 		catch (IOException e) {
 			e.printStackTrace();
-			connections.remove(clientId);
-			if (channel.isOpen()) {
-				channel.close();
-			}
+			removeConnection(clientId);
 		}
 	}
 
@@ -172,11 +167,17 @@ public final class SocketClientsSelector implements ClientsSelector {
 			}
 			catch (IOException e) {
 				e.printStackTrace();
-				connections.remove(clientId);
-				if (channel.isOpen()) {
-					channel.close();
-				}
+				removeConnection(clientId);
 			}
 		}
+	}
+
+	private void removeConnection(long clientId)
+			throws IOException {
+		PackChannel packChannel = connections.get(clientId);
+		if (packChannel.isOpen()) {
+			packChannel.close();
+		}
+		connections.remove(clientId);
 	}
 }

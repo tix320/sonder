@@ -27,9 +27,10 @@ public final class SonderBuilder {
 		this.inetSocketAddress = inetSocketAddress;
 		this.protocols = new HashMap<>();
 		this.headersTimeoutDuration = Duration.ofSeconds(Integer.MAX_VALUE);
+		this.headersTimeoutDuration = Duration.ofSeconds(5);
 		this.contentTimeoutDurationFactory = contentLength -> {
-			// long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
-			return Duration.ofSeconds(Integer.MAX_VALUE);
+			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
+			return Duration.ofSeconds(timout);
 		};
 	}
 

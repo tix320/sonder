@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ReadableByteChannel;
 import java.time.Duration;
 import java.util.concurrent.Executors;
@@ -14,10 +15,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongFunction;
 
-import com.github.tix320.sonder.internal.common.util.EmptyReadableByteChannel;
-import com.github.tix320.sonder.internal.common.util.LimitedReadableByteChannel;
 import com.github.tix320.kiwi.api.observable.Observable;
 import com.github.tix320.kiwi.api.observable.subject.Subject;
+import com.github.tix320.sonder.internal.common.util.EmptyReadableByteChannel;
+import com.github.tix320.sonder.internal.common.util.LimitedReadableByteChannel;
 
 public final class PackChannel implements Closeable {
 
@@ -170,7 +171,11 @@ public final class PackChannel implements Closeable {
 			State state = this.state.get();
 			switch (state) {
 				case PROTOCOL_HEADER:
-					channel.read(protocolHeaderBuffer);
+					int read = channel.read(protocolHeaderBuffer);
+					if (read == -1) {
+						close();
+						throw new ClosedChannelException();
+					}
 					headersTimeout.set(scheduleHeadersTimeout());
 
 					if (protocolHeaderBuffer.hasRemaining()) {
@@ -185,7 +190,11 @@ public final class PackChannel implements Closeable {
 					this.state.updateAndGet(State::next);
 					break;
 				case HEADERS_LENGTH:
-					channel.read(headersLengthBuffer);
+					read = channel.read(headersLengthBuffer);
+					if (read == -1) {
+						close();
+						throw new ClosedChannelException();
+					}
 
 					if (headersLengthBuffer.hasRemaining()) {
 						break cycle;
@@ -201,7 +210,11 @@ public final class PackChannel implements Closeable {
 					headersBuffer.set(ByteBuffer.allocate(headersLength));
 					break;
 				case CONTENT_LENGTH:
-					channel.read(contentLengthBuffer);
+					read = channel.read(contentLengthBuffer);
+					if (read == -1) {
+						close();
+						throw new ClosedChannelException();
+					}
 
 					if (contentLengthBuffer.hasRemaining()) {
 						break cycle;
@@ -218,7 +231,11 @@ public final class PackChannel implements Closeable {
 					break;
 				case HEADERS:
 					ByteBuffer buffer = headersBuffer.get();
-					channel.read(buffer);
+					read = channel.read(buffer);
+					if (read == -1) {
+						close();
+						throw new ClosedChannelException();
+					}
 
 					if (buffer.hasRemaining()) {
 						break cycle;
