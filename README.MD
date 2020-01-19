@@ -32,13 +32,15 @@ Java 11 or higher.
  * Transfer any object (via json)
 ```
 
+##### Implement your own protocol
+
 ## Usage
 
 ### RPC example
 
 
- Bellow was created serve on port 8888 and specify packages of rpc endpoints.
- The @Endpoint annotations marks, that this interface must be called from RPC service, and its value will make it unique.
+ Bellow was created server on port 8888 and specified packages of rpc endpoints.
+ The @Endpoint annotations marks, that this class methods must be called from RPC service, and its value will make it unique.
  Identically for his method.
  
   Also was created client, which is connected to that server and specify packages of rpc interfaces.
