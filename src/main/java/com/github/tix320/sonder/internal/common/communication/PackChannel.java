@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongFunction;
 
+import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.observable.Observable;
 import com.github.tix320.kiwi.api.observable.subject.Subject;
 import com.github.tix320.sonder.internal.common.util.EmptyReadableByteChannel;
@@ -62,6 +63,8 @@ public final class PackChannel implements Closeable {
 
 	private final AtomicLong contentLength;
 
+	private final AtomicReference<LimitedReadableByteChannel> currentContentChannel;
+
 	public PackChannel(ByteChannel channel, Duration headersTimeoutDuration,
 					   LongFunction<Duration> contentTimeoutDurationFactory) {
 		this.channel = channel;
@@ -75,6 +78,7 @@ public final class PackChannel implements Closeable {
 		this.state = new AtomicReference<>(State.PROTOCOL_HEADER);
 		this.headersTimeout = new AtomicReference<>(null);
 		this.contentLength = new AtomicLong(0);
+		this.currentContentChannel = new AtomicReference<>(null);
 	}
 
 	public void write(Pack pack)
@@ -96,12 +100,12 @@ public final class PackChannel implements Closeable {
 		try {
 			consume();
 		}
-		catch (IOException | InvalidPackException e) {
-			reset();
+		catch (Exception e) {
+			resetWithContent();
 			throw e;
 		}
 		catch (Throwable e) {
-			reset();
+			close();
 			throw new IllegalStateException("Error occurs while consuming pack", e);
 		}
 	}
@@ -270,6 +274,7 @@ public final class PackChannel implements Closeable {
 
 
 			channel = limitedChannel;
+			currentContentChannel.set(limitedChannel);
 		}
 
 		Pack pack = new Pack(headers, channel, contentLength);
@@ -303,6 +308,18 @@ public final class PackChannel implements Closeable {
 		headersLengthBuffer.clear();
 		contentLengthBuffer.clear();
 		headersBuffer.set(null);
+	}
+
+	private void resetWithContent() {
+		reset();
+		currentContentChannel.updateAndGet(channel -> {
+			if (channel != null) {
+				if (channel.getRemaining() > 0) {
+					Try.runOrRethrow(channel::readAllInVain);
+				}
+			}
+			return channel;
+		});
 	}
 
 	private static boolean isHeader(byte[] array) {

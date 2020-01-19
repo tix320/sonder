@@ -66,6 +66,7 @@ public class ChannelTransfer implements Transfer {
 						String.format("Content channel ended, but still remaining %s bytes", remaining));
 			}
 			remaining -= read;
+			buffer.clear();
 		}
 	}
 }

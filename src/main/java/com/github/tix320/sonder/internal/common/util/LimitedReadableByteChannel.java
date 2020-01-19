@@ -78,6 +78,19 @@ public class LimitedReadableByteChannel implements ReadableByteChannel {
 		return remaining;
 	}
 
+	public synchronized void readAllInVain()
+			throws IOException {
+		ByteBuffer buffer = ByteBuffer.allocate(1024 * 64);
+		while (remaining > 0) {
+			int read = channel.read(buffer);
+			if (read < 0) {
+				break;
+			}
+			remaining -= read;
+			buffer.clear();
+		}
+	}
+
 	private boolean isFinished() {
 		return remaining == 0;
 	}
