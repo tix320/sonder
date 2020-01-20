@@ -14,22 +14,23 @@ Java 11 or higher.
 <dependency>
 	<groupId>com.github.tix320</groupId>
 	<artifactId>sonder</artifactId>
-	<version>0.12.1</version>
+	<version>0.12.2</version>
 </dependency>
 ```
 
 ## Features
 
 #### RPC
+
 ```
- * Transfer any object (via json)
+ * Transfer any objects (via json)
  * Transfer binary data
- * Transfer via channel end to end without processing
+ * End to end transfering with channels
 ```
 
 ##### Topics (publish/subscribe)
 ```
- * Transfer any object (via json)
+ * Publish any objects (via json)
 ```
 
 ##### Implement your own protocol
@@ -176,8 +177,8 @@ class Client2Test {
 ```
 
 # Summary
-Here is a very small example of how a library is easily configured and used.
+Here is a small example of how a library is easily configured and used.
 Of course, you can also send requests from the server to the client,
 or even from one client to another by specifying the client ID.
 Also you can specify your own protocols and register theme (RPC and Topics are built-in).
-For any question, please contact me and thank you for your support.
+Thank you for your support.
