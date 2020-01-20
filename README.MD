@@ -34,6 +34,9 @@ Java 11 or higher.
 ```
 
 ##### Implement your own protocol
+```
+Just make implementation of interface for receiving and sending data and register him.
+```
 
 ## Usage
 
@@ -180,5 +183,4 @@ class Client2Test {
 Here is a small example of how a library is easily configured and used.
 Of course, you can also send requests from the server to the client,
 or even from one client to another by specifying the client ID.
-Also you can specify your own protocols and register theme (RPC and Topics are built-in).
 Thank you for your support.
