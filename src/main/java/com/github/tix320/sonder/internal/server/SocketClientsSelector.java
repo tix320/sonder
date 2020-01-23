@@ -11,11 +11,16 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.check.Try;
+import com.github.tix320.kiwi.api.function.CheckedRunnable;
 import com.github.tix320.kiwi.api.observable.Observable;
 import com.github.tix320.kiwi.api.observable.subject.Subject;
 import com.github.tix320.kiwi.api.util.IDGenerator;
@@ -26,6 +31,8 @@ import com.github.tix320.sonder.internal.common.communication.SocketConnectionEx
 
 public final class SocketClientsSelector implements ClientsSelector {
 
+	private final ExecutorService workers;
+
 	private final Selector selector;
 
 	private final ServerSocketChannel serverChannel;
@@ -33,6 +40,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 	private final Subject<ClientPack> incomingRequests;
 
 	private final Map<Long, PackChannel> connections;
+
+	private final Map<Long, Lock> connectionLocks;
 
 	private final Map<Long, Queue<Pack>> messageQueues;
 
@@ -43,14 +52,16 @@ public final class SocketClientsSelector implements ClientsSelector {
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
 	public SocketClientsSelector(InetSocketAddress address, Duration headersTimeoutDuration,
-								 LongFunction<Duration> contentTimeoutDurationFactory) {
+								 LongFunction<Duration> contentTimeoutDurationFactory, ExecutorService workers) {
 		this.selector = Try.supplyOrRethrow(Selector::open);
 		this.incomingRequests = Subject.single();
 		this.connections = new ConcurrentHashMap<>();
+		this.connectionLocks = new ConcurrentHashMap<>();
 		this.messageQueues = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1);
 		this.headersTimeoutDuration = headersTimeoutDuration;
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
+		this.workers = workers;
 
 		try {
 			serverChannel = ServerSocketChannel.open();
@@ -107,10 +118,34 @@ public final class SocketClientsSelector implements ClientsSelector {
 							accept();
 						}
 						else if (selectionKey.isReadable()) {
-							read(selectionKey);
+							Long clientId = (Long) selectionKey.attachment();
+							Lock channelLock = connectionLocks.get(clientId);
+
+							runAsync(() -> {
+								if (channelLock.tryLock()) {
+									try {
+										read(clientId);
+									}
+									finally {
+										channelLock.unlock();
+									}
+								}
+							});
 						}
+
 						else if (selectionKey.isWritable()) {
-							write(selectionKey);
+							Long clientId = (Long) selectionKey.attachment();
+							Lock channelLock = connectionLocks.get(clientId);
+							runAsync(() -> {
+								if (channelLock.tryLock()) {
+									try {
+										write(clientId);
+									}
+									finally {
+										channelLock.unlock();
+									}
+								}
+							});
 						}
 						else {
 							selectionKey.cancel();
@@ -135,14 +170,13 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 		PackChannel packChannel = new PackChannel(clientChannel, headersTimeoutDuration, contentTimeoutDurationFactory);
 		connections.put(connectedClientID, packChannel);
+		connectionLocks.put(connectedClientID, new ReentrantLock());
 		messageQueues.put(connectedClientID, new ConcurrentLinkedQueue<>());
 		packChannel.packs().subscribe(pack -> incomingRequests.next(new ClientPack(connectedClientID, pack)));
 	}
 
-	private void read(SelectionKey selectionKey)
+	private void read(Long clientId)
 			throws InvalidPackException, IOException {
-		Long clientId = (Long) selectionKey.attachment();
-
 		PackChannel channel = connections.get(clientId);
 		try {
 			channel.read();
@@ -153,9 +187,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 		}
 	}
 
-	private void write(SelectionKey selectionKey)
+	private void write(Long clientId)
 			throws IOException {
-		Long clientId = (Long) selectionKey.attachment();
 		PackChannel channel = connections.get(clientId);
 
 		Queue<Pack> queue = messageQueues.get(clientId);
@@ -179,5 +212,14 @@ public final class SocketClientsSelector implements ClientsSelector {
 			packChannel.close();
 		}
 		connections.remove(clientId);
+	}
+
+	private void runAsync(CheckedRunnable checkedRunnable) {
+		CompletableFuture.runAsync(() -> Try.runOrRethrow(checkedRunnable), workers)
+				.whenComplete((aVoid, throwable) -> {
+					if (throwable != null) {
+						throwable.getCause().getCause().printStackTrace();
+					}
+				});
 	}
 }

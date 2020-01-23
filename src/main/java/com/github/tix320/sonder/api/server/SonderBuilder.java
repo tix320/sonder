@@ -5,6 +5,8 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.LongFunction;
 
 import com.github.tix320.sonder.api.common.communication.Protocol;
@@ -23,6 +25,8 @@ public final class SonderBuilder {
 
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
+	private ExecutorService workers;
+
 	public SonderBuilder(InetSocketAddress inetSocketAddress) {
 		this.inetSocketAddress = inetSocketAddress;
 		this.protocols = new HashMap<>();
@@ -32,6 +36,7 @@ public final class SonderBuilder {
 			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
 			return Duration.ofSeconds(timout);
 		};
+		this.workers = Executors.newCachedThreadPool();
 	}
 
 	public SonderBuilder withRPCProtocol(String... packagesToScan) {
@@ -57,9 +62,14 @@ public final class SonderBuilder {
 		return this;
 	}
 
+	public SonderBuilder workersCount(int count) {
+		workers = Executors.newFixedThreadPool(count);
+		return this;
+	}
+
 	public Sonder build() {
 		return new Sonder(
-				new SocketClientsSelector(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory),
-				protocols);
+				new SocketClientsSelector(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory,
+						workers), protocols);
 	}
 }
