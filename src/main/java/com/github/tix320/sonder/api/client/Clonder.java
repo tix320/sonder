@@ -20,13 +20,22 @@ import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
 
 /**
- * Entry point class for your client side app.
+ * Entry point class for your socket client.
+ * Provides main functionality for communicating with server.
+ *
+ * Communication is performed by sending and receiving transfer objects {@link Transfer}.
+ * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
+ *
+ * You can register any protocol by calling method {@link #registerProtocol(Protocol)}.
+ * There are some built-in protocols {@link BuiltInProtocol}, which names is reserved and cannot be used.
+ *
  * Create client builder by calling method {@link #forAddress}.
  *
  * @author tix32 on 20-Dec-18
+ * @see Protocol
+ * @see Transfer
  */
 public final class Clonder implements Closeable {
 
@@ -36,6 +45,13 @@ public final class Clonder implements Closeable {
 
 	private final ServerConnection connection;
 
+	/**
+	 * Prepare client creating for this socket address.
+	 *
+	 * @param inetSocketAddress socket address to connect.
+	 *
+	 * @return builder for future configuring.
+	 */
 	public static ClonderBuilder forAddress(InetSocketAddress inetSocketAddress) {
 		return new ClonderBuilder(inetSocketAddress);
 	}
@@ -45,25 +61,21 @@ public final class Clonder implements Closeable {
 		this.protocols = new ConcurrentHashMap<>(protocols);
 
 		connection.incomingRequests().map(this::convertDataPackToTransfer).subscribe(this::processTransfer);
-		protocols.forEach((protocolName, protocol) -> protocol.outgoingTransfers().subscribe(transfer -> {
-			transfer = new ChannelTransfer(
-					transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(), transfer.channel(),
-					transfer.getContentLength());
-
-			byte[] headers;
-			try {
-				headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
-			}
-			catch (JsonProcessingException e) {
-				throw new IllegalStateException("Cannot write JSON", e);
-			}
-
-			ReadableByteChannel channel = transfer.channel();
-
-			connection.send(new Pack(headers, channel, transfer.getContentLength()));
-		}));
+		protocols.forEach((protocolName, protocol) -> protocol.outgoingTransfers()
+				.map(transfer -> setProtocolHeader(transfer, protocolName))
+				.map(this::transferToDataPack)
+				.subscribe(connection::send));
 	}
 
+	/**
+	 * Register protocol for this server.
+	 *
+	 * @param protocol to register
+	 *
+	 * @throws IllegalArgumentException if reserved protocol name is used
+	 * @throws IllegalStateException    if there are already registered protocol with same name
+	 * @see Protocol
+	 */
 	public void registerProtocol(Protocol protocol) {
 		String protocolName = protocol.getName();
 		if (BuiltInProtocol.NAMES.contains(protocolName)) {
@@ -76,11 +88,15 @@ public final class Clonder implements Closeable {
 	}
 
 	/**
-	 * Get service from {@link ServerRPCProtocol}
+	 * Get service from protocol {@link ClientRPCProtocol}
+	 *
+	 * @param clazz class of service
+	 * @param <T>   of class
 	 *
 	 * @return service
 	 *
-	 * @throws IllegalArgumentException if {@link ServerRPCProtocol} not registered
+	 * @throws IllegalStateException if {@link ClientRPCProtocol} not registered
+	 * @see ClientRPCProtocol
 	 */
 	public <T> T getRPCService(Class<T> clazz) {
 		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
@@ -91,9 +107,14 @@ public final class Clonder implements Closeable {
 	}
 
 	/**
-	 * Register topic publisher for {@link ClientTopicProtocol} and return
+	 * Register topic for protocol {@link ClientTopicProtocol}
 	 *
-	 * @return topic publisher
+	 * @param topic      name
+	 * @param dataType   which will be used while transferring data in topic
+	 * @param bufferSize for buffering last received data
+	 * @param <T>        type of topic data
+	 *
+	 * @return topic {@link Topic}
 	 *
 	 * @throws IllegalStateException if {@link ClientTopicProtocol} not registered
 	 */
@@ -105,6 +126,15 @@ public final class Clonder implements Closeable {
 		return ((ClientTopicProtocol) protocol).registerTopic(topic, dataType, bufferSize);
 	}
 
+	/**
+	 * * Register topic for protocol {@link ClientTopicProtocol}
+	 * Invokes {@link #registerTopic(String, TypeReference, int)} with '0' value buffer size
+	 *
+	 * @param topic    name
+	 * @param dataType which will be used while transferring data in topic
+	 *
+	 * @return topic {@link Topic}
+	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
 		return registerTopic(topic, dataType, 0);
 	}
@@ -113,6 +143,24 @@ public final class Clonder implements Closeable {
 	public void close()
 			throws IOException {
 		connection.close();
+	}
+
+	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
+		return new ChannelTransfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
+				transfer.channel(), transfer.getContentLength());
+	}
+
+	private Pack transferToDataPack(Transfer transfer) {
+		byte[] headers;
+		try {
+			headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
+		}
+		catch (JsonProcessingException e) {
+			throw new IllegalStateException("Cannot write JSON", e);
+		}
+
+		ReadableByteChannel channel = transfer.channel();
+		return new Pack(headers, channel, transfer.getContentLength());
 	}
 
 	private Transfer convertDataPackToTransfer(Pack dataPack) {

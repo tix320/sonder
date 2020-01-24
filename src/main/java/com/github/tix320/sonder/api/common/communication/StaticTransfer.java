@@ -5,6 +5,9 @@ import java.nio.channels.ReadableByteChannel;
 
 import com.github.tix320.sonder.internal.common.util.ReadableByteArrayChannel;
 
+/**
+ * The byte array implementation of transfer.
+ */
 public final class StaticTransfer implements Transfer {
 
 	private final Headers headers;

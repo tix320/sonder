@@ -18,6 +18,20 @@ import com.github.tix320.sonder.api.common.communication.StaticTransfer;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.topic.Topic;
 
+/**
+ * Topic protocol implementation, which stores topics for communicating with other clients without using server directly.
+ * Each outgoing transfer will be  some of these 3 type actions, {publish, subscribe, unsubscribe}.
+ *
+ * {publish} is used for publishing any data to topic, which will be receive each client, who subscribed in topic.
+ *
+ * {subscribe} is used for subscribing to topic for receiving data, published by other clients in that topic.
+ * Also subscribed client may publish your data after subscribe.
+ *
+ * {unsubscribe} is used for unsubscribing from topic, finishing receiving data from this topic.
+ *
+ * For subscribing to topic and then publishing data you must have register this topic {@link #registerTopic(String, TypeReference, int)}  } and then subscribe {@link Topic#asObservable()}.
+ * For publishing data you can use {@link Topic} interface, which instance you will be receive after topic register.
+ */
 public class ClientTopicProtocol implements Protocol {
 
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
@@ -98,6 +112,15 @@ public class ClientTopicProtocol implements Protocol {
 		responseSubjects.values().forEach(Subject::complete);
 	}
 
+	/**
+	 * * Register topic
+	 *
+	 * @param topic      name
+	 * @param dataType   which will be used while transferring data in topic
+	 * @param bufferSize for buffering last received data
+	 *
+	 * @return topic {@link Topic}
+	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
 		if (topicSubjects.containsKey(topic)) {
 			throw new IllegalArgumentException(String.format("Publisher for topic %s already registered", topic));

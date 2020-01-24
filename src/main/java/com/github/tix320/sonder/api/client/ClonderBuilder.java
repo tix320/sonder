@@ -8,11 +8,17 @@ import java.util.Map;
 import java.util.function.LongFunction;
 
 import com.github.tix320.sonder.api.common.communication.Protocol;
+import com.github.tix320.sonder.api.common.communication.Transfer;
+import com.github.tix320.sonder.api.common.rpc.Endpoint;
+import com.github.tix320.sonder.api.common.rpc.Origin;
 import com.github.tix320.sonder.internal.client.SocketServerConnection;
 import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.util.ClassFinder;
 
+/**
+ * Builder for socket client {@link Clonder}.
+ */
 public final class ClonderBuilder {
 
 	private final InetSocketAddress inetSocketAddress;
@@ -36,6 +42,13 @@ public final class ClonderBuilder {
 		};
 	}
 
+	/**
+	 * Register RPC protocol {@link ClientRPCProtocol} to client.
+	 *
+	 * @param packagesToScan to find origin interfaces {@link Origin}, and endpoint classes {@link Endpoint}.
+	 *
+	 * @return self
+	 */
 	public ClonderBuilder withRPCProtocol(String... packagesToScan) {
 		List<Class<?>> classes = ClassFinder.getPackageClasses(packagesToScan);
 		ClientRPCProtocol protocol = new ClientRPCProtocol(classes);
@@ -43,22 +56,52 @@ public final class ClonderBuilder {
 		return this;
 	}
 
+	/**
+	 * Register topic protocol {@link ClientTopicProtocol} to client.
+	 *
+	 * @return self
+	 */
 	public ClonderBuilder withTopicProtocol() {
 		ClientTopicProtocol protocol = new ClientTopicProtocol();
 		protocols.put(protocol.getName(), protocol);
 		return this;
 	}
 
+	/**
+	 * Set timeout for transfer {@link Transfer} headers receiving.
+	 * If headers will not fully received in this duration, then transferring will be reset.
+	 *
+	 * @param duration timeout to set
+	 *
+	 * @return self
+	 *
+	 * @see Transfer
+	 */
 	public ClonderBuilder headersTimeoutDuration(Duration duration) {
 		headersTimeoutDuration = duration;
 		return this;
 	}
 
+	/**
+	 * Set timeout factory for transfer {@link Transfer} content receiving.
+	 * If content will not fully received in this duration, then transferring will be reset.
+	 *
+	 * @param factory to create timeout for every transfer content. ('contentLength' to 'timeout')
+	 *
+	 * @return self
+	 *
+	 * @see Transfer
+	 */
 	public ClonderBuilder contentTimeoutDurationFactory(LongFunction<Duration> factory) {
 		contentTimeoutDurationFactory = factory;
 		return this;
 	}
 
+	/**
+	 * Build and run client.
+	 *
+	 * @return client instance.
+	 */
 	public Clonder build() {
 		return new Clonder(
 				new SocketServerConnection(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory),

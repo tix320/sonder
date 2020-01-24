@@ -20,6 +20,11 @@ import com.fasterxml.jackson.databind.node.ValueNode;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import com.github.tix320.sonder.internal.common.communication.InvalidHeaderException;
 
+/**
+ * Headers are used in transfers {@link Transfer} for providing some info about transfer.
+ * Headers are serialized and deserialized to JSON.
+ * Headers basically used for implementing protocol logic. {@link Protocol}
+ */
 @JsonSerialize(using = Headers.HeadersSerializer.class)
 @JsonDeserialize(using = Headers.HeadersDeserializer.class)
 public final class Headers implements Serializable {
@@ -146,7 +151,7 @@ public final class Headers implements Serializable {
 		}
 	}
 
-	//	--------------------Known Keys
+	//	--------------------Known headers
 	public static final String PROTOCOL = "protocol";
 	public static final String DESTINATION_CLIENT_ID = "destination-client-id";
 	public static final String IS_INVOKE = "is-invoke";

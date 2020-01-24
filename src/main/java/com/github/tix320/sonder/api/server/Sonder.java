@@ -10,22 +10,33 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.tix320.sonder.api.common.communication.ChannelTransfer;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Protocol;
+import com.github.tix320.sonder.api.common.communication.Transfer;
+import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
-import com.github.tix320.sonder.api.common.communication.ChannelTransfer;
-import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.api.common.topic.Topic;
+import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
 import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
 import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
 
 /**
- * Entry point class for your server side app.
- * Create server builder by calling method {@link #forAddress}.
+ * Entry point class for your socket server.
+ * Provides main functionality for communicating with clients.
+ *
+ * Communication is performed by sending and receiving transfer objects {@link Transfer}.
+ * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
+ *
+ * You can register any protocol by calling method {@link #registerProtocol(Protocol)}.
+ * There are some built-in protocols {@link BuiltInProtocol}, which names is reserved and cannot be used.
+ *
+ * Create client builder by calling method {@link #forAddress}.
  *
  * @author Tigran.Sargsyan on 11-Dec-18
+ * @see Protocol
+ * @see Transfer
  */
 public final class Sonder implements Closeable {
 
@@ -35,6 +46,14 @@ public final class Sonder implements Closeable {
 
 	private final ClientsSelector clientsSelector;
 
+
+	/**
+	 * Prepare server creating for this socket address.
+	 *
+	 * @param inetSocketAddress socket address to bind.
+	 *
+	 * @return builder for future configuring.
+	 */
 	public static SonderBuilder forAddress(InetSocketAddress inetSocketAddress) {
 		return new SonderBuilder(inetSocketAddress);
 	}
@@ -44,28 +63,21 @@ public final class Sonder implements Closeable {
 		this.protocols = new ConcurrentHashMap<>(protocols);
 
 		clientsSelector.incomingRequests().map(this::clientPackToTransfer).subscribe(this::processTransfer);
-		protocols.forEach((protocolName, protocol) -> protocol.outgoingTransfers().subscribe(transfer -> {
-			Number destinationClientId = transfer.getHeaders().getNonNullNumber(Headers.DESTINATION_CLIENT_ID);
-
-			transfer = new ChannelTransfer(
-					transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(), transfer.channel(),
-					transfer.getContentLength());
-
-			byte[] headers;
-			try {
-				headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
-			}
-			catch (JsonProcessingException e) {
-				throw new IllegalStateException("Cannot write JSON", e);
-			}
-
-			ReadableByteChannel channel = transfer.channel();
-
-			clientsSelector.send(new ClientsSelector.ClientPack(destinationClientId.longValue(),
-					new Pack(headers, channel, transfer.getContentLength())));
-		}));
+		protocols.forEach((protocolName, protocol) -> protocol.outgoingTransfers()
+				.map(transfer -> setProtocolHeader(transfer, protocolName))
+				.map(this::transferToClientPack)
+				.subscribe(clientsSelector::send));
 	}
 
+	/**
+	 * Register protocol for this server.
+	 *
+	 * @param protocol to register
+	 *
+	 * @throws IllegalArgumentException if reserved protocol name is used
+	 * @throws IllegalStateException    if there are already registered protocol with same name
+	 * @see Protocol
+	 */
 	public void registerProtocol(Protocol protocol) {
 		String protocolName = protocol.getName();
 		if (BuiltInProtocol.NAMES.contains(protocolName)) {
@@ -78,11 +90,15 @@ public final class Sonder implements Closeable {
 	}
 
 	/**
-	 * Get service from {@link ServerRPCProtocol}
+	 * Get service from protocol {@link ServerRPCProtocol}
+	 *
+	 * @param clazz class of service
+	 * @param <T>   of class
 	 *
 	 * @return service
 	 *
-	 * @throws IllegalArgumentException if {@link ServerRPCProtocol} not registered
+	 * @throws IllegalStateException if {@link ServerRPCProtocol} not registered
+	 * @see ServerRPCProtocol
 	 */
 	public <T> T getRPCService(Class<T> clazz) {
 		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
@@ -93,9 +109,14 @@ public final class Sonder implements Closeable {
 	}
 
 	/**
-	 * Register topic publisher for {@link ServerTopicProtocol} and return
+	 * Register topic for protocol {@link ServerTopicProtocol}
 	 *
-	 * @return topic publisher
+	 * @param topic      name
+	 * @param dataType   which will be used while transferring data in topic
+	 * @param bufferSize for buffering last received data
+	 * @param <T>        type of topic data
+	 *
+	 * @return topic
 	 *
 	 * @throws IllegalStateException if {@link ServerTopicProtocol} not registered
 	 */
@@ -107,6 +128,15 @@ public final class Sonder implements Closeable {
 		return ((ServerTopicProtocol) protocol).registerTopic(topic, dataType, bufferSize);
 	}
 
+	/**
+	 * * Register topic for protocol {@link ServerTopicProtocol}
+	 * Invokes {@link #registerTopic(String, TypeReference, int)} with '0' value buffer size
+	 *
+	 * @param topic    name
+	 * @param dataType which will be used while transferring data in topic
+	 *
+	 * @return topic {@link Topic}
+	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
 		return registerTopic(topic, dataType, 0);
 	}
@@ -115,6 +145,26 @@ public final class Sonder implements Closeable {
 	public void close()
 			throws IOException {
 		clientsSelector.close();
+	}
+
+	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
+		return new ChannelTransfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
+				transfer.channel(), transfer.getContentLength());
+	}
+
+	private ClientPack transferToClientPack(Transfer transfer) {
+		Number destinationClientId = transfer.getHeaders().getNonNullNumber(Headers.DESTINATION_CLIENT_ID);
+
+		byte[] headers;
+		try {
+			headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
+		}
+		catch (JsonProcessingException e) {
+			throw new IllegalStateException("Cannot write JSON", e);
+		}
+
+		ReadableByteChannel channel = transfer.channel();
+		return new ClientPack(destinationClientId.longValue(), new Pack(headers, channel, transfer.getContentLength()));
 	}
 
 	private Transfer clientPackToTransfer(ClientsSelector.ClientPack clientPack) {
