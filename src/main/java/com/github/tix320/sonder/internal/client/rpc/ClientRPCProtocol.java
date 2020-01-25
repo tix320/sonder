@@ -13,24 +13,22 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.github.tix320.sonder.api.common.communication.*;
-import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
-import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
-import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
-import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
-import com.github.tix320.sonder.internal.common.rpc.service.*;
-import com.github.tix320.sonder.internal.common.rpc.service.OriginInvocationHandler.Handler;
 import com.github.tix320.kiwi.api.check.Try;
-import com.github.tix320.kiwi.api.observable.Observable;
-import com.github.tix320.kiwi.api.observable.subject.Subject;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.github.tix320.sonder.api.common.rpc.extra.ClientID;
+import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
+import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
 import com.github.tix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.github.tix320.sonder.internal.common.rpc.PathNotFoundException;
+import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
+import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.*;
+import com.github.tix320.sonder.internal.common.rpc.service.OriginInvocationHandler.Handler;
 
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toUnmodifiableMap;
@@ -50,11 +48,11 @@ public final class ClientRPCProtocol implements Protocol {
 
 	private final Map<String, EndpointMethod> endpointsByPath;
 
-	private final Map<Long, Subject<Object>> responseSubjects;
+	private final Map<Long, Publisher<Object>> responsePublishers;
 
 	private final IDGenerator transferIdGenerator;
 
-	private final Subject<Transfer> outgoingRequests;
+	private final Publisher<Transfer> outgoingRequests;
 
 	public ClientRPCProtocol(List<Class<?>> classes) {
 		OriginRPCServiceMethods originServiceMethods = new OriginRPCServiceMethods(classes);
@@ -85,10 +83,10 @@ public final class ClientRPCProtocol implements Protocol {
 				.distinct()
 				.collect(toUnmodifiableMap(clazz -> clazz, this::creatEndpointInstance));
 
-		this.responseSubjects = new ConcurrentHashMap<>();
+		this.responsePublishers = new ConcurrentHashMap<>();
 		this.transferIdGenerator = new IDGenerator();
 
-		this.outgoingRequests = Subject.single();
+		this.outgoingRequests = Publisher.simple();
 	}
 
 	@Override
@@ -118,7 +116,7 @@ public final class ClientRPCProtocol implements Protocol {
 	@Override
 	public void close() {
 		outgoingRequests.complete();
-		responseSubjects.values().forEach(Subject::complete);
+		responsePublishers.values().forEach(Publisher::complete);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -188,17 +186,17 @@ public final class ClientRPCProtocol implements Protocol {
 
 			transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
-			Subject<Object> responseSubject = Subject.single();
-			responseSubjects.put(transferKey, responseSubject);
-			outgoingRequests.next(transfer);
-			return responseSubject.asObservable();
+			Publisher<Object> responsePublisher = Publisher.simple();
+			responsePublishers.put(transferKey, responsePublisher);
+			outgoingRequests.publish(transfer);
+			return responsePublisher.asObservable().toMono();
 		}
 		else {
 			Headers headers = transfer.getHeaders().compose().header(Headers.NEED_RESPONSE, false).build();
 
 			transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
-			outgoingRequests.next(transfer);
+			outgoingRequests.publish(transfer);
 			return null;
 		}
 	}
@@ -275,21 +273,21 @@ public final class ClientRPCProtocol implements Protocol {
 			switch (endpointMethod.resultType()) {
 				case VOID:
 					builder.contentType(ContentType.BINARY);
-					outgoingRequests.next(new StaticTransfer(builder.build(), new byte[0]));
+					outgoingRequests.publish(new StaticTransfer(builder.build(), new byte[0]));
 					break;
 				case OBJECT:
 					builder.contentType(ContentType.JSON);
 					byte[] transferContent = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(result));
-					outgoingRequests.next(new StaticTransfer(builder.build(), transferContent));
+					outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent));
 					break;
 				case BINARY:
 					builder.contentType(ContentType.BINARY);
-					outgoingRequests.next(new StaticTransfer(builder.build(), (byte[]) result));
+					outgoingRequests.publish(new StaticTransfer(builder.build(), (byte[]) result));
 					break;
 				case TRANSFER:
 					builder.contentType(ContentType.TRANSFER);
 					Transfer resultTransfer = (Transfer) result;
-					outgoingRequests.next(
+					outgoingRequests.publish(
 							new ChannelTransfer(resultTransfer.getHeaders().compose().headers(builder.build()).build(),
 									resultTransfer.channel(), resultTransfer.getContentLength()));
 					break;
@@ -307,7 +305,7 @@ public final class ClientRPCProtocol implements Protocol {
 
 		Number transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY);
 
-		responseSubjects.computeIfPresent(transferKey.longValue(), (key, subject) -> {
+		responsePublishers.computeIfPresent(transferKey.longValue(), (key, publisher) -> {
 			OriginMethod originMethod = originsByPath.get(path);
 			if (originMethod == null) {
 				throw new PathNotFoundException("Origin with path '" + path + "' not found");
@@ -316,7 +314,7 @@ public final class ClientRPCProtocol implements Protocol {
 			JavaType responseType = originMethod.getResponseType();
 			if (responseType.getRawClass() == None.class) {
 				Try.runOrRethrow(transfer::readAllInVain);
-				subject.next(None.SELF);
+				publisher.publish(None.SELF);
 			}
 			else if (transfer.getContentLength() == 0) {
 				throw new IllegalStateException(
@@ -349,13 +347,13 @@ public final class ClientRPCProtocol implements Protocol {
 				}
 
 				try {
-					subject.next(result);
+					publisher.publish(result);
 				}
 				catch (ClassCastException e) {
 					throw IncompatibleTypeException.forMethodReturnType(originMethod.getRawMethod(), e);
 				}
 			}
-			subject.complete();
+			publisher.complete();
 			return null;
 		});
 	}

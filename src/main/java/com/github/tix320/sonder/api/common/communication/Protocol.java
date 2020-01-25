@@ -4,7 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.function.LongFunction;
 
-import com.github.tix320.kiwi.api.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.client.Clonder;
 import com.github.tix320.sonder.api.client.ClonderBuilder;
 import com.github.tix320.sonder.api.server.Sonder;

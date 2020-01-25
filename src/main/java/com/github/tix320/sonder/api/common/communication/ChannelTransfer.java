@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ReadableByteChannel;
 
+/**
+ * The default implementation of transfer.
+ */
 public class ChannelTransfer implements Transfer {
 
 	private final Headers headers;

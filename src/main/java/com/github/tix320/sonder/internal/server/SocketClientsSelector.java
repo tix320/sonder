@@ -21,8 +21,8 @@ import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.function.CheckedRunnable;
-import com.github.tix320.kiwi.api.observable.Observable;
-import com.github.tix320.kiwi.api.observable.subject.Subject;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
 import com.github.tix320.sonder.internal.common.communication.Pack;
@@ -37,7 +37,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final ServerSocketChannel serverChannel;
 
-	private final Subject<ClientPack> incomingRequests;
+	private final Publisher<ClientPack> incomingRequests;
 
 	private final Map<Long, PackChannel> connections;
 
@@ -54,7 +54,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 	public SocketClientsSelector(InetSocketAddress address, Duration headersTimeoutDuration,
 								 LongFunction<Duration> contentTimeoutDurationFactory, ExecutorService workers) {
 		this.selector = Try.supplyOrRethrow(Selector::open);
-		this.incomingRequests = Subject.single();
+		this.incomingRequests = Publisher.simple();
 		this.connections = new ConcurrentHashMap<>();
 		this.connectionLocks = new ConcurrentHashMap<>();
 		this.messageQueues = new ConcurrentHashMap<>();
@@ -172,7 +172,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		connections.put(connectedClientID, packChannel);
 		connectionLocks.put(connectedClientID, new ReentrantLock());
 		messageQueues.put(connectedClientID, new ConcurrentLinkedQueue<>());
-		packChannel.packs().subscribe(pack -> incomingRequests.next(new ClientPack(connectedClientID, pack)));
+		packChannel.packs().subscribe(pack -> incomingRequests.publish(new ClientPack(connectedClientID, pack)));
 	}
 
 	private void read(Long clientId)

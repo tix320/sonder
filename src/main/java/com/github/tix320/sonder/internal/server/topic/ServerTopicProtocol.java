@@ -10,8 +10,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
-import com.github.tix320.kiwi.api.observable.Observable;
-import com.github.tix320.kiwi.api.observable.subject.Subject;
+import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
@@ -38,17 +39,17 @@ public class ServerTopicProtocol implements Protocol {
 
 	private final Map<String, Queue<Long>> topics;
 
-	private final Map<String, Subject<Object>> topicSubjects;
+	private final Map<String, Publisher<Object>> topicPublishers;
 
 	private final Map<String, TypeReference<?>> dataTypesByTopic;
 
-	private final Subject<Transfer> outgoingRequests;
+	private final Publisher<Transfer> outgoingRequests;
 
 	public ServerTopicProtocol() {
 		this.topics = new ConcurrentHashMap<>();
-		this.topicSubjects = new ConcurrentHashMap<>();
+		this.topicPublishers = new ConcurrentHashMap<>();
 		this.dataTypesByTopic = new ConcurrentHashMap<>();
-		this.outgoingRequests = Subject.single();
+		this.outgoingRequests = Publisher.simple();
 	}
 
 	@Override
@@ -90,15 +91,15 @@ public class ServerTopicProtocol implements Protocol {
 
 		String topic = (String) headers.get(Headers.TOPIC);
 
-		Subject<Object> subject = topicSubjects.get(topic);
-		if (subject == null) {
+		Publisher<Object> publisher = topicPublishers.get(topic);
+		if (publisher == null) {
 			return;
 		}
 
 		TypeReference<?> dataType = dataTypesByTopic.get(topic);
 		Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
 		try {
-			subject.next(contentObject);
+			publisher.publish(contentObject);
 		}
 		catch (IllegalArgumentException e) {
 			throw new IllegalStateException(
@@ -132,10 +133,10 @@ public class ServerTopicProtocol implements Protocol {
 	 * @return topic {@link Topic}
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
-		if (topicSubjects.containsKey(topic)) {
+		if (topicPublishers.containsKey(topic)) {
 			throw new IllegalArgumentException(String.format("Publisher for topic %s already registered", topic));
 		}
-		topicSubjects.put(topic, bufferSize > 0 ? Subject.buffered(bufferSize) : Subject.single());
+		topicPublishers.put(topic, bufferSize > 0 ? Publisher.buffered(bufferSize) : Publisher.simple());
 		dataTypesByTopic.put(topic, dataType);
 		return new TopicImpl<>(topic);
 	}
@@ -149,7 +150,8 @@ public class ServerTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.IS_INVOKE, true)
 						.build();
-				outgoingRequests.next(new ChannelTransfer(newHeaders, transfer.channel(), transfer.getContentLength()));
+				outgoingRequests.publish(
+						new ChannelTransfer(newHeaders, transfer.channel(), transfer.getContentLength()));
 			}
 		}
 		Headers newHeaders = Headers.builder()
@@ -157,7 +159,7 @@ public class ServerTopicProtocol implements Protocol {
 				.header(Headers.TOPIC, topic)
 				.header(Headers.TRANSFER_KEY, transfer.getHeaders().get(Headers.TRANSFER_KEY))
 				.build();
-		outgoingRequests.next(new StaticTransfer(newHeaders, new byte[0]));
+		outgoingRequests.publish(new StaticTransfer(newHeaders, new byte[0]));
 	}
 
 	private final class TopicImpl<T> implements Topic<T> {
@@ -169,7 +171,7 @@ public class ServerTopicProtocol implements Protocol {
 		}
 
 		@Override
-		public Observable<None> publish(Object data) {
+		public MonoObservable<None> publish(Object data) {
 			Queue<Long> clients = topics.computeIfAbsent(topic, key -> new ConcurrentLinkedQueue<>());
 			for (Long clientId : clients) {
 				Headers newHeaders = Headers.builder()
@@ -177,7 +179,7 @@ public class ServerTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.IS_INVOKE, true)
 						.build();
-				outgoingRequests.next(
+				outgoingRequests.publish(
 						new StaticTransfer(newHeaders, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
 			}
 			return Observable.of(None.SELF);
@@ -186,7 +188,7 @@ public class ServerTopicProtocol implements Protocol {
 		@Override
 		public Observable<T> asObservable() {
 			@SuppressWarnings("unchecked")
-			Observable<T> typed = (Observable<T>) topicSubjects.computeIfAbsent(topic, key -> Subject.single())
+			Observable<T> typed = (Observable<T>) topicPublishers.computeIfAbsent(topic, key -> Publisher.simple())
 					.asObservable();
 			return typed;
 		}

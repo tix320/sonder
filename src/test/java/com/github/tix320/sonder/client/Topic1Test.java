@@ -19,7 +19,6 @@ public final class Topic1Test {
 			throws IOException, InterruptedException {
 		Clonder clonder = Clonder.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
 
-		clonder.getRPCService(A.class).send("lmfaoo").subscribe(integers -> System.out.println(integers));
 		Topic<List<String>> topic = clonder.registerTopic("foo", new TypeReference<>() {});
 		topic.asObservable().subscribe(list -> System.out.println((list.get(0) + 3)));
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));

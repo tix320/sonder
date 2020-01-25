@@ -11,6 +11,7 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
+import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Origin;
 import com.github.tix320.sonder.api.common.rpc.extra.ClientID;
@@ -20,7 +21,6 @@ import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.RequestDataType;
 import com.github.tix320.sonder.internal.common.rpc.service.Param;
 import com.github.tix320.sonder.internal.common.rpc.service.RPCServiceMethods;
-import com.github.tix320.kiwi.api.observable.Observable;
 
 import static java.util.function.Predicate.not;
 
@@ -53,8 +53,8 @@ public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 		StartupException.checkAndThrow(method,
 				m -> String.format("Failed to resolve origin method '%s'(%s), there are the following errors. ",
 						m.getName(), m.getDeclaringClass()), StartupException.throwWhen(
-						m -> m.getReturnType() != void.class && m.getReturnType() != Observable.class,
-						String.format("Return type must be void or %s", Observable.class.getName())),
+						m -> m.getReturnType() != void.class && m.getReturnType() != MonoObservable.class,
+						String.format("Return type must be void or %s", MonoObservable.class.getName())),
 				StartupException.throwWhen(not(m -> Modifier.isPublic(m.getModifiers())), "Must be public"));
 	}
 
@@ -74,10 +74,10 @@ public class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 	private JavaType constructResponseType(Method method) {
 		TypeFactory typeFactory = new ObjectMapper().getTypeFactory();
 		Type returnType = method.getGenericReturnType();
-		if (returnType instanceof Class) { // Observable
+		if (returnType instanceof Class) { // MonoObservable
 			return typeFactory.constructSimpleType(Object.class, new JavaType[0]);
 		}
-		else if (returnType instanceof ParameterizedType) { // Observable<...>
+		else if (returnType instanceof ParameterizedType) { // MonoObservable<...>
 			Type argument = ((ParameterizedType) returnType).getActualTypeArguments()[0]; // <...>
 			return typeFactory.constructType(argument);
 		}

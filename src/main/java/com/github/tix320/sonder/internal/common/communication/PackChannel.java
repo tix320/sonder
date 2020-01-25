@@ -16,8 +16,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.check.Try;
-import com.github.tix320.kiwi.api.observable.Observable;
-import com.github.tix320.kiwi.api.observable.subject.Subject;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.sonder.internal.common.util.EmptyReadableByteChannel;
 import com.github.tix320.sonder.internal.common.util.LimitedReadableByteChannel;
 
@@ -57,7 +57,7 @@ public final class PackChannel implements Closeable {
 
 	private final AtomicReference<ByteBuffer> headersBuffer;
 
-	private final Subject<Pack> packs;
+	private final Publisher<Pack> packs;
 
 	private final AtomicReference<State> state;
 
@@ -74,7 +74,7 @@ public final class PackChannel implements Closeable {
 		this.headersTimeoutDuration = headersTimeoutDuration;
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 		this.headersBuffer = new AtomicReference<>(null);
-		this.packs = Subject.single();
+		this.packs = Publisher.simple();
 		this.state = new AtomicReference<>(State.PROTOCOL_HEADER);
 		this.headersTimeout = new AtomicReference<>(null);
 		this.contentLength = new AtomicLong(0);
@@ -278,7 +278,7 @@ public final class PackChannel implements Closeable {
 		}
 
 		Pack pack = new Pack(headers, channel, contentLength);
-		packs.next(pack);
+		packs.publish(pack);
 	}
 
 	private ScheduledFuture<?> scheduleHeadersTimeout() {

@@ -7,7 +7,7 @@ import java.nio.channels.SocketChannel;
 import java.time.Duration;
 import java.util.function.LongFunction;
 
-import com.github.tix320.kiwi.api.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;

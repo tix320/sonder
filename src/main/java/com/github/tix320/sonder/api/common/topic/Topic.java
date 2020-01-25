@@ -1,6 +1,7 @@
 package com.github.tix320.sonder.api.common.topic;
 
-import com.github.tix320.kiwi.api.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.util.None;
 
 /**
@@ -19,7 +20,7 @@ public interface Topic<T> {
 	 *
 	 * @return observable, which will be completed after sending data to all clients.
 	 */
-	Observable<None> publish(T data);
+	MonoObservable<None> publish(T data);
 
 	/**
 	 * When calling this method, the {subscribe} action will be sent.

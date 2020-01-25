@@ -5,8 +5,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ReadableByteChannel;
 
-import com.github.tix320.kiwi.api.observable.Observable;
-import com.github.tix320.kiwi.api.observable.subject.Subject;
+import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.None;
 
 public class LimitedReadableByteChannel implements ReadableByteChannel {
@@ -17,7 +17,7 @@ public class LimitedReadableByteChannel implements ReadableByteChannel {
 
 	private boolean isOpen;
 
-	private final Subject<None> finishEvent;
+	private final Publisher<None> finishEvent;
 
 	public LimitedReadableByteChannel(ReadableByteChannel channel, long limit) {
 		if (limit <= 0) {
@@ -27,7 +27,7 @@ public class LimitedReadableByteChannel implements ReadableByteChannel {
 		this.channel = channel;
 		this.remaining = limit;
 		this.isOpen = true;
-		this.finishEvent = Subject.buffered(1);
+		this.finishEvent = Publisher.buffered(1);
 	}
 
 	@Override
@@ -54,7 +54,7 @@ public class LimitedReadableByteChannel implements ReadableByteChannel {
 		this.remaining -= bytes;
 
 		if (isFinished()) {
-			finishEvent.next(None.SELF);
+			finishEvent.publish(None.SELF);
 		}
 
 		return bytes;
@@ -70,8 +70,8 @@ public class LimitedReadableByteChannel implements ReadableByteChannel {
 		isOpen = false;
 	}
 
-	public Observable<None> onFinish() {
-		return finishEvent.asObservable();
+	public MonoObservable<None> onFinish() {
+		return finishEvent.asObservable().toMono();
 	}
 
 	public long getRemaining() {

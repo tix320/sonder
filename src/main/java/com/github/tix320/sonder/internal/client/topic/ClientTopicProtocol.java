@@ -6,10 +6,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.kiwi.api.check.Try;
-import com.github.tix320.kiwi.api.observable.Observable;
-import com.github.tix320.kiwi.api.observable.subject.Subject;
+import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.Headers;
@@ -17,6 +17,7 @@ import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.StaticTransfer;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.topic.Topic;
+import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 
 /**
  * Topic protocol implementation, which stores topics for communicating with other clients without using server directly.
@@ -38,23 +39,23 @@ public class ClientTopicProtocol implements Protocol {
 
 	private final Map<String, TypeReference<?>> dataTypesByTopic;
 
-	private final Map<String, Subject<Object>> topicSubjects;
+	private final Map<String, Publisher<Object>> topicPublishers;
 
-	private final Map<Long, Subject<None>> responseSubjects;
+	private final Map<Long, Publisher<None>> responsePublishers;
 
 	private final IDGenerator transferIdGenerator;
 
 	private final Map<String, None> subscriptions; // this is used as Set
 
-	private final Subject<Transfer> requests;
+	private final Publisher<Transfer> requests;
 
 	public ClientTopicProtocol() {
 		this.dataTypesByTopic = new ConcurrentHashMap<>();
-		this.topicSubjects = new ConcurrentHashMap<>();
+		this.topicPublishers = new ConcurrentHashMap<>();
 		this.transferIdGenerator = new IDGenerator();
-		this.responseSubjects = new ConcurrentHashMap<>();
+		this.responsePublishers = new ConcurrentHashMap<>();
 		this.subscriptions = new ConcurrentHashMap<>();
-		this.requests = Subject.single();
+		this.requests = Publisher.simple();
 	}
 
 	@Override
@@ -68,15 +69,15 @@ public class ClientTopicProtocol implements Protocol {
 
 		Boolean isInvoke = headers.getBoolean(Headers.IS_INVOKE);
 		if (isInvoke != null && isInvoke) {
-			Subject<Object> subject = topicSubjects.get(topic);
-			if (subject == null) {
+			Publisher<Object> publisher = topicPublishers.get(topic);
+			if (publisher == null) {
 				throw new IllegalStateException(String.format("Topic %s not found", topic));
 			}
 
 			TypeReference<?> dataType = dataTypesByTopic.get(topic);
 			Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
 			try {
-				subject.next(contentObject);
+				publisher.publish(contentObject);
 			}
 			catch (IllegalArgumentException e) {
 				throw new IllegalStateException(
@@ -86,12 +87,12 @@ public class ClientTopicProtocol implements Protocol {
 		}
 		else { // is response
 			Number transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY);
-			Subject<None> subject = responseSubjects.get(transferKey.longValue());
-			if (subject == null) {
+			Publisher<None> publisher = responsePublishers.get(transferKey.longValue());
+			if (publisher == null) {
 				throw new IllegalStateException("Invalid transfer key");
 			}
-			subject.next(None.SELF);
-			subject.complete();
+			publisher.publish(None.SELF);
+			publisher.complete();
 		}
 	}
 
@@ -108,8 +109,8 @@ public class ClientTopicProtocol implements Protocol {
 	@Override
 	public void close() {
 		requests.complete();
-		topicSubjects.values().forEach(Subject::complete);
-		responseSubjects.values().forEach(Subject::complete);
+		topicPublishers.values().forEach(Publisher::complete);
+		responsePublishers.values().forEach(Publisher::complete);
 	}
 
 	/**
@@ -122,10 +123,10 @@ public class ClientTopicProtocol implements Protocol {
 	 * @return topic {@link Topic}
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
-		if (topicSubjects.containsKey(topic)) {
+		if (topicPublishers.containsKey(topic)) {
 			throw new IllegalArgumentException(String.format("Publisher for topic %s already registered", topic));
 		}
-		topicSubjects.put(topic, bufferSize > 0 ? Subject.buffered(bufferSize) : Subject.single());
+		topicPublishers.put(topic, bufferSize > 0 ? Publisher.buffered(bufferSize) : Publisher.simple());
 		dataTypesByTopic.put(topic, dataType);
 		return new TopicImpl<>(topic);
 	}
@@ -139,7 +140,7 @@ public class ClientTopicProtocol implements Protocol {
 		}
 
 		@Override
-		public Observable<None> publish(Object data) {
+		public MonoObservable<None> publish(Object data) {
 			long transferKey = transferIdGenerator.next();
 			Headers headers = Headers.builder()
 					.header(Headers.TOPIC, topic)
@@ -147,10 +148,11 @@ public class ClientTopicProtocol implements Protocol {
 					.header(Headers.TRANSFER_KEY, transferKey)
 					.header(Headers.IS_INVOKE, true)
 					.build();
-			Subject<None> subject = Subject.single();
-			responseSubjects.put(transferKey, subject);
-			requests.next(new StaticTransfer(headers, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
-			return subject.asObservable();
+			Publisher<None> publisher = Publisher.simple();
+			responsePublishers.put(transferKey, publisher);
+			requests.publish(
+					new StaticTransfer(headers, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
+			return publisher.asObservable().toMono();
 		}
 
 		@Override
@@ -160,12 +162,12 @@ public class ClientTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.TOPIC_ACTION, "subscribe")
 						.build();
-				requests.next(new StaticTransfer(headers, new byte[0]));
+				requests.publish(new StaticTransfer(headers, new byte[0]));
 				return None.SELF;
 			});
 
 			@SuppressWarnings("unchecked")
-			Observable<T> typed = (Observable<T>) topicSubjects.get(topic).asObservable();
+			Observable<T> typed = (Observable<T>) topicPublishers.get(topic).asObservable();
 			return typed;
 		}
 

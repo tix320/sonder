@@ -14,7 +14,7 @@ Java 11 or higher.
 <dependency>
 	<groupId>com.github.tix320</groupId>
 	<artifactId>sonder</artifactId>
-	<version>0.14.0</version>
+	<version>0.15.0</version>
 </dependency>
 ```
 
@@ -50,7 +50,7 @@ Just make implementation of interface for receiving and sending data and registe
   Also was created client, which is connected to that server and specify packages of rpc interfaces.
   The @Origin annotations marks, that this interface must be used as RPC service, and its value will make it unique.
   Identically for his method.
-  In most cases 'origin' methods returns Observable, due this call is asynchronous, and yo can subscribe and process response, when will be available.
+  In most cases 'origin' methods returns MonoObservable, due this call is asynchronous, and yo can subscribe and process response, when will be available.
   
   ##### Server Endpoint
 ```java
@@ -98,7 +98,7 @@ import com.github.tix320.sonder.api.common.rpc.Origin;
 public interface MyService {
 
 	@Origin("myMethod")
-	Observable<Integer> getLengthOfString(String s);
+	MonoObservable<Integer> getLengthOfString(String s);
 }
 ```
 

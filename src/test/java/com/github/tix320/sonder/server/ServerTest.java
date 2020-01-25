@@ -19,6 +19,7 @@ public final class ServerTest {
 			throws InterruptedException, IOException {
 		Sonder sonder = Sonder.forAddress(new InetSocketAddress(Integer.parseInt(args[0])))
 				.withRPCProtocol("com.github.tix320.sonder.server")
+				.withTopicProtocol()
 				.build();
 
 		Topic<List<String>> topic = sonder.registerTopic("foo", new TypeReference<>() {});

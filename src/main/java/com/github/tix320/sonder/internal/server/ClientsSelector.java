@@ -2,7 +2,7 @@ package com.github.tix320.sonder.internal.server;
 
 import java.io.Closeable;
 
-import com.github.tix320.kiwi.api.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 
 public interface ClientsSelector extends Closeable {
