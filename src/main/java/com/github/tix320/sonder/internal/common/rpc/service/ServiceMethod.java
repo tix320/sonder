@@ -2,7 +2,6 @@ package com.github.tix320.sonder.internal.common.rpc.service;
 
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Objects;
 
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 
@@ -45,21 +44,4 @@ public abstract class ServiceMethod {
 	public List<ExtraParam> getExtraParams() {
 		return extraParams;
 	}
-
-	@Override
-	public boolean equals(Object o) {
-		if (this == o) return true;
-		if (o == null || getClass() != o.getClass()) return false;
-		ServiceMethod that = (ServiceMethod) o;
-		return path.equals(that.path) && rawMethod.equals(that.rawMethod) && simpleParams.equals(
-				that.simpleParams) && extraParams.equals(that.extraParams);
-	}
-
-	@Override
-	public int hashCode() {
-		return Objects.hash(path, rawMethod, simpleParams, extraParams);
-	}
-
-	@Override
-	public abstract String toString();
 }

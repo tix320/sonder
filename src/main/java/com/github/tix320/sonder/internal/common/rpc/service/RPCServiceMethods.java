@@ -37,6 +37,7 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 				.peek(this::checkMethod)
 				.map(this::createServiceMethod)
 				.peek(this::checkPath)
+				.peek(this::peek)
 				.collect(collectingAndThen(toUnmodifiableList(), methods -> {
 					checkDuplicatePaths(methods);
 					return methods;
@@ -144,6 +145,8 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 			uniqueSignatures.put(serviceMethod.getPath(), serviceMethod);
 		}
 	}
+
+	protected abstract void peek(T method);
 
 	protected abstract Map<Class<? extends Annotation>, ExtraParamDefinition> getExtraParamDefinitions();
 

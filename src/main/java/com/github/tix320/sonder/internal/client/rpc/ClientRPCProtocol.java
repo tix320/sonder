@@ -2,8 +2,10 @@ package com.github.tix320.sonder.internal.client.rpc;
 
 import java.io.IOException;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +29,11 @@ import com.github.tix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.github.tix320.sonder.internal.common.rpc.PathNotFoundException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
-import com.github.tix320.sonder.internal.common.rpc.service.*;
-import com.github.tix320.sonder.internal.common.rpc.service.OriginInvocationHandler.Handler;
+import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod;
+import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
+import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
+import com.github.tix320.sonder.internal.common.rpc.service.Param;
+import com.github.tix320.sonder.internal.common.rpc.service.ServiceMethod;
 
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toUnmodifiableMap;
@@ -42,9 +47,9 @@ public final class ClientRPCProtocol implements Protocol {
 
 	private final Map<Class<?>, ?> endpointServices;
 
-	private final Map<Method, OriginMethod> originsByMethod;
+	private final Map<Method, ClientOriginMethod> originsByMethod;
 
-	private final Map<String, OriginMethod> originsByPath;
+	private final Map<String, ClientOriginMethod> originsByPath;
 
 	private final Map<String, EndpointMethod> endpointsByPath;
 
@@ -55,8 +60,8 @@ public final class ClientRPCProtocol implements Protocol {
 	private final Publisher<Transfer> outgoingRequests;
 
 	public ClientRPCProtocol(List<Class<?>> classes) {
-		OriginRPCServiceMethods originServiceMethods = new OriginRPCServiceMethods(classes);
-		EndpointRPCServiceMethods endpointServiceMethods = new EndpointRPCServiceMethods(classes);
+		ClientOriginRPCServiceMethods originServiceMethods = new ClientOriginRPCServiceMethods(classes);
+		ClientEndpointRPCServiceMethods endpointServiceMethods = new ClientEndpointRPCServiceMethods(classes);
 
 		this.originsByMethod = originServiceMethods.get()
 				.stream()
@@ -74,8 +79,7 @@ public final class ClientRPCProtocol implements Protocol {
 				.stream()
 				.map(ServiceMethod::getRawClass)
 				.distinct()
-				.collect(toUnmodifiableMap(clazz -> clazz,
-						clazz -> createOriginInstance(clazz, this::handleOriginCall)));
+				.collect(toUnmodifiableMap(clazz -> clazz, this::createOriginInstance));
 
 		this.endpointServices = endpointServiceMethods.get()
 				.stream()
@@ -128,16 +132,15 @@ public final class ClientRPCProtocol implements Protocol {
 		return service;
 	}
 
-	private Object createOriginInstance(Class<?> clazz, Handler invocationHandler) {
-		return Proxy.newProxyInstance(clazz.getClassLoader(), new Class[]{clazz},
-				new OriginInvocationHandler(originsByMethod::get, invocationHandler));
+	private Object createOriginInstance(Class<?> clazz) {
+		return Proxy.newProxyInstance(clazz.getClassLoader(), new Class[]{clazz}, new OriginInvocationHandler());
 	}
 
 	private Object creatEndpointInstance(Class<?> clazz) {
 		return Try.supplyOrRethrow(() -> clazz.getConstructor().newInstance());
 	}
 
-	private Object handleOriginCall(OriginMethod method, List<Object> simpleArgs,
+	private Object handleOriginCall(ClientOriginMethod method, List<Object> simpleArgs,
 									Map<Class<? extends Annotation>, ExtraArg> extraArgs) {
 		Headers.HeadersBuilder builder = Headers.builder()
 				.header(Headers.PATH, method.getPath())
@@ -156,7 +159,7 @@ public final class ClientRPCProtocol implements Protocol {
 		}
 
 		Transfer transfer;
-		switch (method.requestDataType()) {
+		switch (method.getRequestDataType()) {
 			case ARGUMENTS:
 				builder.contentType(ContentType.JSON);
 				byte[] content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs));
@@ -176,7 +179,7 @@ public final class ClientRPCProtocol implements Protocol {
 				throw new IllegalStateException();
 		}
 
-		if (method.needResponse()) {
+		if (method.getReturnType() != ReturnType.VOID) {
 			long transferKey = transferIdGenerator.next();
 			Headers headers = transfer.getHeaders()
 					.compose()
@@ -297,8 +300,7 @@ public final class ClientRPCProtocol implements Protocol {
 		}
 	}
 
-	private void processResult(Transfer transfer)
-			throws IOException {
+	private void processResult(Transfer transfer) {
 		final Headers headers = transfer.getHeaders();
 
 		String path = headers.getNonNullString(Headers.PATH);
@@ -311,15 +313,15 @@ public final class ClientRPCProtocol implements Protocol {
 				throw new PathNotFoundException("Origin with path '" + path + "' not found");
 			}
 
-			JavaType responseType = originMethod.getResponseType();
-			if (responseType.getRawClass() == None.class) {
+			JavaType returnJavaType = originMethod.getReturnJavaType();
+			if (returnJavaType.getRawClass() == None.class) {
 				Try.runOrRethrow(transfer::readAllInVain);
 				publisher.publish(None.SELF);
 			}
 			else if (transfer.getContentLength() == 0) {
 				throw new IllegalStateException(
 						String.format("Response content is empty, and it cannot be converted to type %s",
-								responseType));
+								returnJavaType));
 			}
 			else {
 				Object result;
@@ -331,12 +333,12 @@ public final class ClientRPCProtocol implements Protocol {
 						break;
 					case JSON:
 						try {
-							result = JSON_MAPPER.readValue(transfer.readAll(), responseType);
+							result = JSON_MAPPER.readValue(transfer.readAll(), returnJavaType);
 						}
 						catch (IOException e) {
 							throw new IncompatibleTypeException(
 									String.format("Expected type %s cannot deserialized from given bytes",
-											responseType.getGenericSignature()), e);
+											returnJavaType.getGenericSignature()), e);
 						}
 						break;
 					case TRANSFER:
@@ -369,5 +371,35 @@ public final class ClientRPCProtocol implements Protocol {
 		}
 
 		return allArgs;
+	}
+
+	private final class OriginInvocationHandler implements InvocationHandler {
+
+		@Override
+		public Object invoke(Object proxy, Method method, Object[] args) {
+			if (method.getDeclaringClass() == Object.class) {
+				throw new UnsupportedOperationException("This method does not allowed on origin services");
+			}
+
+			ClientOriginMethod originMethod = originsByMethod.get(method);
+			List<Param> simpleParams = originMethod.getSimpleParams();
+			List<ExtraParam> extraParams = originMethod.getExtraParams();
+
+			List<Object> simpleArgs = new ArrayList<>(simpleParams.size());
+			Map<Class<? extends Annotation>, ExtraArg> extraArgs = new HashMap<>(extraParams.size());
+
+			for (Param simpleParam : simpleParams) {
+				int index = simpleParam.getIndex();
+				simpleArgs.add(args[index]);
+			}
+
+			for (ExtraParam extraParam : extraParams) {
+				int index = extraParam.getIndex();
+				extraArgs.put(extraParam.getAnnotation().annotationType(),
+						new ExtraArg(args[index], extraParam.getAnnotation()));
+			}
+
+			return handleOriginCall(originMethod, simpleArgs, extraArgs);
+		}
 	}
 }

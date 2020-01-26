@@ -6,16 +6,15 @@ import java.lang.invoke.WrongMethodTypeException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
-import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.StartupException;
+import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 
 /**
  * @author tix32 on 24-Feb-19
  */
-public final class EndpointMethod extends ServiceMethod {
+public abstract class EndpointMethod extends ServiceMethod {
 
 	private final MethodHandle methodHandle;
 
@@ -57,40 +56,6 @@ public final class EndpointMethod extends ServiceMethod {
 						getRawMethod().getName(), getRawClass(), Arrays.stream(args)
 								.map(arg -> arg.getClass().getSimpleName())
 								.collect(Collectors.joining(",", "[", "]"))));
-	}
-
-	@Override
-	public boolean equals(Object o) {
-		if (this == o)
-			return true;
-		if (o == null || getClass() != o.getClass())
-			return false;
-		if (!super.equals(o))
-			return false;
-		EndpointMethod that = (EndpointMethod) o;
-		return methodHandle.equals(that.methodHandle);
-	}
-
-	@Override
-	public int hashCode() {
-		return Objects.hash(super.hashCode(), methodHandle);
-	}
-
-	@Override
-	public String toString() {
-		return "EndpointMethod{"
-			   + "methodHandle="
-			   + methodHandle
-			   + ", path='"
-			   + path
-			   + '\''
-			   + ", rawMethod="
-			   + rawMethod
-			   + ", simpleParams="
-			   + simpleParams
-			   + ", extraParams="
-			   + extraParams
-			   + '}';
 	}
 
 	public enum ResultType {

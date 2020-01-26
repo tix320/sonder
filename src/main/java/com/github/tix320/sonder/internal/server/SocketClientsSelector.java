@@ -39,11 +39,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final Publisher<ClientPack> incomingRequests;
 
-	private final Map<Long, PackChannel> connections;
-
-	private final Map<Long, Lock> connectionLocks;
-
-	private final Map<Long, Queue<Pack>> messageQueues;
+	private final Map<Long, Client> clientsById;
 
 	private final IDGenerator clientIdGenerator;
 
@@ -55,9 +51,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 								 LongFunction<Duration> contentTimeoutDurationFactory, ExecutorService workers) {
 		this.selector = Try.supplyOrRethrow(Selector::open);
 		this.incomingRequests = Publisher.simple();
-		this.connections = new ConcurrentHashMap<>();
-		this.connectionLocks = new ConcurrentHashMap<>();
-		this.messageQueues = new ConcurrentHashMap<>();
+		this.clientsById = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1);
 		this.headersTimeoutDuration = headersTimeoutDuration;
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
@@ -85,10 +79,11 @@ public final class SocketClientsSelector implements ClientsSelector {
 	public void send(ClientPack clientPack) {
 		long clientId = clientPack.getClientId();
 
-		Queue<Pack> queue = messageQueues.get(clientId);
-		if (queue == null) {
+		Client client = clientsById.get(clientId);
+		if (client == null) {
 			throw new IllegalArgumentException(String.format("Client by id %s not found", clientId));
 		}
+		Queue<Pack> queue = client.packsForSend;
 		queue.add(clientPack.getPack());
 	}
 
@@ -108,8 +103,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 				catch (IOException e) {
 					throw new SocketConnectionException("The problem is occurred in selector work", e);
 				}
-				Set<SelectionKey> selectedKeys = selector.selectedKeys();
-				Iterator<SelectionKey> iterator = selectedKeys.iterator();
+				Set<SelectionKey> keys = selector.selectedKeys();
+				Iterator<SelectionKey> iterator = keys.iterator();
 				while (iterator.hasNext()) {
 					SelectionKey selectionKey = iterator.next();
 					iterator.remove();
@@ -118,31 +113,31 @@ public final class SocketClientsSelector implements ClientsSelector {
 							accept();
 						}
 						else if (selectionKey.isReadable()) {
-							Long clientId = (Long) selectionKey.attachment();
-							Lock channelLock = connectionLocks.get(clientId);
+							Client client = (Client) selectionKey.attachment();
+							Lock clientLock = client.lock;
 
 							runAsync(() -> {
-								if (channelLock.tryLock()) {
+								if (clientLock.tryLock()) {
 									try {
-										read(clientId);
+										read(client);
 									}
 									finally {
-										channelLock.unlock();
+										clientLock.unlock();
 									}
 								}
 							});
 						}
 
 						else if (selectionKey.isWritable()) {
-							Long clientId = (Long) selectionKey.attachment();
-							Lock channelLock = connectionLocks.get(clientId);
+							Client client = (Client) selectionKey.attachment();
+							Lock clientLock = client.lock;
 							runAsync(() -> {
-								if (channelLock.tryLock()) {
+								if (clientLock.tryLock()) {
 									try {
-										write(clientId);
+										write(client);
 									}
 									finally {
-										channelLock.unlock();
+										clientLock.unlock();
 									}
 								}
 							});
@@ -164,34 +159,34 @@ public final class SocketClientsSelector implements ClientsSelector {
 			throws IOException {
 		SocketChannel clientChannel = serverChannel.accept();
 		clientChannel.configureBlocking(false);
-		long connectedClientID = clientIdGenerator.next();
-
-		clientChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, connectedClientID);
-
+		long clientId = clientIdGenerator.next();
 		PackChannel packChannel = new PackChannel(clientChannel, headersTimeoutDuration, contentTimeoutDurationFactory);
-		connections.put(connectedClientID, packChannel);
-		connectionLocks.put(connectedClientID, new ReentrantLock());
-		messageQueues.put(connectedClientID, new ConcurrentLinkedQueue<>());
-		packChannel.packs().subscribe(pack -> incomingRequests.publish(new ClientPack(connectedClientID, pack)));
+
+		Client client = new Client(clientId, packChannel, new ConcurrentLinkedQueue<>(), new ReentrantLock());
+
+		clientChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, client);
+
+		clientsById.put(clientId, client);
+		packChannel.packs().map(pack -> new ClientPack(clientId, pack)).subscribe(incomingRequests::publish);
 	}
 
-	private void read(Long clientId)
+	private void read(Client client)
 			throws InvalidPackException, IOException {
-		PackChannel channel = connections.get(clientId);
+		PackChannel channel = client.channel;
 		try {
 			channel.read();
 		}
 		catch (IOException e) {
 			e.printStackTrace();
-			removeConnection(clientId);
+			closeClientConnection(client);
 		}
 	}
 
-	private void write(Long clientId)
+	private void write(Client client)
 			throws IOException {
-		PackChannel channel = connections.get(clientId);
+		PackChannel channel = client.channel;
 
-		Queue<Pack> queue = messageQueues.get(clientId);
+		Queue<Pack> queue = client.packsForSend;
 
 		Pack data = queue.poll();
 		if (data != null) {
@@ -200,18 +195,18 @@ public final class SocketClientsSelector implements ClientsSelector {
 			}
 			catch (IOException e) {
 				e.printStackTrace();
-				removeConnection(clientId);
+				closeClientConnection(client);
 			}
 		}
 	}
 
-	private void removeConnection(long clientId)
+	private void closeClientConnection(Client client)
 			throws IOException {
-		PackChannel packChannel = connections.get(clientId);
+		clientsById.remove(client.id);
+		PackChannel packChannel = client.channel;
 		if (packChannel.isOpen()) {
 			packChannel.close();
 		}
-		connections.remove(clientId);
 	}
 
 	private void runAsync(CheckedRunnable checkedRunnable) {
@@ -221,5 +216,19 @@ public final class SocketClientsSelector implements ClientsSelector {
 						throwable.getCause().getCause().printStackTrace();
 					}
 				});
+	}
+
+	private static class Client {
+		private final long id;
+		private final PackChannel channel;
+		private final Queue<Pack> packsForSend;
+		private final Lock lock;
+
+		private Client(long id, PackChannel channel, Queue<Pack> packsForSend, Lock lock) {
+			this.id = id;
+			this.channel = channel;
+			this.packsForSend = packsForSend;
+			this.lock = lock;
+		}
 	}
 }
