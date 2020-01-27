@@ -208,7 +208,7 @@ public final class Sonder implements Closeable {
 
 	private void processErrorTransfer(Transfer transfer) {
 		byte[] content = Try.supplyOrRethrow(transfer::readAll);
-		Exception exception = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, Exception.class));
+		Exception exception = (Exception) Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, Object.class));
 		throw new ProtocolException("An error was received from the other end, see cause.", exception);
 	}
 
@@ -229,7 +229,8 @@ public final class Sonder implements Closeable {
 			}
 			catch (JsonProcessingException ex) {
 				ex.printStackTrace();
-				content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(e.getMessage()));
+				content = Try.supplyOrRethrow(
+						() -> JSON_MAPPER.writeValueAsBytes(new ProtocolException("Unknown error")));
 			}
 			Transfer transfer = new StaticTransfer(headers, content);
 			ClientPack clientPack = transferToClientPack(transfer);

@@ -161,6 +161,7 @@ public final class Headers implements Serializable {
 	public static final String PATH = "path";
 	public static final String IS_INVOKE = "is-invoke";
 	public static final String NEED_RESPONSE = "need-response";
+	public static final String IS_RPC_PROTOCOL_ERROR_RESPONSE = "is-rpc-protocol-error";
 	public static final String TOPIC = "topic";
 	public static final String TOPIC_ACTION = "topic-action";
 	public static final String CONTENT_TYPE = "content-type";

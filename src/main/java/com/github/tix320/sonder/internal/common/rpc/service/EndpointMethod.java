@@ -46,6 +46,9 @@ public abstract class EndpointMethod extends ServiceMethod {
 		catch (WrongMethodTypeException e) {
 			throw illegalEndpointSignature(args);
 		}
+		catch (RuntimeException e) {
+			throw e;
+		}
 		catch (Throwable throwable) {
 			throw WrapperException.wrap(throwable);
 		}

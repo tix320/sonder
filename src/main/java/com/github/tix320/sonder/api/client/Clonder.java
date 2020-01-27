@@ -223,7 +223,8 @@ public final class Clonder implements Closeable {
 			}
 			catch (JsonProcessingException ex) {
 				ex.printStackTrace();
-				content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(e.getMessage()));
+				content = Try.supplyOrRethrow(
+						() -> JSON_MAPPER.writeValueAsBytes(new ProtocolException("Unknown error")));
 			}
 			Transfer transfer = new StaticTransfer(headers, content);
 			Pack pack = transferToDataPack(transfer);

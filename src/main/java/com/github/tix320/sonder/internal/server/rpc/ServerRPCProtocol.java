@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -92,15 +93,20 @@ public final class ServerRPCProtocol implements Protocol {
 	}
 
 	@Override
-	public void handleIncomingTransfer(Transfer transfer)
-			throws IOException {
+	public void handleIncomingTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
 		Number destinationClientId = headers.getNumber(Headers.DESTINATION_CLIENT_ID);
 		if (destinationClientId == null) { // for server
 			Boolean isInvoke = headers.getBoolean(Headers.IS_INVOKE);
 			if (isInvoke != null && isInvoke) {
-				processInvocation(transfer);
+				try {
+					processInvocation(transfer);
+				}
+				catch (Exception e) {
+					e.printStackTrace();
+					sendErrorResponse(headers, e);
+				}
 			}
 			else {
 				processResult(transfer);
@@ -298,6 +304,28 @@ public final class ServerRPCProtocol implements Protocol {
 	}
 
 	private void processResult(Transfer transfer) {
+		Boolean isProtocolErrorResponse = transfer.getHeaders().getBoolean(Headers.IS_RPC_PROTOCOL_ERROR_RESPONSE);
+		if (isProtocolErrorResponse != null && isProtocolErrorResponse) {
+			processErrorResult(transfer);
+		}
+		else {
+			processSuccessResult(transfer);
+		}
+	}
+
+	private void processErrorResult(Transfer transfer) {
+		Number transferKey = transfer.getHeaders().getNonNullNumber(Headers.TRANSFER_KEY);
+		responsePublishers.computeIfPresent(transferKey.longValue(), (key, publisher) -> {
+			byte[] content = Try.supplyOrRethrow(transfer::readAll);
+			Exception exception = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, Exception.class));
+			RPCProtocolException rpcProtocolException = new RPCProtocolException(
+					"An error was received from endpoint, see cause.", exception);
+			publisher.publishError(rpcProtocolException);
+			return null;
+		});
+	}
+
+	private void processSuccessResult(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
 		String path = headers.getNonNullString(Headers.PATH);
@@ -353,6 +381,27 @@ public final class ServerRPCProtocol implements Protocol {
 			publisher.complete();
 			return null;
 		});
+	}
+
+	private void sendErrorResponse(Headers headers, Exception e) {
+		Number clientId = headers.getNonNullNumber(Headers.SOURCE_CLIENT_ID);
+		Number transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY);
+
+		headers = Headers.builder()
+				.header(Headers.IS_RPC_PROTOCOL_ERROR_RESPONSE, true)
+				.header(Headers.DESTINATION_CLIENT_ID, clientId)
+				.header(Headers.TRANSFER_KEY, transferKey)
+				.build();
+		byte[] content;
+		try {
+			content = JSON_MAPPER.writeValueAsBytes(e);
+		}
+		catch (JsonProcessingException ex) {
+			ex.printStackTrace();
+			content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(e.getMessage()));
+		}
+		Transfer transfer = new StaticTransfer(headers, content);
+		outgoingRequests.publish(transfer);
 	}
 
 	private Object[] appendExtraArgs(Object[] simpleArgs, List<ExtraParam> extraParams,
