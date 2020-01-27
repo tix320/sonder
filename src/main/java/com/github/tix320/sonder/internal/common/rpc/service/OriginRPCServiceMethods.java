@@ -9,7 +9,6 @@ import java.util.List;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
-import com.github.tix320.kiwi.api.reactive.observable.LazyObservable;
 import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Origin;
@@ -48,11 +47,8 @@ public abstract class OriginRPCServiceMethods<T extends OriginMethod> extends RP
 		StartupException.checkAndThrow(method,
 				m -> String.format("Failed to resolve origin method '%s'(%s), there are the following errors. ",
 						m.getName(), m.getDeclaringClass()), StartupException.throwWhen(
-						m -> m.getReturnType() != void.class
-							 && m.getReturnType() != MonoObservable.class
-							 && m.getReturnType() != LazyObservable.class,
-						String.format("Return type must be void, %s or %s", LazyObservable.class.getName(),
-								MonoObservable.class.getName())),
+						m -> m.getReturnType() != void.class && m.getReturnType() != MonoObservable.class,
+						String.format("Return type must be void or %s", MonoObservable.class.getName())),
 				StartupException.throwWhen(not(m -> Modifier.isPublic(m.getModifiers())), "Must be public"));
 	}
 
@@ -68,10 +64,7 @@ public abstract class OriginRPCServiceMethods<T extends OriginMethod> extends RP
 			return ReturnType.VOID;
 		}
 		else if (returnType == MonoObservable.class) {
-			return ReturnType.EAGER_OBSERVABLE;
-		}
-		else if (returnType == LazyObservable.class) {
-			return ReturnType.LAZY_OBSERVABLE;
+			return ReturnType.OBSERVABLE;
 		}
 		else {
 			throw new IllegalStateException(returnType.getName());

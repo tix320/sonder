@@ -23,6 +23,7 @@ import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.github.tix320.sonder.api.common.rpc.extra.ClientID;
+import com.github.tix320.sonder.internal.client.rpc.RPCProtocolException;
 import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
 import com.github.tix320.sonder.internal.common.rpc.IncompatibleTypeException;
@@ -31,7 +32,6 @@ import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
-import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
 import com.github.tix320.sonder.internal.common.rpc.service.Param;
 import com.github.tix320.sonder.internal.common.rpc.service.ServiceMethod;
 
@@ -157,7 +157,8 @@ public final class ServerRPCProtocol implements Protocol {
 		switch (method.getRequestDataType()) {
 			case ARGUMENTS:
 				builder.contentType(ContentType.JSON);
-				byte[] content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs));
+				byte[] content = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs))
+						.getOrElseThrow((e) -> new RPCProtocolException("Cannot convert arguments to JSON", e));
 				transfer = new StaticTransfer(builder.build(), content);
 				break;
 			case BINARY:
@@ -171,31 +172,33 @@ public final class ServerRPCProtocol implements Protocol {
 						transfer.channel(), transfer.getContentLength());
 				break;
 			default:
-				throw new IllegalStateException();
+				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getRequestDataType()));
 		}
 
-		if (method.getReturnType() != ReturnType.VOID) { // need response
-			long transferKey = transferIdGenerator.next();
-			Headers headers = transfer.getHeaders()
-					.compose()
-					.header(Headers.TRANSFER_KEY, transferKey)
-					.header(Headers.NEED_RESPONSE, true)
-					.build();
+		switch (method.getReturnType()) {
+			case VOID:
+				Headers headers = transfer.getHeaders().compose().header(Headers.NEED_RESPONSE, false).build();
 
-			transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
-			Publisher<Object> responsePublisher = Publisher.simple();
-			responsePublishers.put(transferKey, responsePublisher);
-			outgoingRequests.publish(transfer);
-			return responsePublisher.asObservable().toMono();
-		}
-		else {
-			Headers headers = transfer.getHeaders().compose().header(Headers.NEED_RESPONSE, false).build();
+				outgoingRequests.publish(transfer);
+				return null;
+			case OBSERVABLE:
+				long transferKey = transferIdGenerator.next();
+				headers = transfer.getHeaders()
+						.compose()
+						.header(Headers.TRANSFER_KEY, transferKey)
+						.header(Headers.NEED_RESPONSE, true)
+						.build();
 
-			transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
-			outgoingRequests.publish(transfer);
-			return null;
+				Publisher<Object> responsePublisher = Publisher.simple();
+				responsePublishers.put(transferKey, responsePublisher);
+				outgoingRequests.publish(transfer);
+				return responsePublisher.asObservable().toMono();
+			default:
+				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getReturnType()));
 		}
 	}
 

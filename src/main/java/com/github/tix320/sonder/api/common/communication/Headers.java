@@ -7,7 +7,6 @@ import java.util.Map.Entry;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,6 +63,14 @@ public final class Headers implements Serializable {
 		throw new InvalidHeaderException(key, value, String.class);
 	}
 
+	public Number getNumber(String key) {
+		Object value = values.get(key);
+		if (value == null || value instanceof Number) {
+			return (Number) value;
+		}
+		throw new InvalidHeaderException(key, value, Number.class);
+	}
+
 	public Number getNonNullNumber(String key) {
 		Object value = values.get(key);
 		if (value instanceof Number) {
@@ -86,14 +93,6 @@ public final class Headers implements Serializable {
 			return (Boolean) value;
 		}
 		throw new InvalidHeaderException(key, value, Boolean.class);
-	}
-
-	public Number getNumber(String key) {
-		Object value = values.get(key);
-		if (value == null || value instanceof Number) {
-			return (Number) value;
-		}
-		throw new InvalidHeaderException(key, value, Number.class);
 	}
 
 	public HeadersBuilder compose() {
@@ -174,7 +173,10 @@ public final class Headers implements Serializable {
 				throws IOException {
 			gen.writeStartObject();
 			for (Map.Entry<String, Object> entry : headers.values.entrySet()) {
-				gen.writeObjectField(entry.getKey(), entry.getValue());
+				Object value = entry.getValue();
+				if (value == null || value instanceof Number || value instanceof Boolean || value instanceof String) {
+					gen.writeObjectField(entry.getKey(), value);
+				}
 			}
 			gen.writeEndObject();
 		}
@@ -188,7 +190,7 @@ public final class Headers implements Serializable {
 
 		@Override
 		public Headers deserialize(JsonParser p, DeserializationContext ctxt)
-				throws IOException, JsonProcessingException {
+				throws IOException {
 			JsonNode node = p.getCodec().readTree(p);
 
 			if (!(node instanceof ObjectNode)) {

@@ -45,7 +45,6 @@ public abstract class OriginMethod extends ServiceMethod {
 
 	public enum ReturnType {
 		VOID,
-		EAGER_OBSERVABLE,
-		LAZY_OBSERVABLE
+		OBSERVABLE
 	}
 }

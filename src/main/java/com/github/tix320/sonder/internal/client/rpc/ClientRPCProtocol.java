@@ -31,7 +31,6 @@ import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
-import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
 import com.github.tix320.sonder.internal.common.rpc.service.Param;
 import com.github.tix320.sonder.internal.common.rpc.service.ServiceMethod;
 
@@ -155,14 +154,15 @@ public final class ClientRPCProtocol implements Protocol {
 				builder.header(Headers.DESTINATION_CLIENT_ID, clientId);
 				break;
 			default:
-				throw new IllegalStateException(String.format("Unknown enum type %s", method.getDestination()));
+				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getDestination()));
 		}
 
 		Transfer transfer;
 		switch (method.getRequestDataType()) {
 			case ARGUMENTS:
 				builder.contentType(ContentType.JSON);
-				byte[] content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs));
+				byte[] content = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs))
+						.getOrElseThrow(e -> new RPCProtocolException("Cannot convert arguments to json.", e));
 				transfer = new StaticTransfer(builder.build(), content);
 				break;
 			case BINARY:
@@ -176,32 +176,35 @@ public final class ClientRPCProtocol implements Protocol {
 						transfer.channel(), transfer.getContentLength());
 				break;
 			default:
-				throw new IllegalStateException();
+				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getRequestDataType()));
 		}
 
-		if (method.getReturnType() != ReturnType.VOID) {
-			long transferKey = transferIdGenerator.next();
-			Headers headers = transfer.getHeaders()
-					.compose()
-					.header(Headers.TRANSFER_KEY, transferKey)
-					.header(Headers.NEED_RESPONSE, true)
-					.build();
+		switch (method.getReturnType()) {
+			case VOID:
+				Headers headers = transfer.getHeaders().compose().header(Headers.NEED_RESPONSE, false).build();
 
-			transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
-			Publisher<Object> responsePublisher = Publisher.simple();
-			responsePublishers.put(transferKey, responsePublisher);
-			outgoingRequests.publish(transfer);
-			return responsePublisher.asObservable().toMono();
+				outgoingRequests.publish(transfer);
+				return null;
+			case OBSERVABLE:
+				long transferKey = transferIdGenerator.next();
+				headers = transfer.getHeaders()
+						.compose()
+						.header(Headers.TRANSFER_KEY, transferKey)
+						.header(Headers.NEED_RESPONSE, true)
+						.build();
+
+				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+
+				Publisher<Object> responsePublisher = Publisher.buffered(1);
+				responsePublishers.put(transferKey, responsePublisher);
+				outgoingRequests.publish(transfer);
+				return responsePublisher.asObservable().toMono();
+			default:
+				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getReturnType()));
 		}
-		else {
-			Headers headers = transfer.getHeaders().compose().header(Headers.NEED_RESPONSE, false).build();
 
-			transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
-
-			outgoingRequests.publish(transfer);
-			return null;
-		}
 	}
 
 	private void processInvocation(Transfer transfer)

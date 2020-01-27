@@ -46,7 +46,6 @@ public final class Sonder implements Closeable {
 
 	private final ClientsSelector clientsSelector;
 
-
 	/**
 	 * Prepare server creating for this socket address.
 	 *
