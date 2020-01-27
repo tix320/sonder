@@ -27,6 +27,7 @@ import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
 import com.github.tix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.github.tix320.sonder.internal.common.rpc.PathNotFoundException;
+import com.github.tix320.sonder.internal.common.rpc.RPCProtocolException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod;

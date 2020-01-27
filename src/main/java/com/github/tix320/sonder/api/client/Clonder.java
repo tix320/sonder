@@ -10,16 +10,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tix320.sonder.api.common.communication.ChannelTransfer;
-import com.github.tix320.sonder.api.common.communication.Headers;
-import com.github.tix320.sonder.api.common.communication.Protocol;
-import com.github.tix320.sonder.api.common.communication.Transfer;
+import com.github.tix320.kiwi.api.check.Try;
+import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.client.ServerConnection;
 import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
+import com.github.tix320.sonder.internal.common.communication.ProtocolException;
 
 /**
  * Entry point class for your socket client.
@@ -177,6 +176,16 @@ public final class Clonder implements Closeable {
 	}
 
 	private void processTransfer(Transfer transfer) {
+		Boolean isProtocolErrorResponse = transfer.getHeaders().getBoolean(Headers.IS_PROTOCOL_ERROR_RESPONSE);
+		if (isProtocolErrorResponse != null && isProtocolErrorResponse) {
+			processErrorTransfer(transfer);
+		}
+		else {
+			wrapWithErrorResponse(transfer.getHeaders(), () -> processSuccessTransfer(transfer));
+		}
+	}
+
+	private void processSuccessTransfer(Transfer transfer) {
 		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
 		Protocol protocol = protocols.get(protocolName);
 		if (protocol == null) {
@@ -187,6 +196,38 @@ public final class Clonder implements Closeable {
 		}
 		catch (IOException e) {
 			throw new RuntimeException(e);
+		}
+	}
+
+	private void processErrorTransfer(Transfer transfer) {
+		byte[] content = Try.supplyOrRethrow(transfer::readAll);
+		Exception exception = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, Exception.class));
+		throw new ProtocolException("An error was received from the other end, see cause.", exception);
+	}
+
+	private void wrapWithErrorResponse(Headers requestHeaders, Runnable runnable) {
+		Number clientId = requestHeaders.getNumber(Headers.SOURCE_CLIENT_ID);
+
+		try {
+			runnable.run();
+		}
+		catch (Exception e) {
+			e.printStackTrace();
+			Headers headers = Headers.builder()
+					.header(Headers.IS_PROTOCOL_ERROR_RESPONSE, true)
+					.header(Headers.DESTINATION_CLIENT_ID, clientId)
+					.build();
+			byte[] content;
+			try {
+				content = JSON_MAPPER.writeValueAsBytes(e);
+			}
+			catch (JsonProcessingException ex) {
+				ex.printStackTrace();
+				content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(e.getMessage()));
+			}
+			Transfer transfer = new StaticTransfer(headers, content);
+			Pack pack = transferToDataPack(transfer);
+			connection.send(pack);
 		}
 	}
 }

@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.client.rpc;
+package com.github.tix320.sonder.internal.common.rpc;
 
 public class RPCProtocolException extends RuntimeException {
 

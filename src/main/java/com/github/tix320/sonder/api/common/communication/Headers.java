@@ -150,13 +150,16 @@ public final class Headers implements Serializable {
 		}
 	}
 
-	//	--------------------Known headers
+	//	--------------------Protocol headers
 	public static final String PROTOCOL = "protocol";
+	public static final String SOURCE_CLIENT_ID = "source-client-id";
 	public static final String DESTINATION_CLIENT_ID = "destination-client-id";
-	public static final String IS_INVOKE = "is-invoke";
+	public static final String IS_PROTOCOL_ERROR_RESPONSE = "is-protocol-error";
+
+	//	--------------------Built in protocol headers
 	public static final String TRANSFER_KEY = "transfer-key";
 	public static final String PATH = "path";
-	public static final String SOURCE_CLIENT_ID = "source-client-id";
+	public static final String IS_INVOKE = "is-invoke";
 	public static final String NEED_RESPONSE = "need-response";
 	public static final String TOPIC = "topic";
 	public static final String TOPIC_ACTION = "topic-action";
