@@ -14,7 +14,7 @@ Java 11 or higher.
 <dependency>
 	<groupId>com.github.tix320</groupId>
 	<artifactId>sonder</artifactId>
-	<version>0.15.0</version>
+	<version>0.16.0</version>
 </dependency>
 ```
 
@@ -156,7 +156,7 @@ class Client1Test {
        /*
        Output is (order not guaranteed)
        [e, d, f]
-       Data was sended to subscribers
+       Data was sent to subscribers
         */
 	}
 }
@@ -173,14 +173,12 @@ class Client2Test {
 		 /*
        Output is (order not guaranteed)
        [a, b, c]
-       Data was sended to subscribers
+       Data was sent to subscribers
         */
 	}
 }
 ```
 
-# Summary
 Here is a small example of how a library is easily configured and used.
 Of course, you can also send requests from the server to the client,
 or even from one client to another by specifying the client ID.
-Thank you for your support.
