@@ -129,6 +129,7 @@ public final class Clonder implements Closeable {
 	 * * Register topic for protocol {@link ClientTopicProtocol}
 	 * Invokes {@link #registerTopic(String, TypeReference, int)} with '0' value buffer size
 	 *
+	 * @param <T>      type of topic data
 	 * @param topic    name
 	 * @param dataType which will be used while transferring data in topic
 	 *

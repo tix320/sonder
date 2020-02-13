@@ -105,7 +105,10 @@ public final class ServerRPCProtocol implements Protocol {
 				}
 				catch (Exception e) {
 					e.printStackTrace();
-					sendErrorResponse(headers, e);
+					Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
+					if (needResponse != null && needResponse) {
+						sendErrorResponse(headers, e);
+					}
 				}
 			}
 			else {
@@ -199,7 +202,7 @@ public final class ServerRPCProtocol implements Protocol {
 
 				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
-				Publisher<Object> responsePublisher = Publisher.simple();
+				Publisher<Object> responsePublisher = Publisher.buffered(1);
 				responsePublishers.put(transferKey, responsePublisher);
 				outgoingRequests.publish(transfer);
 				return responsePublisher.asObservable().toMono();

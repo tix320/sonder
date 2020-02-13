@@ -84,30 +84,6 @@ public class ServerTopicProtocol implements Protocol {
 		}
 	}
 
-	public void handleForServer(Transfer transfer)
-			throws IOException {
-		Headers headers = transfer.getHeaders();
-		byte[] content = transfer.readAll();
-
-		String topic = (String) headers.get(Headers.TOPIC);
-
-		Publisher<Object> publisher = topicPublishers.get(topic);
-		if (publisher == null) {
-			return;
-		}
-
-		TypeReference<?> dataType = dataTypesByTopic.get(topic);
-		Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
-		try {
-			publisher.publish(contentObject);
-		}
-		catch (IllegalArgumentException e) {
-			throw new IllegalStateException(
-					String.format("Registered topic's (%s) data type (%s) is not compatible with received JSON %s",
-							topic, dataType.getType().getTypeName(), contentObject), e);
-		}
-	}
-
 	@Override
 	public Observable<Transfer> outgoingTransfers() {
 		return outgoingRequests.asObservable();
@@ -139,6 +115,30 @@ public class ServerTopicProtocol implements Protocol {
 		topicPublishers.put(topic, bufferSize > 0 ? Publisher.buffered(bufferSize) : Publisher.simple());
 		dataTypesByTopic.put(topic, dataType);
 		return new TopicImpl<>(topic);
+	}
+
+	private void handleForServer(Transfer transfer)
+			throws IOException {
+		Headers headers = transfer.getHeaders();
+		byte[] content = transfer.readAll();
+
+		String topic = (String) headers.get(Headers.TOPIC);
+
+		Publisher<Object> publisher = topicPublishers.get(topic);
+		if (publisher == null) {
+			return;
+		}
+
+		TypeReference<?> dataType = dataTypesByTopic.get(topic);
+		Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
+		try {
+			publisher.publish(contentObject);
+		}
+		catch (IllegalArgumentException e) {
+			throw new IllegalStateException(
+					String.format("Registered topic's (%s) data type (%s) is not compatible with received JSON %s",
+							topic, dataType.getType().getTypeName(), contentObject), e);
+		}
 	}
 
 	private void publishToClients(String topic, Transfer transfer, Collection<Long> clients, long sourceClientId) {
@@ -188,14 +188,18 @@ public class ServerTopicProtocol implements Protocol {
 		@Override
 		public Observable<T> asObservable() {
 			@SuppressWarnings("unchecked")
-			Observable<T> typed = (Observable<T>) topicPublishers.computeIfAbsent(topic, key -> Publisher.simple())
-					.asObservable();
+			Observable<T> typed = (Observable<T>) topicPublishers.get(topic).asObservable();
 			return typed;
 		}
 
 		@Override
 		public String getName() {
 			return topic;
+		}
+
+		@Override
+		public void removeSubscriber(long clientId) {
+			topics.get(topic).remove(clientId);
 		}
 	}
 }

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import com.github.tix320.kiwi.api.util.WrapperException;
-import com.github.tix320.sonder.internal.common.rpc.StartupException;
+import com.github.tix320.sonder.internal.common.rpc.RPCProtocolException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 
 /**
@@ -44,7 +44,7 @@ public abstract class EndpointMethod extends ServiceMethod {
 			return methodHandle.bindTo(instance).invokeWithArguments(args);
 		}
 		catch (WrongMethodTypeException e) {
-			throw illegalEndpointSignature(args);
+			throw new RPCProtocolException(illegalEndpointSignatureErrorMessage(args), e);
 		}
 		catch (RuntimeException e) {
 			throw e;
@@ -54,12 +54,11 @@ public abstract class EndpointMethod extends ServiceMethod {
 		}
 	}
 
-	private StartupException illegalEndpointSignature(Object[] args) {
-		return new StartupException(
-				String.format("Illegal signature of method '%s'(%s). Expected following parameters %s",
-						getRawMethod().getName(), getRawClass(), Arrays.stream(args)
-								.map(arg -> arg.getClass().getSimpleName())
-								.collect(Collectors.joining(",", "[", "]"))));
+	private String illegalEndpointSignatureErrorMessage(Object[] args) {
+		return String.format("Illegal signature of method '%s'(%s). Expected following parameters %s",
+				getRawMethod().getName(), getRawClass(), Arrays.stream(args)
+						.map(arg -> arg.getClass().getSimpleName())
+						.collect(Collectors.joining(",", "[", "]")));
 	}
 
 	public enum ResultType {

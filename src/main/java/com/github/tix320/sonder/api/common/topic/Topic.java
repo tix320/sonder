@@ -36,4 +36,13 @@ public interface Topic<T> {
 	 * @return name
 	 */
 	String getName();
+
+	/**
+	 * Remove subscriber client from this topic.
+	 *
+	 * @param clientId to remove
+	 *
+	 * @throws UnsupportedOperationException when caller is not the server
+	 */
+	void removeSubscriber(long clientId);
 }

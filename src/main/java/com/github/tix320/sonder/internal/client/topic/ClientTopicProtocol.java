@@ -148,7 +148,7 @@ public class ClientTopicProtocol implements Protocol {
 					.header(Headers.TRANSFER_KEY, transferKey)
 					.header(Headers.IS_INVOKE, true)
 					.build();
-			Publisher<None> publisher = Publisher.simple();
+			Publisher<None> publisher = Publisher.buffered(1);
 			responsePublishers.put(transferKey, publisher);
 			requests.publish(
 					new StaticTransfer(headers, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
@@ -174,6 +174,11 @@ public class ClientTopicProtocol implements Protocol {
 		@Override
 		public String getName() {
 			return topic;
+		}
+
+		@Override
+		public void removeSubscriber(long clientId) {
+			throw new UnsupportedOperationException();
 		}
 	}
 }

@@ -130,6 +130,7 @@ public final class Sonder implements Closeable {
 	 * * Register topic for protocol {@link ServerTopicProtocol}
 	 * Invokes {@link #registerTopic(String, TypeReference, int)} with '0' value buffer size
 	 *
+	 * @param <T>      type of topic data
 	 * @param topic    name
 	 * @param dataType which will be used while transferring data in topic
 	 *
