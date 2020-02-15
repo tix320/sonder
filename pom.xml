@@ -10,7 +10,7 @@
 
 	<groupId>com.github.tix320</groupId>
 	<artifactId>sonder</artifactId>
-	<version>0.16.4-SNAPSHOT</version>
+	<version>0.16.5</version>
 	<packaging>jar</packaging>
 
 	<name>Sonder</name>
