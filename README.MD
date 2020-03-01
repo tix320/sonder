@@ -14,7 +14,7 @@ Java 11 or higher.
 <dependency>
 	<groupId>com.github.tix320</groupId>
 	<artifactId>sonder</artifactId>
-	<version>0.16.5</version>
+	<version>0.17.0</version>
 </dependency>
 ```
 
