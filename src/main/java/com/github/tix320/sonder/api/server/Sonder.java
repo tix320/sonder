@@ -1,7 +1,9 @@
 package com.github.tix320.sonder.api.server;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.nio.channels.ReadableByteChannel;
 import java.util.Map;
@@ -15,7 +17,7 @@ import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.communication.ProtocolException;
+import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
 import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
 import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
@@ -209,8 +211,7 @@ public final class Sonder implements Closeable {
 
 	private void processErrorTransfer(Transfer transfer) {
 		byte[] content = Try.supplyOrRethrow(transfer::readAll);
-		Exception exception = (Exception) Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, Object.class));
-		throw new ProtocolException("An error was received from the other end, see cause.", exception);
+		throw new SonderRemoteException(new String(content));
 	}
 
 	private void wrapWithErrorResponse(Headers requestHeaders, Runnable runnable) {
@@ -220,19 +221,16 @@ public final class Sonder implements Closeable {
 		}
 		catch (Exception e) {
 			e.printStackTrace();
+
 			Headers headers = Headers.builder()
 					.header(Headers.IS_PROTOCOL_ERROR_RESPONSE, true)
 					.header(Headers.DESTINATION_CLIENT_ID, clientId)
 					.build();
-			byte[] content;
-			try {
-				content = JSON_MAPPER.writeValueAsBytes(e);
-			}
-			catch (JsonProcessingException ex) {
-				ex.printStackTrace();
-				content = Try.supplyOrRethrow(
-						() -> JSON_MAPPER.writeValueAsBytes(new ProtocolException("Unknown error")));
-			}
+
+			ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+			e.printStackTrace(new PrintStream(byteStream));
+			byte[] content = byteStream.toByteArray();
+
 			Transfer transfer = new StaticTransfer(headers, content);
 			ClientPack clientPack = transferToClientPack(transfer);
 			clientsSelector.send(clientPack);

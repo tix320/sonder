@@ -1,6 +1,8 @@
 package com.github.tix320.sonder.internal.client.rpc;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -11,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +30,7 @@ import com.github.tix320.sonder.internal.common.communication.UnsupportedContent
 import com.github.tix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.github.tix320.sonder.internal.common.rpc.PathNotFoundException;
 import com.github.tix320.sonder.internal.common.rpc.RPCProtocolException;
+import com.github.tix320.sonder.internal.common.rpc.RPCRemoteException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod;
@@ -324,10 +326,8 @@ public final class ClientRPCProtocol implements Protocol {
 		Number transferKey = transfer.getHeaders().getNonNullNumber(Headers.TRANSFER_KEY);
 		responsePublishers.computeIfPresent(transferKey.longValue(), (key, publisher) -> {
 			byte[] content = Try.supplyOrRethrow(transfer::readAll);
-			Exception exception = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, Exception.class));
-			RPCProtocolException rpcProtocolException = new RPCProtocolException(
-					"An error was received from endpoint, see cause.", exception);
-			publisher.publishError(rpcProtocolException);
+			RPCRemoteException rpcRemoteException = new RPCRemoteException(new String(content));
+			publisher.publishError(rpcRemoteException);
 			return null;
 		});
 	}
@@ -401,14 +401,11 @@ public final class ClientRPCProtocol implements Protocol {
 				.header(Headers.DESTINATION_CLIENT_ID, clientId)
 				.header(Headers.TRANSFER_KEY, transferKey)
 				.build();
-		byte[] content;
-		try {
-			content = JSON_MAPPER.writeValueAsBytes(e);
-		}
-		catch (JsonProcessingException ex) {
-			ex.printStackTrace();
-			content = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(e.getMessage()));
-		}
+
+		ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+		e.printStackTrace(new PrintStream(byteStream));
+		byte[] content = byteStream.toByteArray();
+
 		Transfer transfer = new StaticTransfer(headers, content);
 		outgoingRequests.publish(transfer);
 	}

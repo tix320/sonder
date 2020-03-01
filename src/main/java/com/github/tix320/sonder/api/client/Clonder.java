@@ -1,7 +1,9 @@
 package com.github.tix320.sonder.api.client;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.nio.channels.ReadableByteChannel;
 import java.util.Map;
@@ -18,7 +20,7 @@ import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.communication.ProtocolException;
+import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
 
 /**
  * Entry point class for your socket client.
@@ -202,8 +204,7 @@ public final class Clonder implements Closeable {
 
 	private void processErrorTransfer(Transfer transfer) {
 		byte[] content = Try.supplyOrRethrow(transfer::readAll);
-		Exception exception = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, Exception.class));
-		throw new ProtocolException("An error was received from the other end, see cause.", exception);
+		throw new SonderRemoteException(new String(content));
 	}
 
 	private void wrapWithErrorResponse(Headers requestHeaders, Runnable runnable) {
@@ -218,15 +219,11 @@ public final class Clonder implements Closeable {
 					.header(Headers.IS_PROTOCOL_ERROR_RESPONSE, true)
 					.header(Headers.DESTINATION_CLIENT_ID, clientId)
 					.build();
-			byte[] content;
-			try {
-				content = JSON_MAPPER.writeValueAsBytes(e);
-			}
-			catch (JsonProcessingException ex) {
-				ex.printStackTrace();
-				content = Try.supplyOrRethrow(
-						() -> JSON_MAPPER.writeValueAsBytes(new ProtocolException("Unknown error")));
-			}
+
+			ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+			e.printStackTrace(new PrintStream(byteStream));
+			byte[] content = byteStream.toByteArray();
+
 			Transfer transfer = new StaticTransfer(headers, content);
 			Pack pack = transferToDataPack(transfer);
 			connection.send(pack);
