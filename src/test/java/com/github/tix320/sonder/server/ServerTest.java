@@ -11,7 +11,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.api.server.RPCProtocolBuilder;
-import com.github.tix320.sonder.api.server.Sonder;
+import com.github.tix320.sonder.api.server.SonderServer;
 
 /**
  * @author Tigran.Sargsyan on 24-Jan-19
@@ -24,12 +24,12 @@ public final class ServerTest {
 				"com.github.tix320.sonder.server")
 				.registerInterceptor(new AnnotationInterceptor<>(MyAnno.class, new MyInterceptor()));
 
-		Sonder sonder = Sonder.forAddress(new InetSocketAddress(Integer.parseInt(args[0])))
+		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(Integer.parseInt(args[0])))
 				.withRPCProtocol(rpcProtocolBuilder)
 				.withTopicProtocol()
 				.build();
 
-		Topic<List<String>> topic = sonder.registerTopic("foo", new TypeReference<>() {});
+		Topic<List<String>> topic = sonderServer.registerTopic("foo", new TypeReference<>() {});
 		topic.asObservable().subscribe(list -> System.out.println((list.get(0) + 3)));
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {

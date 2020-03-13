@@ -74,12 +74,12 @@ package com.github.tix320.sonder.readme.server;
 
 import java.net.InetSocketAddress;
 
-import com.github.tix320.sonder.api.server.Sonder;
+import com.github.tix320.sonder.api.server.SonderServerServer;
 
 public class ServerTest {
 
 	public static void main(String[] args) {
-		Sonder sonder = Sonder.forAddress(new InetSocketAddress(8888))
+		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(8888))
 				.withRPCProtocol("com.github.tix320.sonder.readme.server")
 				.build();
 	}
@@ -112,10 +112,10 @@ import com.github.tix320.sonder.api.client.Clonder;
 
 public class ClientTest {
 	public static void main(String[] args) {
-		Clonder clonder = Clonder.forAddress(new InetSocketAddress("localhost", 8888))
+		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888))
 				.withRPCProtocol("com.github.tix320.sonder.readme.client")
 				.build();
-		MyService myService = clonder.getRPCService(MyService.class);
+		MyService myService = sonderClient.getRPCService(MyService.class);
 		myService.getLengthOfString("my first rpc call").subscribe(System.out::println);
 	}
 }
@@ -139,15 +139,15 @@ import com.github.tix320.sonder.api.server.Sonder;
 public class ServerTest {
 
 	public static void main(String[] args) {
-		Sonder sonder = Sonder.forAddress(new InetSocketAddress(8888)).withTopicProtocol().build();
+		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(8888)).withTopicProtocol().build();
 	}
 }
 
 class Client1Test {
 	public static void main(String[] args)
 			throws InterruptedException {
-		Clonder clonder = Clonder.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
-		Topic<List<String>> topic = clonder.registerTopic("my-topic", new TypeReference<>() {});
+		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
+		Topic<List<String>> topic = sonderClient.registerTopic("my-topic", new TypeReference<>() {});
 		topic.asObservable().subscribe(System.out::println);
 		topic.publish(List.of("a", "b", "c")).subscribe(none -> {
 			System.out.println("Data was sended to subscribers");
@@ -163,8 +163,8 @@ class Client1Test {
 
 class Client2Test {
 	public static void main(String[] args) {
-		Clonder clonder = Clonder.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
-		Topic<List<String>> topic = clonder.registerTopic("my-topic", new TypeReference<>() {});
+		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
+		Topic<List<String>> topic = sonderClient.registerTopic("my-topic", new TypeReference<>() {});
 		topic.asObservable().subscribe(System.out::println);
 		topic.publish(List.of("e", "d", "f")).subscribe(none -> {
 			System.out.println("Data was sended to subscribers");

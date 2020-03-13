@@ -1,23 +1,24 @@
-package com.github.tix320.sonder.api.client;
+package com.github.tix320.sonder.api.server;
 
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.internal.client.SocketServerConnection;
-import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
-import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
+import com.github.tix320.sonder.internal.server.SocketClientsSelector;
 import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
+import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
 
 /**
- * Builder for socket client {@link Clonder}.
+ * Builder for socket server {@link SonderServer}.
  */
-public final class ClonderBuilder {
+public final class SonderServerBuilder {
 
 	private final InetSocketAddress inetSocketAddress;
 
@@ -27,17 +28,18 @@ public final class ClonderBuilder {
 
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
-	ClonderBuilder(InetSocketAddress inetSocketAddress) {
-		if (inetSocketAddress.getAddress().isAnyLocalAddress()) {
-			throw new IllegalArgumentException("Please specify host");
-		}
+	private ExecutorService workers;
+
+	public SonderServerBuilder(InetSocketAddress inetSocketAddress) {
 		this.inetSocketAddress = inetSocketAddress;
 		this.protocols = new HashMap<>();
+		this.headersTimeoutDuration = Duration.ofSeconds(Integer.MAX_VALUE);
 		this.headersTimeoutDuration = Duration.ofSeconds(5);
 		this.contentTimeoutDurationFactory = contentLength -> {
 			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
 			return Duration.ofSeconds(timout);
 		};
+		this.workers = Executors.newCachedThreadPool();
 	}
 
 	/**
@@ -47,21 +49,21 @@ public final class ClonderBuilder {
 	 *
 	 * @return self
 	 */
-	public ClonderBuilder withRPCProtocol(Consumer<RPCProtocolBuilder> protocolBuilder) {
+	public SonderServerBuilder withRPCProtocol(Consumer<RPCProtocolBuilder> protocolBuilder) {
 		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder();
 		protocolBuilder.accept(rpcProtocolBuilder);
-		ClientRPCProtocol protocol = rpcProtocolBuilder.build();
+		ServerRPCProtocol protocol = rpcProtocolBuilder.build();
 		protocols.put(protocol.getName(), protocol);
 		return this;
 	}
 
 	/**
-	 * Register topic protocol {@link ClientTopicProtocol} to client.
+	 * Register topic protocol {@link ServerRPCProtocol} to server.
 	 *
 	 * @return self
 	 */
-	public ClonderBuilder withTopicProtocol() {
-		ClientTopicProtocol protocol = new ClientTopicProtocol();
+	public SonderServerBuilder withTopicProtocol() {
+		ServerTopicProtocol protocol = new ServerTopicProtocol();
 		protocols.put(protocol.getName(), protocol);
 		return this;
 	}
@@ -76,7 +78,7 @@ public final class ClonderBuilder {
 	 *
 	 * @see Transfer
 	 */
-	public ClonderBuilder headersTimeoutDuration(Duration duration) {
+	public SonderServerBuilder headersTimeoutDuration(Duration duration) {
 		headersTimeoutDuration = duration;
 		return this;
 	}
@@ -91,19 +93,32 @@ public final class ClonderBuilder {
 	 *
 	 * @see Transfer
 	 */
-	public ClonderBuilder contentTimeoutDurationFactory(LongFunction<Duration> factory) {
+	public SonderServerBuilder contentTimeoutDurationFactory(LongFunction<Duration> factory) {
 		contentTimeoutDurationFactory = factory;
 		return this;
 	}
 
 	/**
-	 * Build and run client.
+	 * Set maximum count of threads, which will be used for handling clients transfers.
+	 * If not set, then {@link Executors#newCachedThreadPool()}  will be used.
 	 *
-	 * @return client instance.
+	 * @param count max threads count
+	 *
+	 * @return self
 	 */
-	public Clonder build() {
-		return new Clonder(
-				new SocketServerConnection(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory),
-				protocols);
+	public SonderServerBuilder workersCount(int count) {
+		workers = Executors.newFixedThreadPool(count);
+		return this;
+	}
+
+	/**
+	 * Build and run server.
+	 *
+	 * @return server instance.
+	 */
+	public SonderServer build() {
+		return new SonderServer(
+				new SocketClientsSelector(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory,
+						workers), protocols);
 	}
 }

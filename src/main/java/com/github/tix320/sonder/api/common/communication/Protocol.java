@@ -5,18 +5,18 @@ import java.io.IOException;
 import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.sonder.api.client.Clonder;
-import com.github.tix320.sonder.api.client.ClonderBuilder;
-import com.github.tix320.sonder.api.server.Sonder;
-import com.github.tix320.sonder.api.server.SonderBuilder;
+import com.github.tix320.sonder.api.client.SonderClient;
+import com.github.tix320.sonder.api.client.SonderClientBuilder;
+import com.github.tix320.sonder.api.server.SonderServer;
+import com.github.tix320.sonder.api.server.SonderServerBuilder;
 
 /**
  * Protocol is used for handling transfers sent between clients and server.
  * Each protocol must have unique name in one server or client scope. Method {@link #getName()} must return it.
  * Protocol id defined by implementing two methods for sending and receiving data. {@link #outgoingTransfers()} and {@link #handleIncomingTransfer(Transfer)} respectively.
  *
- * @see Sonder
- * @see Clonder
+ * @see SonderServer
+ * @see SonderClient
  */
 public interface Protocol extends Closeable {
 
@@ -29,8 +29,8 @@ public interface Protocol extends Closeable {
 	 * @param transfer to handle
 	 *
 	 * @throws IOException if any IO errors occurs
-	 * @see SonderBuilder#contentTimeoutDurationFactory(LongFunction)
-	 * @see ClonderBuilder#contentTimeoutDurationFactory(LongFunction)
+	 * @see SonderServerBuilder#contentTimeoutDurationFactory(LongFunction)
+	 * @see SonderClientBuilder#contentTimeoutDurationFactory(LongFunction)
 	 */
 	void handleIncomingTransfer(Transfer transfer)
 			throws IOException;

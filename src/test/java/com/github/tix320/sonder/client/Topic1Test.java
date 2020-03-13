@@ -7,7 +7,7 @@ import java.net.InetSocketAddress;
 import java.util.List;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.github.tix320.sonder.api.client.Clonder;
+import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.common.topic.Topic;
 
 /**
@@ -17,9 +17,9 @@ public final class Topic1Test {
 
 	public static void main(String[] args)
 			throws IOException, InterruptedException {
-		Clonder clonder = Clonder.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
+		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
 
-		Topic<List<String>> topic = clonder.registerTopic("foo", new TypeReference<>() {});
+		Topic<List<String>> topic = sonderClient.registerTopic("foo", new TypeReference<>() {});
 		topic.asObservable().subscribe(list -> System.out.println((list.get(0) + 3)));
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {

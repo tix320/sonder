@@ -7,7 +7,7 @@ import java.net.InetSocketAddress;
 import java.util.function.Consumer;
 
 import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
-import com.github.tix320.sonder.api.client.Clonder;
+import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.client.RPCProtocolBuilder;
 import com.github.tix320.sonder.server.MyAnno;
 import com.github.tix320.sonder.server.MyInterceptor;
@@ -21,11 +21,11 @@ public class RPCTest {
 					.registerInterceptor(new AnnotationInterceptor<>(MyAnno.class, new MyInterceptor()));
 		};
 
-		Clonder clonder = Clonder.forAddress(new InetSocketAddress("localhost", 8888))
+		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888))
 				.withRPCProtocol(rpcProtocolBuilder)
 				.build();
 
-		A a = clonder.getRPCService(A.class);
+		A a = sonderClient.getRPCService(A.class);
 		BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
 		while (true) {
 			String message = bufferedReader.readLine();

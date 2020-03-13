@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.api.server;
+package com.github.tix320.sonder.api.client;
 
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
@@ -15,17 +15,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
+import com.github.tix320.sonder.internal.client.ServerConnection;
+import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
+import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
-import com.github.tix320.sonder.internal.server.ClientsSelector;
-import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
-import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
-import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
 
 /**
- * Entry point class for your socket server.
- * Provides main functionality for communicating with clients.
+ * Entry point class for your socket client.
+ * Provides main functionality for communicating with server.
  *
  * Communication is performed by sending and receiving transfer objects {@link Transfer}.
  * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
@@ -35,38 +34,38 @@ import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
  *
  * Create client builder by calling method {@link #forAddress}.
  *
- * @author Tigran.Sargsyan on 11-Dec-18
+ * @author tix32 on 20-Dec-18
  * @see Protocol
  * @see Transfer
  */
-public final class Sonder implements Closeable {
+public final class SonderClient implements Closeable {
 
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
 	private final Map<String, Protocol> protocols;
 
-	private final ClientsSelector clientsSelector;
+	private final ServerConnection connection;
 
 	/**
-	 * Prepare server creating for this socket address.
+	 * Prepare client creating for this socket address.
 	 *
-	 * @param inetSocketAddress socket address to bind.
+	 * @param inetSocketAddress socket address to connect.
 	 *
 	 * @return builder for future configuring.
 	 */
-	public static SonderBuilder forAddress(InetSocketAddress inetSocketAddress) {
-		return new SonderBuilder(inetSocketAddress);
+	public static SonderClientBuilder forAddress(InetSocketAddress inetSocketAddress) {
+		return new SonderClientBuilder(inetSocketAddress);
 	}
 
-	Sonder(ClientsSelector clientsSelector, Map<String, Protocol> protocols) {
-		this.clientsSelector = clientsSelector;
+	SonderClient(ServerConnection connection, Map<String, Protocol> protocols) {
+		this.connection = connection;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 
-		clientsSelector.incomingRequests().map(this::clientPackToTransfer).subscribe(this::processTransfer);
+		connection.incomingRequests().map(this::convertDataPackToTransfer).subscribe(this::processTransfer);
 		protocols.forEach((protocolName, protocol) -> protocol.outgoingTransfers()
 				.map(transfer -> setProtocolHeader(transfer, protocolName))
-				.map(this::transferToClientPack)
-				.subscribe(clientsSelector::send));
+				.map(this::transferToDataPack)
+				.subscribe(connection::send));
 	}
 
 	/**
@@ -90,46 +89,46 @@ public final class Sonder implements Closeable {
 	}
 
 	/**
-	 * Get service from protocol {@link ServerRPCProtocol}
+	 * Get service from protocol {@link ClientRPCProtocol}
 	 *
 	 * @param clazz class of service
 	 * @param <T>   of class
 	 *
 	 * @return service
 	 *
-	 * @throws IllegalStateException if {@link ServerRPCProtocol} not registered
-	 * @see ServerRPCProtocol
+	 * @throws IllegalStateException if {@link ClientRPCProtocol} not registered
+	 * @see ClientRPCProtocol
 	 */
 	public <T> T getRPCService(Class<T> clazz) {
 		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("RPC protocol not registered");
 		}
-		return ((ServerRPCProtocol) protocol).getService(clazz);
+		return ((ClientRPCProtocol) protocol).getService(clazz);
 	}
 
 	/**
-	 * Register topic for protocol {@link ServerTopicProtocol}
+	 * Register topic for protocol {@link ClientTopicProtocol}
 	 *
 	 * @param topic      name
 	 * @param dataType   which will be used while transferring data in topic
 	 * @param bufferSize for buffering last received data
 	 * @param <T>        type of topic data
 	 *
-	 * @return topic
+	 * @return topic {@link Topic}
 	 *
-	 * @throws IllegalStateException if {@link ServerTopicProtocol} not registered
+	 * @throws IllegalStateException if {@link ClientTopicProtocol} not registered
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
 		Protocol protocol = protocols.get(BuiltInProtocol.TOPIC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("Topic protocol not registered");
 		}
-		return ((ServerTopicProtocol) protocol).registerTopic(topic, dataType, bufferSize);
+		return ((ClientTopicProtocol) protocol).registerTopic(topic, dataType, bufferSize);
 	}
 
 	/**
-	 * * Register topic for protocol {@link ServerTopicProtocol}
+	 * * Register topic for protocol {@link ClientTopicProtocol}
 	 * Invokes {@link #registerTopic(String, TypeReference, int)} with '0' value buffer size
 	 *
 	 * @param <T>      type of topic data
@@ -145,7 +144,7 @@ public final class Sonder implements Closeable {
 	@Override
 	public void close()
 			throws IOException {
-		clientsSelector.close();
+		connection.close();
 	}
 
 	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
@@ -153,9 +152,7 @@ public final class Sonder implements Closeable {
 				transfer.channel(), transfer.getContentLength());
 	}
 
-	private ClientPack transferToClientPack(Transfer transfer) {
-		Number destinationClientId = transfer.getHeaders().getNonNullNumber(Headers.DESTINATION_CLIENT_ID);
-
+	private Pack transferToDataPack(Transfer transfer) {
 		byte[] headers;
 		try {
 			headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
@@ -165,12 +162,10 @@ public final class Sonder implements Closeable {
 		}
 
 		ReadableByteChannel channel = transfer.channel();
-		return new ClientPack(destinationClientId.longValue(), new Pack(headers, channel, transfer.getContentLength()));
+		return new Pack(headers, channel, transfer.getContentLength());
 	}
 
-	private Transfer clientPackToTransfer(ClientsSelector.ClientPack clientPack) {
-		Pack dataPack = clientPack.getPack();
-
+	private Transfer convertDataPackToTransfer(Pack dataPack) {
 		Headers headers;
 		try {
 			headers = JSON_MAPPER.readValue(dataPack.getHeaders(), Headers.class);
@@ -178,7 +173,6 @@ public final class Sonder implements Closeable {
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
-		headers = headers.compose().header(Headers.SOURCE_CLIENT_ID, clientPack.getClientId()).build();
 		ReadableByteChannel channel = dataPack.channel();
 
 		return new ChannelTransfer(headers, channel, dataPack.getContentLength());
@@ -196,7 +190,6 @@ public final class Sonder implements Closeable {
 
 	private void processSuccessTransfer(Transfer transfer) {
 		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
-
 		Protocol protocol = protocols.get(protocolName);
 		if (protocol == null) {
 			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
@@ -215,13 +208,13 @@ public final class Sonder implements Closeable {
 	}
 
 	private void wrapWithErrorResponse(Headers requestHeaders, Runnable runnable) {
-		long clientId = requestHeaders.getNonNullNumber(Headers.SOURCE_CLIENT_ID).longValue();
+		Number clientId = requestHeaders.getNumber(Headers.SOURCE_CLIENT_ID);
+
 		try {
 			runnable.run();
 		}
 		catch (Exception e) {
 			e.printStackTrace();
-
 			Headers headers = Headers.builder()
 					.header(Headers.IS_PROTOCOL_ERROR_RESPONSE, true)
 					.header(Headers.DESTINATION_CLIENT_ID, clientId)
@@ -232,8 +225,8 @@ public final class Sonder implements Closeable {
 			byte[] content = byteStream.toByteArray();
 
 			Transfer transfer = new StaticTransfer(headers, content);
-			ClientPack clientPack = transferToClientPack(transfer);
-			clientsSelector.send(clientPack);
+			Pack pack = transferToDataPack(transfer);
+			connection.send(pack);
 		}
 	}
 }

@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.api.client;
+package com.github.tix320.sonder.api.server;
 
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
@@ -15,16 +15,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
-import com.github.tix320.sonder.internal.client.ServerConnection;
-import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
-import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
+import com.github.tix320.sonder.internal.server.ClientsSelector;
+import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
+import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
+import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
 
 /**
- * Entry point class for your socket client.
- * Provides main functionality for communicating with server.
+ * Entry point class for your socket server.
+ * Provides main functionality for communicating with clients.
  *
  * Communication is performed by sending and receiving transfer objects {@link Transfer}.
  * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
@@ -34,38 +35,38 @@ import com.github.tix320.sonder.internal.common.communication.SonderRemoteExcept
  *
  * Create client builder by calling method {@link #forAddress}.
  *
- * @author tix32 on 20-Dec-18
+ * @author Tigran.Sargsyan on 11-Dec-18
  * @see Protocol
  * @see Transfer
  */
-public final class Clonder implements Closeable {
+public final class SonderServer implements Closeable {
 
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
 	private final Map<String, Protocol> protocols;
 
-	private final ServerConnection connection;
+	private final ClientsSelector clientsSelector;
 
 	/**
-	 * Prepare client creating for this socket address.
+	 * Prepare server creating for this socket address.
 	 *
-	 * @param inetSocketAddress socket address to connect.
+	 * @param inetSocketAddress socket address to bind.
 	 *
 	 * @return builder for future configuring.
 	 */
-	public static ClonderBuilder forAddress(InetSocketAddress inetSocketAddress) {
-		return new ClonderBuilder(inetSocketAddress);
+	public static SonderServerBuilder forAddress(InetSocketAddress inetSocketAddress) {
+		return new SonderServerBuilder(inetSocketAddress);
 	}
 
-	Clonder(ServerConnection connection, Map<String, Protocol> protocols) {
-		this.connection = connection;
+	SonderServer(ClientsSelector clientsSelector, Map<String, Protocol> protocols) {
+		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 
-		connection.incomingRequests().map(this::convertDataPackToTransfer).subscribe(this::processTransfer);
+		clientsSelector.incomingRequests().map(this::clientPackToTransfer).subscribe(this::processTransfer);
 		protocols.forEach((protocolName, protocol) -> protocol.outgoingTransfers()
 				.map(transfer -> setProtocolHeader(transfer, protocolName))
-				.map(this::transferToDataPack)
-				.subscribe(connection::send));
+				.map(this::transferToClientPack)
+				.subscribe(clientsSelector::send));
 	}
 
 	/**
@@ -89,46 +90,46 @@ public final class Clonder implements Closeable {
 	}
 
 	/**
-	 * Get service from protocol {@link ClientRPCProtocol}
+	 * Get service from protocol {@link ServerRPCProtocol}
 	 *
 	 * @param clazz class of service
 	 * @param <T>   of class
 	 *
 	 * @return service
 	 *
-	 * @throws IllegalStateException if {@link ClientRPCProtocol} not registered
-	 * @see ClientRPCProtocol
+	 * @throws IllegalStateException if {@link ServerRPCProtocol} not registered
+	 * @see ServerRPCProtocol
 	 */
 	public <T> T getRPCService(Class<T> clazz) {
 		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("RPC protocol not registered");
 		}
-		return ((ClientRPCProtocol) protocol).getService(clazz);
+		return ((ServerRPCProtocol) protocol).getService(clazz);
 	}
 
 	/**
-	 * Register topic for protocol {@link ClientTopicProtocol}
+	 * Register topic for protocol {@link ServerTopicProtocol}
 	 *
 	 * @param topic      name
 	 * @param dataType   which will be used while transferring data in topic
 	 * @param bufferSize for buffering last received data
 	 * @param <T>        type of topic data
 	 *
-	 * @return topic {@link Topic}
+	 * @return topic
 	 *
-	 * @throws IllegalStateException if {@link ClientTopicProtocol} not registered
+	 * @throws IllegalStateException if {@link ServerTopicProtocol} not registered
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
 		Protocol protocol = protocols.get(BuiltInProtocol.TOPIC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("Topic protocol not registered");
 		}
-		return ((ClientTopicProtocol) protocol).registerTopic(topic, dataType, bufferSize);
+		return ((ServerTopicProtocol) protocol).registerTopic(topic, dataType, bufferSize);
 	}
 
 	/**
-	 * * Register topic for protocol {@link ClientTopicProtocol}
+	 * * Register topic for protocol {@link ServerTopicProtocol}
 	 * Invokes {@link #registerTopic(String, TypeReference, int)} with '0' value buffer size
 	 *
 	 * @param <T>      type of topic data
@@ -144,7 +145,7 @@ public final class Clonder implements Closeable {
 	@Override
 	public void close()
 			throws IOException {
-		connection.close();
+		clientsSelector.close();
 	}
 
 	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
@@ -152,7 +153,9 @@ public final class Clonder implements Closeable {
 				transfer.channel(), transfer.getContentLength());
 	}
 
-	private Pack transferToDataPack(Transfer transfer) {
+	private ClientPack transferToClientPack(Transfer transfer) {
+		Number destinationClientId = transfer.getHeaders().getNonNullNumber(Headers.DESTINATION_CLIENT_ID);
+
 		byte[] headers;
 		try {
 			headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
@@ -162,10 +165,12 @@ public final class Clonder implements Closeable {
 		}
 
 		ReadableByteChannel channel = transfer.channel();
-		return new Pack(headers, channel, transfer.getContentLength());
+		return new ClientPack(destinationClientId.longValue(), new Pack(headers, channel, transfer.getContentLength()));
 	}
 
-	private Transfer convertDataPackToTransfer(Pack dataPack) {
+	private Transfer clientPackToTransfer(ClientsSelector.ClientPack clientPack) {
+		Pack dataPack = clientPack.getPack();
+
 		Headers headers;
 		try {
 			headers = JSON_MAPPER.readValue(dataPack.getHeaders(), Headers.class);
@@ -173,6 +178,7 @@ public final class Clonder implements Closeable {
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
+		headers = headers.compose().header(Headers.SOURCE_CLIENT_ID, clientPack.getClientId()).build();
 		ReadableByteChannel channel = dataPack.channel();
 
 		return new ChannelTransfer(headers, channel, dataPack.getContentLength());
@@ -190,6 +196,7 @@ public final class Clonder implements Closeable {
 
 	private void processSuccessTransfer(Transfer transfer) {
 		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
+
 		Protocol protocol = protocols.get(protocolName);
 		if (protocol == null) {
 			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
@@ -208,13 +215,13 @@ public final class Clonder implements Closeable {
 	}
 
 	private void wrapWithErrorResponse(Headers requestHeaders, Runnable runnable) {
-		Number clientId = requestHeaders.getNumber(Headers.SOURCE_CLIENT_ID);
-
+		long clientId = requestHeaders.getNonNullNumber(Headers.SOURCE_CLIENT_ID).longValue();
 		try {
 			runnable.run();
 		}
 		catch (Exception e) {
 			e.printStackTrace();
+
 			Headers headers = Headers.builder()
 					.header(Headers.IS_PROTOCOL_ERROR_RESPONSE, true)
 					.header(Headers.DESTINATION_CLIENT_ID, clientId)
@@ -225,8 +232,8 @@ public final class Clonder implements Closeable {
 			byte[] content = byteStream.toByteArray();
 
 			Transfer transfer = new StaticTransfer(headers, content);
-			Pack pack = transferToDataPack(transfer);
-			connection.send(pack);
+			ClientPack clientPack = transferToClientPack(transfer);
+			clientsSelector.send(clientPack);
 		}
 	}
 }
