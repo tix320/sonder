@@ -1,5 +1,5 @@
 module sonder {
-	requires kiwi;
+	requires transitive kiwi;
 	requires transitive com.fasterxml.jackson.core;
 	requires transitive com.fasterxml.jackson.databind;
 	requires transitive com.fasterxml.jackson.annotation;

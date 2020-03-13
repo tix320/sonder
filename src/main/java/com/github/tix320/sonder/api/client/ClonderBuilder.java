@@ -3,18 +3,16 @@ package com.github.tix320.sonder.api.client;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.api.common.rpc.Endpoint;
-import com.github.tix320.sonder.api.common.rpc.Origin;
 import com.github.tix320.sonder.internal.client.SocketServerConnection;
 import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
-import com.github.tix320.sonder.internal.common.util.ClassFinder;
+import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
 
 /**
  * Builder for socket client {@link Clonder}.
@@ -43,15 +41,16 @@ public final class ClonderBuilder {
 	}
 
 	/**
-	 * Register RPC protocol {@link ClientRPCProtocol} to client.
+	 * Register RPC protocol {@link ServerRPCProtocol} to server.
 	 *
-	 * @param packagesToScan to find origin interfaces {@link Origin}, and endpoint classes {@link Endpoint}.
+	 * @param protocolBuilder function for configuring protocol builder {@link RPCProtocolBuilder}.
 	 *
 	 * @return self
 	 */
-	public ClonderBuilder withRPCProtocol(String... packagesToScan) {
-		List<Class<?>> classes = ClassFinder.getPackageClasses(packagesToScan);
-		ClientRPCProtocol protocol = new ClientRPCProtocol(classes);
+	public ClonderBuilder withRPCProtocol(Consumer<RPCProtocolBuilder> protocolBuilder) {
+		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder();
+		protocolBuilder.accept(rpcProtocolBuilder);
+		ClientRPCProtocol protocol = rpcProtocolBuilder.build();
 		protocols.put(protocol.getName(), protocol);
 		return this;
 	}

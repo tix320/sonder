@@ -5,9 +5,12 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.function.Consumer;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.sonder.api.common.topic.Topic;
+import com.github.tix320.sonder.api.server.RPCProtocolBuilder;
 import com.github.tix320.sonder.api.server.Sonder;
 
 /**
@@ -17,8 +20,12 @@ public final class ServerTest {
 
 	public static void main(String[] args)
 			throws InterruptedException, IOException {
+		Consumer<RPCProtocolBuilder> rpcProtocolBuilder = builder -> builder.scanPackages(
+				"com.github.tix320.sonder.server")
+				.registerInterceptor(new AnnotationInterceptor<>(MyAnno.class, new MyInterceptor()));
+
 		Sonder sonder = Sonder.forAddress(new InetSocketAddress(Integer.parseInt(args[0])))
-				.withRPCProtocol("com.github.tix320.sonder.server")
+				.withRPCProtocol(rpcProtocolBuilder)
 				.withTopicProtocol()
 				.build();
 

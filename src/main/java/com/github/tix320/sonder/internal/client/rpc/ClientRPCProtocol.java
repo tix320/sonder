@@ -18,6 +18,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.github.tix320.kiwi.api.check.Try;
+import com.github.tix320.kiwi.api.proxy.AnnotationBasedProxyCreator;
+import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
+import com.github.tix320.kiwi.api.proxy.ProxyCreator;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
@@ -50,6 +53,8 @@ public final class ClientRPCProtocol implements Protocol {
 
 	private final Map<Class<?>, ?> endpointServices;
 
+	private final List<AnnotationInterceptor<?>> endpointInterceptors;
+
 	private final Map<Method, ClientOriginMethod> originsByMethod;
 
 	private final Map<String, ClientOriginMethod> originsByPath;
@@ -62,9 +67,11 @@ public final class ClientRPCProtocol implements Protocol {
 
 	private final Publisher<Transfer> outgoingRequests;
 
-	public ClientRPCProtocol(List<Class<?>> classes) {
+	public ClientRPCProtocol(List<Class<?>> classes, List<AnnotationInterceptor<?>> endpointInterceptors) {
 		ClientOriginRPCServiceMethods originServiceMethods = new ClientOriginRPCServiceMethods(classes);
 		ClientEndpointRPCServiceMethods endpointServiceMethods = new ClientEndpointRPCServiceMethods(classes);
+
+		this.endpointInterceptors = endpointInterceptors;
 
 		this.originsByMethod = originServiceMethods.get()
 				.stream()
@@ -144,8 +151,10 @@ public final class ClientRPCProtocol implements Protocol {
 		return Proxy.newProxyInstance(clazz.getClassLoader(), new Class[]{clazz}, new OriginInvocationHandler());
 	}
 
+	@SuppressWarnings("all")
 	private Object creatEndpointInstance(Class<?> clazz) {
-		return Try.supplyOrRethrow(() -> clazz.getConstructor().newInstance());
+		ProxyCreator proxyCreator = new AnnotationBasedProxyCreator(clazz, endpointInterceptors);
+		return proxyCreator.create();
 	}
 
 	private Object handleOriginCall(ClientOriginMethod method, List<Object> simpleArgs,

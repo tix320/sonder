@@ -11,6 +11,7 @@ import com.github.tix320.sonder.api.common.rpc.Endpoint;
 @Endpoint("chat")
 public class TestEndpoint {
 
+	@MyAnno
 	@Endpoint("message")
 	public List<Integer> foo(String message) {
 		System.out.println(message);
