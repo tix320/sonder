@@ -52,7 +52,7 @@ public final class ServerRPCProtocol implements Protocol {
 
 	private final Map<Class<?>, ?> endpointServices;
 
-	private final List<AnnotationInterceptor<?>> endpointInterceptors;
+	private final List<AnnotationInterceptor<?, ?>> endpointInterceptors;
 
 	private final Map<Method, ServerOriginMethod> originsByMethod;
 
@@ -66,7 +66,8 @@ public final class ServerRPCProtocol implements Protocol {
 
 	private final Publisher<Transfer> outgoingRequests;
 
-	public ServerRPCProtocol(List<Class<?>> classes, List<AnnotationInterceptor<?>> endpointInterceptors) {
+	public ServerRPCProtocol(List<Class<?>> classes, List<AnnotationInterceptor<?, ?
+			>> endpointInterceptors) {
 		ServerOriginRPCServiceMethods originServiceMethods = new ServerOriginRPCServiceMethods(classes);
 		ServerEndpointRPCServiceMethods endpointServiceMethods = new ServerEndpointRPCServiceMethods(classes);
 

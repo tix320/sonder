@@ -18,7 +18,7 @@ public class RPCTest {
 			throws IOException, InterruptedException {
 		Consumer<RPCProtocolBuilder> rpcProtocolBuilder = builder -> {
 			builder.scanPackages("com.github.tix320.sonder.client")
-					.registerInterceptor(new AnnotationInterceptor<>(MyAnno.class, new MyInterceptor()));
+					.registerInterceptor(new MyInterceptor());
 		};
 
 		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888))

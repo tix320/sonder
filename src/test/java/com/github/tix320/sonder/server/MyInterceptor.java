@@ -1,15 +1,20 @@
 package com.github.tix320.sonder.server;
 
-import java.lang.reflect.Method;
 import java.util.List;
 
-import com.github.tix320.kiwi.api.proxy.Interceptor;
+import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.kiwi.api.util.None;
 
-public class MyInterceptor implements Interceptor<Object> {
+public class MyInterceptor implements AnnotationInterceptor<Object, MyAnno> {
 
 	@Override
-	public Object intercept(Method method, Object[] args, Object proxy) {
+	public Class<MyAnno> getAnnotationClass() {
+		return MyAnno.class;
+	}
+
+	@Override
+	public Object intercept(MyAnno annotation, InterceptionContext<Object> context) {
+		Object[] args = context.getArgs();
 		String message = (String) args[args.length - 1];
 
 		if (message.equals("stop")) {

@@ -22,7 +22,7 @@ public final class ServerTest {
 			throws InterruptedException, IOException {
 		Consumer<RPCProtocolBuilder> rpcProtocolBuilder = builder -> builder.scanPackages(
 				"com.github.tix320.sonder.server")
-				.registerInterceptor(new AnnotationInterceptor<>(MyAnno.class, new MyInterceptor()));
+				.registerInterceptor(new MyInterceptor());
 
 		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(Integer.parseInt(args[0])))
 				.withRPCProtocol(rpcProtocolBuilder)

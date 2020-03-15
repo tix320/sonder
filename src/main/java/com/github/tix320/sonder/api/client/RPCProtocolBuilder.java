@@ -1,6 +1,7 @@
 package com.github.tix320.sonder.api.client;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
@@ -17,7 +18,7 @@ public class RPCProtocolBuilder {
 
 	private String[] packagesToScan;
 
-	private final List<AnnotationInterceptor<?>> interceptors;
+	private final List<AnnotationInterceptor<?, ?>> interceptors;
 
 	RPCProtocolBuilder() {
 		interceptors = new ArrayList<>();
@@ -38,12 +39,12 @@ public class RPCProtocolBuilder {
 	/**
 	 * Register interceptor for intercepting endpoint calls.
 	 *
-	 * @param interceptor to register.
+	 * @param interceptors to register.
 	 *
 	 * @return self
 	 */
-	public RPCProtocolBuilder registerInterceptor(AnnotationInterceptor<?> interceptor) {
-		this.interceptors.add(interceptor);
+	public RPCProtocolBuilder registerInterceptor(AnnotationInterceptor<?, ?>... interceptors) {
+		this.interceptors.addAll(Arrays.asList(interceptors));
 		return this;
 	}
 
