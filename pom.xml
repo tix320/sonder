@@ -52,7 +52,7 @@
 	</distributionManagement>
 
 	<properties>
-		<jackson.version>2.10.1</jackson.version>
+		<jackson.version>2.10.3</jackson.version>
 	</properties>
 
 	<build>
@@ -129,7 +129,7 @@
 		<dependency>
 			<groupId>com.github.tix320</groupId>
 			<artifactId>kiwi</artifactId>
-			<version>0.14.1-SNAPSHOT</version>
+			<version>0.15.0</version>
 		</dependency>
 
 		<dependency>
