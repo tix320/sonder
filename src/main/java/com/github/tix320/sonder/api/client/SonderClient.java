@@ -62,7 +62,7 @@ public final class SonderClient implements Closeable {
 		this.protocols = new ConcurrentHashMap<>(protocols);
 
 		connection.incomingRequests().map(this::convertDataPackToTransfer).subscribe(this::processTransfer);
-		protocols.forEach((protocolName, protocol) -> registerProtocol(protocol));
+		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
 	}
 
 	/**
@@ -82,10 +82,8 @@ public final class SonderClient implements Closeable {
 		if (protocols.containsKey(protocolName)) {
 			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));
 		}
-		protocol.outgoingTransfers()
-				.map(transfer -> setProtocolHeader(transfer, protocolName))
-				.map(this::transferToDataPack)
-				.subscribe(connection::send);
+
+		listenProtocol(protocol);
 
 		protocols.put(protocolName, protocol);
 	}
@@ -147,6 +145,13 @@ public final class SonderClient implements Closeable {
 	public void close()
 			throws IOException {
 		connection.close();
+	}
+
+	private void listenProtocol(Protocol protocol) {
+		protocol.outgoingTransfers()
+				.map(transfer -> setProtocolHeader(transfer, protocol.getName()))
+				.map(this::transferToDataPack)
+				.subscribe(connection::send);
 	}
 
 	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
