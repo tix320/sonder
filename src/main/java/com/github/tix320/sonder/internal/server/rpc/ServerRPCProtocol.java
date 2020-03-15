@@ -66,8 +66,7 @@ public final class ServerRPCProtocol implements Protocol {
 
 	private final Publisher<Transfer> outgoingRequests;
 
-	public ServerRPCProtocol(List<Class<?>> classes, List<AnnotationInterceptor<?, ?
-			>> endpointInterceptors) {
+	public ServerRPCProtocol(List<Class<?>> classes, List<AnnotationInterceptor<?, ?>> endpointInterceptors) {
 		ServerOriginRPCServiceMethods originServiceMethods = new ServerOriginRPCServiceMethods(classes);
 		ServerEndpointRPCServiceMethods endpointServiceMethods = new ServerEndpointRPCServiceMethods(classes);
 
@@ -262,7 +261,14 @@ public final class ServerRPCProtocol implements Protocol {
 				for (int i = 0; i < argsNode.size(); i++) {
 					JsonNode argNode = argsNode.get(i);
 					Param param = simpleParams.get(i);
-					simpleArgs[i] = Try.supplyOrRethrow(() -> JSON_MAPPER.convertValue(argNode, param.getType()));
+					try {
+						simpleArgs[i] = JSON_MAPPER.convertValue(argNode, param.getType());
+					}
+					catch (IllegalArgumentException e) {
+						throw new RPCProtocolException(
+								String.format("Fail to build object of type `%s` from json %s", param.getType(),
+										argsNode.toPrettyString()), e);
+					}
 				}
 				break;
 			case TRANSFER:
