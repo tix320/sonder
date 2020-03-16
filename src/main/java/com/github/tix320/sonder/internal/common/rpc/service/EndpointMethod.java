@@ -26,11 +26,11 @@ public abstract class EndpointMethod extends ServiceMethod {
 		super(path, method, simpleParams, extraParams);
 		this.resultType = resultType;
 		try {
-			this.methodHandle = MethodHandles.publicLookup().unreflect(method);
+			this.methodHandle = MethodHandles.lookup().unreflect(method);
 		}
 		catch (IllegalAccessException e) {
 			throw new IllegalStateException(
-					String.format("Cannot access to class %s, you must open your module.", method.getDeclaringClass()),
+					String.format("Cannot access to %s, you must open your module.", method),
 					e);
 		}
 	}
