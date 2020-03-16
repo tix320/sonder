@@ -43,7 +43,7 @@ public final class SonderClientBuilder {
 	/**
 	 * Register RPC protocol {@link ServerRPCProtocol} to server.
 	 *
-	 * @param protocolBuilder function for configuring protocol builder {@link RPCProtocolBuilder}.
+	 * @param protocolBuilder function for configuring protocol {@link RPCProtocolBuilder}.
 	 *
 	 * @return self
 	 */

@@ -158,7 +158,7 @@ public final class PackChannel implements Closeable {
 			int count = contentChannel.read(contentWriteBuffer);
 			if (count < 0) {
 				throw new InvalidPackException(
-						String.format("Content channel ended, but but still remaining %s bytes", remainingBytes));
+						String.format("Content channel ended, but still remaining %s bytes", remainingBytes));
 			}
 			remainingBytes -= count;
 			contentWriteBuffer.position(0);

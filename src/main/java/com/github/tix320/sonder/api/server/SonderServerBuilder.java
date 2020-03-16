@@ -45,7 +45,7 @@ public final class SonderServerBuilder {
 	/**
 	 * Register RPC protocol {@link ServerRPCProtocol} to server.
 	 *
-	 * @param protocolBuilder function for configuring protocol builder {@link RPCProtocolBuilder}.
+	 * @param protocolBuilder function for configuring protocol {@link RPCProtocolBuilder}.
 	 *
 	 * @return self
 	 */
@@ -58,7 +58,7 @@ public final class SonderServerBuilder {
 	}
 
 	/**
-	 * Register topic protocol {@link ServerRPCProtocol} to server.
+	 * Register topic protocol {@link ServerTopicProtocol} to server.
 	 *
 	 * @return self
 	 */
