@@ -308,7 +308,9 @@ public final class ClientRPCProtocol implements Protocol {
 					break;
 				case OBJECT:
 					builder.contentType(ContentType.JSON);
-					byte[] transferContent = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(result));
+					byte[] transferContent = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(result))
+							.getOrElseThrow((e) -> new RPCProtocolException(
+									String.format("Cannot serialize object: %s", result), e));
 					outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent));
 					break;
 				case BINARY:
