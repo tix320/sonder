@@ -172,7 +172,7 @@ public final class ServerRPCProtocol implements Protocol {
 			case ARGUMENTS:
 				builder.contentType(ContentType.JSON);
 				byte[] content = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs))
-						.getOrElseThrow((e) -> new RPCProtocolException("Cannot convert arguments to JSON", e));
+						.getOrElseThrow(e -> new RPCProtocolException("Cannot convert arguments to JSON", e));
 				transfer = new StaticTransfer(builder.build(), content);
 				break;
 			case BINARY:

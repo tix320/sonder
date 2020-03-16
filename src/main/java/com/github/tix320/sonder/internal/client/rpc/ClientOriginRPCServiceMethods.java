@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 
 import com.github.tix320.sonder.api.common.rpc.extra.ClientID;
-import com.github.tix320.sonder.internal.client.rpc.ClientOriginMethod.Destination;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginRPCServiceMethods;
 import com.github.tix320.sonder.internal.common.rpc.service.Param;
@@ -26,20 +25,11 @@ public final class ClientOriginRPCServiceMethods extends OriginRPCServiceMethods
 	protected final ClientOriginMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
 														   List<ExtraParam> extraParams) {
 		return new ClientOriginMethod(path, method, simpleParams, extraParams, constructReturnType(method),
-				constructReturnJavaType(method), requestDataType(simpleParams), getDestination(extraParams));
+				constructReturnJavaType(method), requestDataType(simpleParams));
 	}
 
 	@Override
 	protected void peek(ClientOriginMethod method) {
 
-	}
-
-	private Destination getDestination(List<ExtraParam> extraParams) {
-		for (ExtraParam extraParam : extraParams) {
-			if (extraParam.getAnnotation().annotationType() == ClientID.class) {
-				return Destination.CLIENT;
-			}
-		}
-		return Destination.SERVER;
 	}
 }

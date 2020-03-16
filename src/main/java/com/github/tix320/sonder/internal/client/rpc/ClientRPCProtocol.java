@@ -7,10 +7,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.databind.JavaType;
@@ -114,7 +111,10 @@ public final class ClientRPCProtocol implements Protocol {
 			}
 			catch (Exception e) {
 				e.printStackTrace();
-				sendErrorResponse(headers, e);
+				Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
+				if (needResponse != null && needResponse) {
+					sendErrorResponse(headers, e);
+				}
 			}
 		}
 		else {
@@ -159,21 +159,12 @@ public final class ClientRPCProtocol implements Protocol {
 
 	private Object handleOriginCall(ClientOriginMethod method, List<Object> simpleArgs,
 									Map<Class<? extends Annotation>, ExtraArg> extraArgs) {
+		long clientId = (long) Optional.ofNullable(extraArgs.get(ClientID.class)).map(ExtraArg::getValue).orElse(null);
+
 		Headers.HeadersBuilder builder = Headers.builder()
 				.header(Headers.PATH, method.getPath())
+				.header(Headers.DESTINATION_CLIENT_ID, clientId)
 				.header(Headers.IS_INVOKE, true);
-
-		switch (method.getDestination()) {
-			case SERVER:
-				break;
-			case CLIENT:
-				ExtraArg extraArg = extraArgs.get(ClientID.class);
-				Object clientId = extraArg.getValue();
-				builder.header(Headers.DESTINATION_CLIENT_ID, clientId);
-				break;
-			default:
-				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getDestination()));
-		}
 
 		Transfer transfer;
 		switch (method.getRequestDataType()) {
