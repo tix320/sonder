@@ -192,12 +192,20 @@ public final class SonderServer implements Closeable {
 	}
 
 	private void processTransfer(Transfer transfer) {
-		Boolean isProtocolErrorResponse = transfer.getHeaders().getBoolean(Headers.IS_PROTOCOL_ERROR_RESPONSE);
-		if (isProtocolErrorResponse != null && isProtocolErrorResponse) {
-			processErrorTransfer(transfer);
+		Headers headers = transfer.getHeaders();
+
+		Number destinationClientId = headers.getNumber(Headers.DESTINATION_CLIENT_ID);
+		if (destinationClientId != null) { // for any client, so we are redirecting without any processing
+			clientsSelector.send(transferToClientPack(transfer));
 		}
 		else {
-			wrapWithErrorResponse(transfer.getHeaders(), () -> processSuccessTransfer(transfer));
+			Boolean isProtocolErrorResponse = headers.getBoolean(Headers.IS_PROTOCOL_ERROR_RESPONSE);
+			if (isProtocolErrorResponse != null && isProtocolErrorResponse) {
+				processErrorTransfer(transfer);
+			}
+			else {
+				wrapWithErrorResponse(headers, () -> processSuccessTransfer(transfer));
+			}
 		}
 	}
 

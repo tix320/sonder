@@ -105,27 +105,21 @@ public final class ServerRPCProtocol implements Protocol {
 	public void handleIncomingTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
-		Number destinationClientId = headers.getNumber(Headers.DESTINATION_CLIENT_ID);
-		if (destinationClientId == null) { // for server
-			Boolean isInvoke = headers.getBoolean(Headers.IS_INVOKE);
-			if (isInvoke != null && isInvoke) {
-				try {
-					processInvocation(transfer);
-				}
-				catch (Exception e) {
-					e.printStackTrace();
-					Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
-					if (needResponse != null && needResponse) {
-						sendErrorResponse(headers, e);
-					}
-				}
+		Boolean isInvoke = headers.getBoolean(Headers.IS_INVOKE);
+		if (isInvoke != null && isInvoke) {
+			try {
+				processInvocation(transfer);
 			}
-			else {
-				processResult(transfer);
+			catch (Exception e) {
+				e.printStackTrace();
+				Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
+				if (needResponse != null && needResponse) {
+					sendErrorResponse(headers, e);
+				}
 			}
 		}
-		else { // for any client
-			outgoingRequests.publish(transfer);
+		else {
+			processResult(transfer);
 		}
 	}
 
@@ -304,7 +298,9 @@ public final class ServerRPCProtocol implements Protocol {
 					break;
 				case OBJECT:
 					builder.contentType(ContentType.JSON);
-					byte[] transferContent = Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(result));
+					byte[] transferContent = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(result))
+							.getOrElseThrow((e) -> new RPCProtocolException(
+									String.format("Cannot serialize object: %s", result), e));
 					outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent));
 					break;
 				case BINARY:
