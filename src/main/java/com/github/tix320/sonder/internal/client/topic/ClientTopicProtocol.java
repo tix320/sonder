@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.None;
@@ -18,6 +19,7 @@ import com.github.tix320.sonder.api.common.communication.StaticTransfer;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
+import com.github.tix320.sonder.internal.common.util.Threads;
 
 /**
  * Topic protocol implementation, which stores topics for communicating with other clients without using server directly.
@@ -41,13 +43,13 @@ public class ClientTopicProtocol implements Protocol {
 
 	private final Map<String, Publisher<Object>> topicPublishers;
 
-	private final Map<Long, Publisher<None>> responsePublishers;
+	private final Map<Long, MonoPublisher<None>> responsePublishers;
 
 	private final IDGenerator transferIdGenerator;
 
 	private final Map<String, None> subscriptions; // this is used as Set
 
-	private final Publisher<Transfer> requests;
+	private final Publisher<Transfer> outgoingTransfers;
 
 	public ClientTopicProtocol() {
 		this.dataTypesByTopic = new ConcurrentHashMap<>();
@@ -55,7 +57,7 @@ public class ClientTopicProtocol implements Protocol {
 		this.transferIdGenerator = new IDGenerator();
 		this.responsePublishers = new ConcurrentHashMap<>();
 		this.subscriptions = new ConcurrentHashMap<>();
-		this.requests = Publisher.simple();
+		this.outgoingTransfers = Publisher.simple();
 	}
 
 	@Override
@@ -77,7 +79,7 @@ public class ClientTopicProtocol implements Protocol {
 			TypeReference<?> dataType = dataTypesByTopic.get(topic);
 			Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
 			try {
-				publisher.publish(contentObject);
+				Threads.runAsync(() -> publisher.publish(contentObject));
 			}
 			catch (IllegalArgumentException e) {
 				throw new IllegalStateException(
@@ -87,18 +89,17 @@ public class ClientTopicProtocol implements Protocol {
 		}
 		else { // is response
 			Number transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY);
-			Publisher<None> publisher = responsePublishers.get(transferKey.longValue());
+			MonoPublisher<None> publisher = responsePublishers.get(transferKey.longValue());
 			if (publisher == null) {
 				throw new IllegalStateException("Invalid transfer key");
 			}
-			publisher.publish(None.SELF);
-			publisher.complete();
+			Threads.runAsync(() -> publisher.publish(None.SELF));
 		}
 	}
 
 	@Override
 	public Observable<Transfer> outgoingTransfers() {
-		return requests.asObservable();
+		return outgoingTransfers.asObservable();
 	}
 
 	@Override
@@ -108,7 +109,7 @@ public class ClientTopicProtocol implements Protocol {
 
 	@Override
 	public void close() {
-		requests.complete();
+		outgoingTransfers.complete();
 		topicPublishers.values().forEach(Publisher::complete);
 		responsePublishers.values().forEach(Publisher::complete);
 	}
@@ -148,11 +149,11 @@ public class ClientTopicProtocol implements Protocol {
 					.header(Headers.TRANSFER_KEY, transferKey)
 					.header(Headers.IS_INVOKE, true)
 					.build();
-			Publisher<None> publisher = Publisher.buffered(1);
+			MonoPublisher<None> publisher = Publisher.mono();
 			responsePublishers.put(transferKey, publisher);
-			requests.publish(
+			outgoingTransfers.publish(
 					new StaticTransfer(headers, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
-			return publisher.asObservable().toMono();
+			return publisher.asObservable();
 		}
 
 		@Override
@@ -162,7 +163,7 @@ public class ClientTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.TOPIC_ACTION, "subscribe")
 						.build();
-				requests.publish(new StaticTransfer(headers, new byte[0]));
+				outgoingTransfers.publish(new StaticTransfer(headers, new byte[0]));
 				return None.SELF;
 			});
 

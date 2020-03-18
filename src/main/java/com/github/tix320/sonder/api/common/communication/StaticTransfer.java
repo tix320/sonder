@@ -2,6 +2,7 @@ package com.github.tix320.sonder.api.common.communication;
 
 import java.io.IOException;
 import java.nio.channels.ReadableByteChannel;
+import java.util.Arrays;
 
 import com.github.tix320.sonder.internal.common.util.ReadableByteArrayChannel;
 
@@ -42,5 +43,10 @@ public final class StaticTransfer implements Transfer {
 	public void readAllInVain()
 			throws IOException {
 
+	}
+
+	@Override
+	public String toString() {
+		return "StaticTransfer{" + "headers=" + headers + ", content=" + Arrays.toString(content) + '}';
 	}
 }

@@ -72,4 +72,9 @@ public class ChannelTransfer implements Transfer {
 			buffer.clear();
 		}
 	}
+
+	@Override
+	public String toString() {
+		return "ChannelTransfer{" + "headers=" + headers + ", contentLength=" + contentLength + '}';
+	}
 }

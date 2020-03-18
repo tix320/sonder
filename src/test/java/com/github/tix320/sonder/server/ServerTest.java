@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.api.server.RPCProtocolBuilder;
 import com.github.tix320.sonder.api.server.SonderServer;
@@ -19,10 +18,9 @@ import com.github.tix320.sonder.api.server.SonderServer;
 public final class ServerTest {
 
 	public static void main(String[] args)
-			throws InterruptedException, IOException {
+			throws IOException {
 		Consumer<RPCProtocolBuilder> rpcProtocolBuilder = builder -> builder.scanPackages(
-				"com.github.tix320.sonder.server")
-				.registerInterceptor(new MyInterceptor());
+				"com.github.tix320.sonder.server").registerInterceptor(new MyInterceptor());
 
 		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(Integer.parseInt(args[0])))
 				.withRPCProtocol(rpcProtocolBuilder)

@@ -15,24 +15,21 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongFunction;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
+import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.internal.common.util.EmptyReadableByteChannel;
 import com.github.tix320.sonder.internal.common.util.LimitedReadableByteChannel;
+import com.github.tix320.sonder.internal.common.util.Threads;
 
 public final class PackChannel implements Closeable {
 
 	private static final byte[] PROTOCOL_HEADER_BYTES = {
-			105,
-			99,
-			111,
-			110,
-			116,
-			114,
-			111,
-			108
-	};
+			105, 99, 111, 110, 116, 114, 111, 108};
+
+	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
 	private static final int HEADERS_LENGTH_BYTES = 4;
 
@@ -266,7 +263,7 @@ public final class PackChannel implements Closeable {
 		}
 		else {
 			LimitedReadableByteChannel limitedChannel = new LimitedReadableByteChannel(this.channel, contentLength);
-			ScheduledFuture<?> contentTimeout = scheduleContentTimeout(limitedChannel);
+			ScheduledFuture<?> contentTimeout = scheduleContentTimeout(headers, limitedChannel);
 			limitedChannel.onFinish().subscribe(none -> {
 				contentTimeout.cancel(false);
 				reset();
@@ -278,7 +275,8 @@ public final class PackChannel implements Closeable {
 		}
 
 		Pack pack = new Pack(headers, channel, contentLength);
-		packs.publish(pack);
+
+		Threads.runAsync(() -> packs.publish(pack));
 	}
 
 	private ScheduledFuture<?> scheduleHeadersTimeout() {
@@ -289,16 +287,19 @@ public final class PackChannel implements Closeable {
 		}, delay, TimeUnit.MILLISECONDS);
 	}
 
-	private ScheduledFuture<?> scheduleContentTimeout(LimitedReadableByteChannel channel) {
+	private ScheduledFuture<?> scheduleContentTimeout(byte[] headers, LimitedReadableByteChannel channel) {
 		long delay = contentTimeoutDurationFactory.apply(contentLength.get()).toMillis();
 		return TIMEOUT_SCHEDULER.schedule(() -> {
-			long remaining = channel.getRemaining();
 			channel.close();
 			reset();
-
-			new TimeoutException(String.format(
-					"The provided channel is not was fully read long time: %sms. Content length is %s, left to read %s bytes.",
-					delay, contentLength, remaining)).printStackTrace();
+			long remaining = channel.getRemaining();
+			if (remaining != 0) {
+				String headersString = Try.supply(() -> JSON_MAPPER.readValue(headers, Headers.class).toString())
+						.getOrElse("Unknown headers");
+				new TimeoutException(String.format(
+						"The provided channel is not was fully read long time: %sms. Content length is %s, left to read %s bytes.\nHeaders: %s",
+						delay, contentLength, remaining, headersString)).printStackTrace();
+			}
 		}, delay, TimeUnit.MILLISECONDS);
 	}
 

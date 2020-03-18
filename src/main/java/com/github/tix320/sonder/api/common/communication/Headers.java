@@ -43,6 +43,14 @@ public final class Headers implements Serializable {
 		return values.get(key);
 	}
 
+	public boolean has(String key) {
+		return values.containsKey(key);
+	}
+
+	public boolean hasNonNull(String key) {
+		return values.get(key) != null;
+	}
+
 	public ContentType getContentType() {
 		return ContentType.valueOf(getNonNullString(Headers.CONTENT_TYPE));
 	}
@@ -150,21 +158,30 @@ public final class Headers implements Serializable {
 		}
 	}
 
-	//	--------------------Protocol headers
+	//	-------------------- Sonder headers
 	public static final String PROTOCOL = "protocol";
 	public static final String SOURCE_CLIENT_ID = "source-client-id";
 	public static final String DESTINATION_CLIENT_ID = "destination-client-id";
 	public static final String IS_PROTOCOL_ERROR_RESPONSE = "is-protocol-error";
 
-	//	--------------------Built in protocol headers
+	//	-------------------- RPC protocol headers
 	public static final String TRANSFER_KEY = "transfer-key";
 	public static final String PATH = "path";
 	public static final String IS_INVOKE = "is-invoke";
 	public static final String NEED_RESPONSE = "need-response";
 	public static final String IS_RPC_PROTOCOL_ERROR_RESPONSE = "is-rpc-protocol-error";
+	public static final String CONTENT_TYPE = "content-type";
+
+	//	-------------------- Topic protocol headers
 	public static final String TOPIC = "topic";
 	public static final String TOPIC_ACTION = "topic-action";
-	public static final String CONTENT_TYPE = "content-type";
+
+	//	-------------------- RO protocol headers
+	public static final String RO_OBJECT_ID = "RO-object-id";
+	public static final String CLASS_NAME = "RO-class-name";
+	public static final String METHOD_ID = "RO-method-id";
+	public static final String IS_RESULT = "RO-is-result";
+	public static final String IS_PROPERTY = "RO-is-property";
 
 	public static class HeadersSerializer extends StdSerializer<Headers> {
 

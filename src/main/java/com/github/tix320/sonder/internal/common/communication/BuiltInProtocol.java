@@ -1,12 +1,17 @@
 package com.github.tix320.sonder.internal.common.communication;
 
-import java.util.List;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public enum BuiltInProtocol {
 	RPC("sonder-RPC"),
-	TOPIC("sonder-topic");
+	TOPIC("sonder-topic"),
+	RO("sonder-RO");
 
-	public static final List<String> NAMES = List.of(RPC.name, TOPIC.name);
+	public static final Set<String> NAMES = Arrays.stream(BuiltInProtocol.values())
+			.map(BuiltInProtocol::getName)
+			.collect(Collectors.toSet());
 
 	private final String name;
 

@@ -26,7 +26,7 @@ public abstract class EndpointMethod extends ServiceMethod {
 		super(path, method, simpleParams, extraParams);
 		this.resultType = resultType;
 		try {
-			this.methodHandle = MethodHandles.lookup().unreflect(method);
+			this.methodHandle = MethodHandles.publicLookup().unreflect(method);
 		}
 		catch (IllegalAccessException e) {
 			throw new IllegalStateException(
