@@ -373,7 +373,7 @@ public class RPCProtocol implements Protocol {
 						Observable<?> observable = (Observable<?>) result;
 						Headers baseHeaders = builder.build();
 						Subscription subscription = observable.subscribe(value -> {
-							Headers headersToSend = baseHeaders.compose().contentType(ContentType.JSON).build();
+							Headers headersToSend = baseHeaders.compose().contentType(ContentType.STREAM_JSON).build();
 							byte[] content = serializeObject(value);
 							Transfer transferToSend = new StaticTransfer(headersToSend, content);
 							outgoingRequests.publish(transferToSend);
@@ -430,6 +430,10 @@ public class RPCProtocol implements Protocol {
 			throw new PathNotFoundException("Origin with path '" + path + "' not found");
 		}
 
+		if (originMethod.getReturnType() == ReturnType.SUBSCRIPTION) {
+
+		}
+
 		JavaType returnJavaType = originMethod.getReturnJavaType();
 		if (returnJavaType.getRawClass() == None.class) {
 			Try.runOrRethrow(transfer::readAllInVain);
@@ -445,7 +449,14 @@ public class RPCProtocol implements Protocol {
 					String.format("Response content is empty, and it cannot be converted to type %s", returnJavaType));
 		}
 		else {
-			if (originMethod.getReturnType() == ReturnType.SUBSCRIPTION) {
+			ContentType contentType = headers.getContentType();
+
+			if (contentType == ContentType.STREAM_JSON) {
+				if (originMethod.getReturnType() != ReturnType.SUBSCRIPTION) {
+					throw new RPCProtocolException(
+							String.format("Subscription result was received, but origin method %s(%s) not expect it",
+									originMethod.getRawClass().getName(), originMethod.getRawMethod().getName()));
+				}
 				SimplePublisher<Object> remoteObservablePublisher = remoteObservablePublishers.get(transferKey);
 				if (remoteObservablePublisher == null) {
 					throw new RPCProtocolException(String.format("Invalid transfer key `%s`", transferKey));
@@ -454,9 +465,7 @@ public class RPCProtocol implements Protocol {
 				Threads.runAsync(() -> remoteObservablePublisher.publish(value));
 			}
 			else {
-
 				Object result;
-				ContentType contentType = headers.getContentType();
 				switch (contentType) {
 					case BINARY:
 						result = Try.supplyOrRethrow(transfer::readAll);
