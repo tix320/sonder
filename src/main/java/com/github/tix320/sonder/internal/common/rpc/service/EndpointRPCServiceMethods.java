@@ -5,8 +5,10 @@ import java.lang.reflect.Modifier;
 import java.util.List;
 
 import com.github.tix320.kiwi.api.check.Try;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
+import com.github.tix320.sonder.api.common.rpc.Subscribe;
 import com.github.tix320.sonder.internal.common.rpc.StartupException;
 import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod.ResultType;
 
@@ -46,7 +48,11 @@ public abstract class EndpointRPCServiceMethods<T extends EndpointMethod> extend
 		StartupException.checkAndThrow(method,
 				m -> String.format("Failed to resolve endpoint method '%s'(%s), there are the following errors.",
 						m.getName(), m.getDeclaringClass()),
-				StartupException.throwWhen(m -> !Modifier.isPublic(m.getModifiers()), "Must be public"));
+				StartupException.throwWhen(m -> !Modifier.isPublic(m.getModifiers()), "Must be public"),
+				StartupException.throwWhen(
+						m -> m.isAnnotationPresent(Subscribe.class) && m.getReturnType() != Observable.class,
+						String.format("Return type must be `%s` when `@%s` annotation is present",
+								Observable.class.getSimpleName(), Subscribe.class.getSimpleName())));
 	}
 
 	@Override
@@ -65,6 +71,9 @@ public abstract class EndpointRPCServiceMethods<T extends EndpointMethod> extend
 		}
 		else if (returnType == Transfer.class) {
 			return ResultType.TRANSFER;
+		}
+		else if (method.isAnnotationPresent(Subscribe.class)) {
+			return ResultType.SUBSCRIPTION;
 		}
 		else {
 			return ResultType.OBJECT;

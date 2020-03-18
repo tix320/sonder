@@ -47,9 +47,6 @@ public class RPCAndROTest {
 		});
 		Thread.sleep(2000);
 		assertTrue(called.get());
-
-		sonderServer.close();
-		sonderClient.close();
 	}
 
 

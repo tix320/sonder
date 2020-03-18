@@ -10,6 +10,7 @@ import java.lang.reflect.Proxy;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,8 +20,11 @@ import com.github.tix320.kiwi.api.proxy.AnnotationBasedProxyCreator;
 import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.kiwi.api.proxy.ProxyCreator;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
+import com.github.tix320.kiwi.api.reactive.observable.Subscription;
 import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
+import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
@@ -34,6 +38,7 @@ import com.github.tix320.sonder.internal.common.communication.UnsupportedContent
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.*;
+import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
 import com.github.tix320.sonder.internal.common.util.Threads;
 import com.github.tix320.sonder.internal.server.rpc.ServerEndpointRPCServiceMethods;
 import com.github.tix320.sonder.internal.server.rpc.ServerOriginRPCServiceMethods;
@@ -60,6 +65,10 @@ public class RPCProtocol implements Protocol {
 	private final Map<String, EndpointMethod> endpointsByPath;
 
 	private final Map<Long, MonoPublisher<Object>> responsePublishers;
+
+	private final Map<Long, SimplePublisher<Object>> remoteObservablePublishers;
+
+	private final Map<Long, Subscription> remoteObservableSubscriptions;
 
 	private final IDGenerator transferIdGenerator;
 
@@ -104,6 +113,8 @@ public class RPCProtocol implements Protocol {
 				.collect(toUnmodifiableMap(clazz -> clazz, this::creatEndpointInstance));
 
 		this.responsePublishers = new ConcurrentHashMap<>();
+		this.remoteObservablePublishers = new ConcurrentHashMap<>();
+		this.remoteObservableSubscriptions = new ConcurrentHashMap<>();
 		this.transferIdGenerator = new IDGenerator();
 		this.outgoingRequests = Publisher.simple();
 	}
@@ -210,7 +221,7 @@ public class RPCProtocol implements Protocol {
 
 				outgoingRequests.publish(transfer);
 				return null;
-			case OBSERVABLE:
+			case ASYNC_RESPONSE:
 				long transferKey = transferIdGenerator.next();
 				headers = transfer.getHeaders()
 						.compose()
@@ -224,6 +235,27 @@ public class RPCProtocol implements Protocol {
 				responsePublishers.put(transferKey, responsePublisher);
 				outgoingRequests.publish(transfer);
 				return responsePublisher.asObservable();
+			case SUBSCRIPTION:
+				transferKey = transferIdGenerator.next();
+				headers = transfer.getHeaders()
+						.compose()
+						.header(Headers.TRANSFER_KEY, transferKey)
+						.header(Headers.NEED_RESPONSE, true)
+						.build();
+
+				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+
+				SimplePublisher<Object> remoteObservablePublisher = Publisher.simple();
+				remoteObservablePublishers.put(transferKey, remoteObservablePublisher);
+				outgoingRequests.publish(transfer);
+
+				Observable<Object> observable = remoteObservablePublisher.asObservable();
+				Headers headersForFutureUnsubscribe = Headers.builder()
+						.header(Headers.DESTINATION_CLIENT_ID, clientId)
+						.header(Headers.UNSUBSCRIBE, true)
+						.header(Headers.TRANSFER_KEY, transferKey)
+						.build();
+				return new ObservableProxy(observable, headersForFutureUnsubscribe);
 			default:
 				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getReturnType()));
 		}
@@ -311,8 +343,9 @@ public class RPCProtocol implements Protocol {
 			Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
 			if (needResponse != null && needResponse) {
 				HeadersBuilder builder = Headers.builder();
+				long transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY).longValue();
 				builder.header(Headers.PATH, path)
-						.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY))
+						.header(Headers.TRANSFER_KEY, transferKey)
 						.header(Headers.DESTINATION_CLIENT_ID, sourceClientId);
 
 				switch (endpointMethod.resultType()) {
@@ -322,9 +355,7 @@ public class RPCProtocol implements Protocol {
 						break;
 					case OBJECT:
 						builder.contentType(ContentType.JSON);
-						byte[] transferContent = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(result))
-								.getOrElseThrow((e) -> new RPCProtocolException(
-										String.format("Cannot serialize object: %s", result), e));
+						byte[] transferContent = serializeObject(result);
 						outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent));
 						break;
 					case BINARY:
@@ -337,6 +368,17 @@ public class RPCProtocol implements Protocol {
 						outgoingRequests.publish(new ChannelTransfer(
 								resultTransfer.getHeaders().compose().headers(builder.build()).build(),
 								resultTransfer.channel(), resultTransfer.getContentLength()));
+						break;
+					case SUBSCRIPTION:
+						Observable<?> observable = (Observable<?>) result;
+						Headers baseHeaders = builder.build();
+						Subscription subscription = observable.subscribe(value -> {
+							Headers headersToSend = baseHeaders.compose().contentType(ContentType.JSON).build();
+							byte[] content = serializeObject(value);
+							Transfer transferToSend = new StaticTransfer(headersToSend, content);
+							outgoingRequests.publish(transferToSend);
+						});
+						remoteObservableSubscriptions.put(transferKey, subscription);
 						break;
 					default:
 						throw new IllegalStateException();
@@ -371,15 +413,18 @@ public class RPCProtocol implements Protocol {
 	private void processSuccessResult(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
-		String path = headers.getNonNullString(Headers.PATH);
+		long transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY).longValue();
 
-		Number transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY);
-
-		MonoPublisher<Object> responsePublisher = responsePublishers.remove(transferKey.longValue());
-		if (responsePublisher == null) {
-			throw new RPCProtocolException(String.format("Invalid transfer key `%s`", transferKey));
+		if (headers.has(Headers.UNSUBSCRIBE)) {
+			Subscription subscription = remoteObservableSubscriptions.remove(transferKey);
+			if (subscription == null) {
+				throw new IllegalStateException(String.format("Invalid transfer ky `%s`", transferKey));
+			}
+			subscription.unsubscribe();
+			return;
 		}
 
+		String path = headers.getNonNullString(Headers.PATH);
 		OriginMethod originMethod = originsByPath.get(path);
 		if (originMethod == null) {
 			throw new PathNotFoundException("Origin with path '" + path + "' not found");
@@ -388,6 +433,11 @@ public class RPCProtocol implements Protocol {
 		JavaType returnJavaType = originMethod.getReturnJavaType();
 		if (returnJavaType.getRawClass() == None.class) {
 			Try.runOrRethrow(transfer::readAllInVain);
+
+			MonoPublisher<Object> responsePublisher = responsePublishers.remove(transferKey);
+			if (responsePublisher == null) {
+				throw new RPCProtocolException(String.format("Invalid transfer key `%s`", transferKey));
+			}
 			Threads.runAsync(() -> responsePublisher.publish(None.SELF));
 		}
 		else if (transfer.getContentLength() == 0) {
@@ -395,37 +445,45 @@ public class RPCProtocol implements Protocol {
 					String.format("Response content is empty, and it cannot be converted to type %s", returnJavaType));
 		}
 		else {
-			Object result;
-			ContentType contentType = headers.getContentType();
-			switch (contentType) {
-				case BINARY:
-					result = Try.supplyOrRethrow(transfer::readAll);
-					break;
-				case JSON:
-					try {
-						result = JSON_MAPPER.readValue(transfer.readAll(), returnJavaType);
-					}
-					catch (IOException e) {
-						throw new IncompatibleTypeException(
-								String.format("Expected type %s cannot deserialized from given bytes",
-										returnJavaType.getGenericSignature()), e);
-					}
-					break;
-				case TRANSFER:
-					result = transfer;
-					break;
-				default:
-					throw new UnsupportedContentTypeException(contentType);
+			if (originMethod.getReturnType() == ReturnType.SUBSCRIPTION) {
+				SimplePublisher<Object> remoteObservablePublisher = remoteObservablePublishers.get(transferKey);
+				if (remoteObservablePublisher == null) {
+					throw new RPCProtocolException(String.format("Invalid transfer key `%s`", transferKey));
+				}
+				Object value = deserializeObject(Try.supplyOrRethrow(transfer::readAll), returnJavaType);
+				Threads.runAsync(() -> remoteObservablePublisher.publish(value));
 			}
+			else {
 
-			Threads.runAsync(() -> {
-				try {
-					responsePublisher.publish(result);
+				Object result;
+				ContentType contentType = headers.getContentType();
+				switch (contentType) {
+					case BINARY:
+						result = Try.supplyOrRethrow(transfer::readAll);
+						break;
+					case JSON:
+						result = deserializeObject(Try.supplyOrRethrow(transfer::readAll), returnJavaType);
+						break;
+					case TRANSFER:
+						result = transfer;
+						break;
+					default:
+						throw new UnsupportedContentTypeException(contentType);
 				}
-				catch (ClassCastException e) {
-					throw IncompatibleTypeException.forMethodReturnType(originMethod.getRawMethod(), e);
-				}
-			});
+
+				Threads.runAsync(() -> {
+					try {
+						MonoPublisher<Object> responsePublisher = responsePublishers.remove(transferKey);
+						if (responsePublisher == null) {
+							throw new RPCProtocolException(String.format("Invalid transfer key `%s`", transferKey));
+						}
+						responsePublisher.publish(result);
+					}
+					catch (ClassCastException e) {
+						throw IncompatibleTypeException.forMethodReturnType(originMethod.getRawMethod(), e);
+					}
+				});
+			}
 		}
 	}
 
@@ -447,8 +505,8 @@ public class RPCProtocol implements Protocol {
 		outgoingRequests.publish(transfer);
 	}
 
-	private Object[] appendExtraArgs(Object[] simpleArgs, List<ExtraParam> extraParams,
-									 Map<Class<? extends Annotation>, Object> extraArgs) {
+	private static Object[] appendExtraArgs(Object[] simpleArgs, List<ExtraParam> extraParams,
+											Map<Class<? extends Annotation>, Object> extraArgs) {
 		Object[] allArgs = new Object[simpleArgs.length + extraParams.size()];
 
 		System.arraycopy(simpleArgs, 0, allArgs, 0, simpleArgs.length); // fill simple args
@@ -458,6 +516,25 @@ public class RPCProtocol implements Protocol {
 		}
 
 		return allArgs;
+	}
+
+	private static byte[] serializeObject(Object object) {
+		try {
+			return JSON_MAPPER.writeValueAsBytes(object);
+		}
+		catch (JsonProcessingException e) {
+			throw new RPCProtocolException(String.format("Cannot serialize object: %s", object), e);
+		}
+	}
+
+	private static Object deserializeObject(byte[] bytes, JavaType expectedType) {
+		try {
+			return JSON_MAPPER.readValue(bytes, expectedType);
+		}
+		catch (IOException e) {
+			throw new IncompatibleTypeException(String.format("Expected type %s cannot deserialized from given bytes",
+					expectedType.getGenericSignature()), e);
+		}
 	}
 
 	private final class OriginInvocationHandler implements InvocationHandler {
@@ -487,6 +564,48 @@ public class RPCProtocol implements Protocol {
 			}
 
 			return handleOriginCall(originMethod, simpleArgs, extraArgs);
+		}
+	}
+
+	private final class ObservableProxy implements Observable<Object> {
+
+		private final Observable<Object> observable;
+
+		private final Headers headersForUnsubscribe;
+
+		private ObservableProxy(Observable<Object> observable, Headers headersForUnsubscribe) {
+			this.observable = observable;
+			this.headersForUnsubscribe = headersForUnsubscribe;
+		}
+
+		@Override
+		public Subscription subscribe(Subscriber<? super Object> subscriber) {
+			return observable.subscribe(new Subscriber<>() {
+				@Override
+				public void onSubscribe(Subscription subscription) {
+					subscriber.onSubscribe(subscription);
+				}
+
+				@Override
+				public boolean onPublish(Object item) {
+					return subscriber.onPublish(item);
+				}
+
+				@Override
+				public boolean onError(Throwable throwable) {
+					return subscriber.onError(throwable);
+				}
+
+				@Override
+				public void onComplete() {
+					Transfer transfer = new StaticTransfer(headersForUnsubscribe, new byte[0]);
+					outgoingRequests.publish(transfer);
+
+					long transferKey = headersForUnsubscribe.getNonNullNumber(Headers.TRANSFER_KEY).longValue();
+					remoteObservablePublishers.remove(transferKey);
+					subscriber.onComplete();
+				}
+			});
 		}
 	}
 }

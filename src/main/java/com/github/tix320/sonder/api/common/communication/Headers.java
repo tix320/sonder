@@ -171,6 +171,7 @@ public final class Headers implements Serializable {
 	public static final String NEED_RESPONSE = "need-response";
 	public static final String IS_RPC_PROTOCOL_ERROR_RESPONSE = "is-rpc-protocol-error";
 	public static final String CONTENT_TYPE = "content-type";
+	public static final String UNSUBSCRIBE = "unsubscribe";
 
 	//	-------------------- Topic protocol headers
 	public static final String TOPIC = "topic";

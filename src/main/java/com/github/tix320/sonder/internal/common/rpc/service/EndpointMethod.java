@@ -64,6 +64,7 @@ public class EndpointMethod extends ServiceMethod {
 		VOID,
 		OBJECT,
 		BINARY,
-		TRANSFER
+		TRANSFER,
+		SUBSCRIPTION
 	}
 }

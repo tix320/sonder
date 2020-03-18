@@ -45,6 +45,7 @@ public class OriginMethod extends ServiceMethod {
 
 	public enum ReturnType {
 		VOID,
-		OBSERVABLE
+		ASYNC_RESPONSE,
+		SUBSCRIPTION
 	}
 }
