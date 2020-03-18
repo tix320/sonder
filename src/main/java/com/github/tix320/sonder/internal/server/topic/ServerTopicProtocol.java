@@ -16,6 +16,7 @@ import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
+import com.github.tix320.sonder.internal.common.util.Threads;
 
 /**
  * Topic protocol implementation, which stores topics for clients communicating without using server directly.
@@ -131,14 +132,16 @@ public class ServerTopicProtocol implements Protocol {
 
 		TypeReference<?> dataType = dataTypesByTopic.get(topic);
 		Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
-		try {
-			publisher.publish(contentObject);
-		}
-		catch (IllegalArgumentException e) {
-			throw new IllegalStateException(
-					String.format("Registered topic's (%s) data type (%s) is not compatible with received JSON %s",
-							topic, dataType.getType().getTypeName(), contentObject), e);
-		}
+		Threads.runAsync(() -> {
+			try {
+				publisher.publish(contentObject);
+			}
+			catch (IllegalArgumentException e) {
+				throw new IllegalStateException(
+						String.format("Registered topic's (%s) data type (%s) is not compatible with received JSON %s",
+								topic, dataType.getType().getTypeName(), contentObject), e);
+			}
+		});
 	}
 
 	private void publishToClients(String topic, Transfer transfer, Collection<Long> clients, long sourceClientId) {

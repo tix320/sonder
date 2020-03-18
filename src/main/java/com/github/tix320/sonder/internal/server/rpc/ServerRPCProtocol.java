@@ -22,6 +22,7 @@ import com.github.tix320.kiwi.api.proxy.AnnotationBasedProxyCreator;
 import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.kiwi.api.proxy.ProxyCreator;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.None;
@@ -40,6 +41,7 @@ import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
 import com.github.tix320.sonder.internal.common.rpc.service.Param;
 import com.github.tix320.sonder.internal.common.rpc.service.ServiceMethod;
+import com.github.tix320.sonder.internal.common.util.Threads;
 
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toUnmodifiableMap;
@@ -60,7 +62,7 @@ public final class ServerRPCProtocol implements Protocol {
 
 	private final Map<String, EndpointMethod> endpointsByPath;
 
-	private final Map<Long, Publisher<Object>> responsePublishers;
+	private final Map<Long, MonoPublisher<Object>> responsePublishers;
 
 	private final IDGenerator transferIdGenerator;
 
@@ -207,10 +209,10 @@ public final class ServerRPCProtocol implements Protocol {
 
 				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
-				Publisher<Object> responsePublisher = Publisher.buffered(1);
+				MonoPublisher<Object> responsePublisher = Publisher.mono();
 				responsePublishers.put(transferKey, responsePublisher);
 				outgoingRequests.publish(transfer);
-				return responsePublisher.asObservable().toMono();
+				return responsePublisher.asObservable();
 			default:
 				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getReturnType()));
 		}
@@ -282,42 +284,45 @@ public final class ServerRPCProtocol implements Protocol {
 				Map.of(ClientID.class, sourceClientId.longValue()));
 
 		Object serviceInstance = endpointServices.get(endpointMethod.getRawClass());
-		Object result = endpointMethod.invoke(serviceInstance, args);
 
-		Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
-		if (needResponse != null && needResponse) {
-			HeadersBuilder builder = Headers.builder();
-			builder.header(Headers.PATH, path)
-					.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY))
-					.header(Headers.DESTINATION_CLIENT_ID, sourceClientId);
+		Threads.runAsync(() -> {
+			Object result = endpointMethod.invoke(serviceInstance, args);
 
-			switch (endpointMethod.resultType()) {
-				case VOID:
-					builder.contentType(ContentType.BINARY);
-					outgoingRequests.publish(new StaticTransfer(builder.build(), new byte[0]));
-					break;
-				case OBJECT:
-					builder.contentType(ContentType.JSON);
-					byte[] transferContent = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(result))
-							.getOrElseThrow((e) -> new RPCProtocolException(
-									String.format("Cannot serialize object: %s", result), e));
-					outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent));
-					break;
-				case BINARY:
-					builder.contentType(ContentType.BINARY);
-					outgoingRequests.publish(new StaticTransfer(builder.build(), (byte[]) result));
-					break;
-				case TRANSFER:
-					builder.contentType(ContentType.TRANSFER);
-					Transfer resultTransfer = (Transfer) result;
-					outgoingRequests.publish(
-							new ChannelTransfer(resultTransfer.getHeaders().compose().headers(builder.build()).build(),
-									resultTransfer.channel(), resultTransfer.getContentLength()));
-					break;
-				default:
-					throw new IllegalStateException();
+			Boolean needResponse = headers.getBoolean(Headers.NEED_RESPONSE);
+			if (needResponse != null && needResponse) {
+				HeadersBuilder builder = Headers.builder();
+				builder.header(Headers.PATH, path)
+						.header(Headers.TRANSFER_KEY, headers.get(Headers.TRANSFER_KEY))
+						.header(Headers.DESTINATION_CLIENT_ID, sourceClientId);
+
+				switch (endpointMethod.resultType()) {
+					case VOID:
+						builder.contentType(ContentType.BINARY);
+						outgoingRequests.publish(new StaticTransfer(builder.build(), new byte[0]));
+						break;
+					case OBJECT:
+						builder.contentType(ContentType.JSON);
+						byte[] transferContent = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(result))
+								.getOrElseThrow((e) -> new RPCProtocolException(
+										String.format("Cannot serialize object: %s", result), e));
+						outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent));
+						break;
+					case BINARY:
+						builder.contentType(ContentType.BINARY);
+						outgoingRequests.publish(new StaticTransfer(builder.build(), (byte[]) result));
+						break;
+					case TRANSFER:
+						builder.contentType(ContentType.TRANSFER);
+						Transfer resultTransfer = (Transfer) result;
+						outgoingRequests.publish(new ChannelTransfer(
+								resultTransfer.getHeaders().compose().headers(builder.build()).build(),
+								resultTransfer.channel(), resultTransfer.getContentLength()));
+						break;
+					default:
+						throw new IllegalStateException();
+				}
 			}
-		}
+		});
 	}
 
 	private void processResult(Transfer transfer) {
@@ -332,14 +337,15 @@ public final class ServerRPCProtocol implements Protocol {
 
 	private void processErrorResult(Transfer transfer) {
 		Number transferKey = transfer.getHeaders().getNonNullNumber(Headers.TRANSFER_KEY);
-		responsePublishers.computeIfPresent(transferKey.longValue(), (key, publisher) -> {
-			byte[] content = Try.supplyOrRethrow(transfer::readAll);
+		MonoPublisher<Object> responsePublisher = responsePublishers.remove(transferKey.longValue());
+		if (responsePublisher == null) {
+			throw new RPCProtocolException(String.format("Invalid transfer key `%s`", transferKey));
+		}
+		byte[] content = Try.supplyOrRethrow(transfer::readAll);
 
-			RPCRemoteException rpcRemoteException = new RPCRemoteException(new String(content));
-			rpcRemoteException.printStackTrace();
-			publisher.publishError(rpcRemoteException);
-			return null;
-		});
+		RPCRemoteException rpcRemoteException = new RPCRemoteException(new String(content));
+		rpcRemoteException.printStackTrace();
+		Threads.runAsync(() -> responsePublisher.publishError(rpcRemoteException));
 	}
 
 	private void processSuccessResult(Transfer transfer) {
@@ -349,55 +355,58 @@ public final class ServerRPCProtocol implements Protocol {
 
 		Number transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY);
 
-		responsePublishers.computeIfPresent(transferKey.longValue(), (key, publisher) -> {
-			OriginMethod originMethod = originsByPath.get(path);
-			if (originMethod == null) {
-				throw new PathNotFoundException("Origin with path '" + path + "' not found");
+		MonoPublisher<Object> responsePublisher = responsePublishers.remove(transferKey.longValue());
+		if (responsePublisher == null) {
+			throw new RPCProtocolException(String.format("Invalid transfer key `%s`", transferKey));
+		}
+
+		OriginMethod originMethod = originsByPath.get(path);
+		if (originMethod == null) {
+			throw new PathNotFoundException("Origin with path '" + path + "' not found");
+		}
+
+		JavaType returnJavaType = originMethod.getReturnJavaType();
+		if (returnJavaType.getRawClass() == None.class) {
+			Try.runOrRethrow(transfer::readAllInVain);
+			Threads.runAsync(() -> responsePublisher.publish(None.SELF));
+		}
+		else if (transfer.getContentLength() == 0) {
+			throw new IllegalStateException(
+					String.format("Response content is empty, and it cannot be converted to type %s", returnJavaType));
+		}
+		else {
+			Object result;
+			ContentType contentType = headers.getContentType();
+			switch (contentType) {
+				case BINARY:
+					result = Try.supplyOrRethrow(transfer::readAll);
+					break;
+				case JSON:
+					try {
+						result = JSON_MAPPER.readValue(transfer.readAll(), returnJavaType);
+					}
+					catch (IOException e) {
+						throw new IncompatibleTypeException(
+								String.format("Expected type %s cannot deserialized from given bytes",
+										returnJavaType.getGenericSignature()), e);
+					}
+					break;
+				case TRANSFER:
+					result = transfer;
+					break;
+				default:
+					throw new UnsupportedContentTypeException(contentType);
 			}
 
-			JavaType returnJavaType = originMethod.getReturnJavaType();
-			if (returnJavaType.getRawClass() == None.class) {
-				Try.runOrRethrow(transfer::readAllInVain);
-				publisher.publish(None.SELF);
-			}
-			else if (transfer.getContentLength() == 0) {
-				throw new IllegalStateException(
-						String.format("Response content is empty, and it cannot be converted to type %s",
-								returnJavaType));
-			}
-			else {
-				Object result;
-				ContentType contentType = headers.getContentType();
-				switch (contentType) {
-					case BINARY:
-						result = Try.supplyOrRethrow(transfer::readAll);
-						break;
-					case JSON:
-						try {
-							result = JSON_MAPPER.readValue(transfer.readAll(), returnJavaType);
-						}
-						catch (IOException e) {
-							throw new IncompatibleTypeException(
-									String.format("Expected type %s cannot deserialized from given bytes",
-											returnJavaType.getGenericSignature()), e);
-						}
-						break;
-					case TRANSFER:
-						result = transfer;
-						break;
-					default:
-						throw new UnsupportedContentTypeException(contentType);
-				}
+			Threads.runAsync(() -> {
 				try {
-					publisher.publish(result);
+					responsePublisher.publish(result);
 				}
 				catch (ClassCastException e) {
 					throw IncompatibleTypeException.forMethodReturnType(originMethod.getRawMethod(), e);
 				}
-			}
-			publisher.complete();
-			return null;
-		});
+			});
+		}
 	}
 
 	private void sendErrorResponse(Headers headers, Exception e) {
