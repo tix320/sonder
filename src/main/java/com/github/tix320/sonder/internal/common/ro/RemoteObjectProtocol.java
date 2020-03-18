@@ -358,11 +358,6 @@ public class RemoteObjectProtocol implements Protocol {
 					String methodIdentifier = generateIdentifierForMethod(method);
 					MethodMetaData methodMetaData = methodsByOwnInterfaces.get(interfacee).get(methodIdentifier);
 
-					ObservableCandidate<Object> candidate = remotePropertiesAndStocks.get(methodIdentifier);
-					if (candidate != null) {
-						return candidate;
-					}
-
 					MethodReturnType methodReturnType = methodMetaData.getMethodReturnType();
 					if (methodReturnType == MethodReturnType.OBJECT) {
 						long transferId = transferIdGenerator.next();
@@ -378,6 +373,10 @@ public class RemoteObjectProtocol implements Protocol {
 						return publisher.asObservable().toMono().get();
 					}
 					else {
+						ObservableCandidate<Object> candidate = remotePropertiesAndStocks.get(methodIdentifier);
+						if (candidate != null) {
+							return candidate;
+						}
 						ObservableCandidate<Object> observableCandidate = resolvePropertyObject(methodMetaData);
 
 						Headers headers = Headers.builder()
@@ -425,17 +424,5 @@ public class RemoteObjectProtocol implements Protocol {
 
 	private void onStockChange(Object object) {
 		throw new UnsupportedOperationException(); // TODO
-	}
-
-	private static String subStringUntilNumber(String value) {
-		StringBuilder builder = new StringBuilder();
-		for (int i = 0; i < value.length(); i++) {
-			char c = value.charAt(i);
-			if (Character.isDigit(c)) {
-				break;
-			}
-			builder.append(c);
-		}
-		return builder.toString();
 	}
 }
