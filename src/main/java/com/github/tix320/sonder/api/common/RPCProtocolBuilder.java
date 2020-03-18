@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.common.rpc;
+package com.github.tix320.sonder.api.common;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -7,9 +7,16 @@ import java.util.List;
 import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Origin;
+import com.github.tix320.sonder.internal.common.ProtocolOrientation;
+import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
 import com.github.tix320.sonder.internal.common.util.ClassFinder;
 
-public abstract class BaseRPCProtocolBuilder<E extends BaseRPCProtocolBuilder<E, T>, T> {
+/**
+ * Builder for RPC protocol {@link RPCProtocol}.
+ */
+public class RPCProtocolBuilder {
+
+	private final ProtocolOrientation orientation;
 
 	private final List<String> packagesToScan;
 
@@ -17,7 +24,8 @@ public abstract class BaseRPCProtocolBuilder<E extends BaseRPCProtocolBuilder<E,
 
 	protected final List<AnnotationInterceptor<?, ?>> interceptors;
 
-	public BaseRPCProtocolBuilder() {
+	public RPCProtocolBuilder(ProtocolOrientation orientation) {
+		this.orientation = orientation;
 		packagesToScan = new ArrayList<>();
 		classes = new ArrayList<>();
 		interceptors = new ArrayList<>();
@@ -30,9 +38,9 @@ public abstract class BaseRPCProtocolBuilder<E extends BaseRPCProtocolBuilder<E,
 	 *
 	 * @return self
 	 */
-	public E scanPackages(String... packagesToScan) {
+	public RPCProtocolBuilder scanPackages(String... packagesToScan) {
 		this.packagesToScan.addAll(Arrays.asList(packagesToScan));
-		return getThis();
+		return this;
 	}
 
 
@@ -43,9 +51,9 @@ public abstract class BaseRPCProtocolBuilder<E extends BaseRPCProtocolBuilder<E,
 	 *
 	 * @return self
 	 */
-	public E scanClasses(Class<?>... classes) {
+	public RPCProtocolBuilder scanClasses(Class<?>... classes) {
 		this.classes.addAll(Arrays.asList(classes));
-		return getThis();
+		return this;
 	}
 
 	/**
@@ -55,9 +63,9 @@ public abstract class BaseRPCProtocolBuilder<E extends BaseRPCProtocolBuilder<E,
 	 *
 	 * @return self
 	 */
-	public E registerInterceptor(AnnotationInterceptor<?, ?>... interceptors) {
+	public RPCProtocolBuilder registerInterceptor(AnnotationInterceptor<?, ?>... interceptors) {
 		this.interceptors.addAll(Arrays.asList(interceptors));
-		return getThis();
+		return this;
 	}
 
 	protected List<Class<?>> resolveClasses() {
@@ -69,7 +77,8 @@ public abstract class BaseRPCProtocolBuilder<E extends BaseRPCProtocolBuilder<E,
 		return allClasses;
 	}
 
-	protected abstract T build();
-
-	protected abstract E getThis();
+	public RPCProtocol build() {
+		List<Class<?>> classes = resolveClasses();
+		return new RPCProtocol(orientation, classes, interceptors);
+	}
 }

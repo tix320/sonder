@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class ROPropertyTest {
 
 	private static final String HOST = "localhost";
-	private static final int PORT = 33333;
+	private static final int PORT = 33334;
 
 	public static SonderServer sonderServer;
 	public static SonderClient sonderClient;

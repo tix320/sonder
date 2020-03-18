@@ -9,7 +9,7 @@ import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 /**
  * @author tix32 on 24-Feb-19
  */
-public abstract class OriginMethod extends ServiceMethod {
+public class OriginMethod extends ServiceMethod {
 
 	private final ReturnType returnType;
 

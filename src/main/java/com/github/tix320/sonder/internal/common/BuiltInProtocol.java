@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.common.communication;
+package com.github.tix320.sonder.internal.common;
 
 import java.util.Arrays;
 import java.util.Set;

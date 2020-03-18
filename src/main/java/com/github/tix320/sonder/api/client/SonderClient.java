@@ -16,12 +16,12 @@ import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.client.ServerConnection;
-import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
-import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
+import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
 import com.github.tix320.sonder.internal.common.ro.RemoteObjectProtocol;
+import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
 
 /**
  * Entry point class for your socket client.
@@ -90,22 +90,22 @@ public final class SonderClient implements Closeable {
 	}
 
 	/**
-	 * Get service from protocol {@link ClientRPCProtocol}
+	 * Get service from protocol {@link RPCProtocol}
 	 *
 	 * @param clazz class of service
 	 * @param <T>   of class
 	 *
 	 * @return service
 	 *
-	 * @throws IllegalStateException if {@link ClientRPCProtocol} not registered
-	 * @see ClientRPCProtocol
+	 * @throws IllegalStateException if {@link RPCProtocol} not registered
+	 * @see RPCProtocol
 	 */
 	public <T> T getRPCService(Class<T> clazz) {
 		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("RPC protocol not registered");
 		}
-		return ((ClientRPCProtocol) protocol).getService(clazz);
+		return ((RPCProtocol) protocol).getService(clazz);
 	}
 
 	/**

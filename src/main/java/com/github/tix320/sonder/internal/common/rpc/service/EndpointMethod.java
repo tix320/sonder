@@ -15,7 +15,7 @@ import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 /**
  * @author tix32 on 24-Feb-19
  */
-public abstract class EndpointMethod extends ServiceMethod {
+public class EndpointMethod extends ServiceMethod {
 
 	private final MethodHandle methodHandle;
 
@@ -29,8 +29,7 @@ public abstract class EndpointMethod extends ServiceMethod {
 			this.methodHandle = MethodHandles.publicLookup().unreflect(method);
 		}
 		catch (IllegalAccessException e) {
-			throw new IllegalStateException(
-					String.format("Cannot access to %s, you must open your module.", method),
+			throw new IllegalStateException(String.format("Cannot access to %s, you must open your module.", method),
 					e);
 		}
 	}

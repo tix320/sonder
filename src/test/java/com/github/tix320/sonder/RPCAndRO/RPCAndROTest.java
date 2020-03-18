@@ -1,5 +1,6 @@
 package com.github.tix320.sonder.RPCAndRO;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -21,7 +22,7 @@ public class RPCAndROTest {
 
 	@Test
 	void test()
-			throws InterruptedException {
+			throws InterruptedException, IOException {
 		sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT))
 				.withRPCProtocol(builder -> builder.scanClasses(ServerEndpoint.class))
 				.withRemoteObjectProtocol(List.of(RemoteObjectInterface.class))
@@ -46,6 +47,9 @@ public class RPCAndROTest {
 		});
 		Thread.sleep(2000);
 		assertTrue(called.get());
+
+		sonderServer.close();
+		sonderClient.close();
 	}
 
 

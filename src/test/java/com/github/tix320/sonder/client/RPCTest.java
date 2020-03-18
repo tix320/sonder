@@ -6,10 +6,8 @@ import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.util.function.Consumer;
 
-import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.sonder.api.client.SonderClient;
-import com.github.tix320.sonder.api.client.RPCProtocolBuilder;
-import com.github.tix320.sonder.server.MyAnno;
+import com.github.tix320.sonder.api.common.RPCProtocolBuilder;
 import com.github.tix320.sonder.server.MyInterceptor;
 
 public class RPCTest {
@@ -17,8 +15,7 @@ public class RPCTest {
 	public static void main(String[] args)
 			throws IOException, InterruptedException {
 		Consumer<RPCProtocolBuilder> rpcProtocolBuilder = builder -> {
-			builder.scanPackages("com.github.tix320.sonder.client")
-					.registerInterceptor(new MyInterceptor());
+			builder.scanPackages("com.github.tix320.sonder.client").registerInterceptor(new MyInterceptor());
 		};
 
 		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888))

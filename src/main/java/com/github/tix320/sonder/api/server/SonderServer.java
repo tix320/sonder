@@ -15,13 +15,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
-import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
+import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
+import com.github.tix320.sonder.internal.common.ro.RemoteObjectProtocol;
+import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
 import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
-import com.github.tix320.sonder.internal.common.ro.RemoteObjectProtocol;
-import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
 import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
 
 /**
@@ -91,28 +91,28 @@ public final class SonderServer implements Closeable {
 	}
 
 	/**
-	 * Get service from protocol {@link ServerRPCProtocol}
+	 * Get service from protocol {@link RPCProtocol}
 	 *
 	 * @param clazz class of service
 	 * @param <T>   of class
 	 *
 	 * @return service
 	 *
-	 * @throws IllegalStateException if {@link ServerRPCProtocol} not registered
-	 * @see ServerRPCProtocol
+	 * @throws IllegalStateException if {@link RPCProtocol} not registered
+	 * @see RPCProtocol
 	 */
 	public <T> T getRPCService(Class<T> clazz) {
 		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("RPC protocol not registered");
 		}
-		return ((ServerRPCProtocol) protocol).getService(clazz);
+		return ((RPCProtocol) protocol).getService(clazz);
 	}
 
 	/**
 	 * Register remote object for protocol {@link RemoteObjectProtocol}
 	 *
-	 * @param object   to register
+	 * @param object     to register
 	 * @param identifier for object uniqueness
 	 *
 	 * @throws IllegalStateException if {@link RemoteObjectProtocol} not registered

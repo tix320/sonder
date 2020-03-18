@@ -7,24 +7,25 @@ import java.util.Map;
 
 import com.github.tix320.sonder.api.common.rpc.extra.ClientID;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
+import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginRPCServiceMethods;
 import com.github.tix320.sonder.internal.common.rpc.service.Param;
 
-public class ServerOriginRPCServiceMethods extends OriginRPCServiceMethods<ServerOriginMethod> {
+public class ServerOriginRPCServiceMethods extends OriginRPCServiceMethods<OriginMethod> {
 
 	public ServerOriginRPCServiceMethods(List<Class<?>> classes) {
 		super(classes);
 	}
 
 	@Override
-	protected ServerOriginMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
-													 List<ExtraParam> extraParams) {
-		return new ServerOriginMethod(path, method, simpleParams, extraParams, constructReturnType(method),
+	protected OriginMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
+											   List<ExtraParam> extraParams) {
+		return new OriginMethod(path, method, simpleParams, extraParams, constructReturnType(method),
 				constructReturnJavaType(method), requestDataType(simpleParams));
 	}
 
 	@Override
-	protected void peek(ServerOriginMethod method) {
+	protected void peek(OriginMethod method) {
 
 	}
 

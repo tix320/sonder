@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.client.rpc;
+package com.github.tix320.sonder.internal.common.rpc;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -26,27 +26,26 @@ import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.github.tix320.sonder.api.common.rpc.extra.ClientID;
-import com.github.tix320.sonder.internal.common.communication.BuiltInProtocol;
+import com.github.tix320.sonder.internal.client.rpc.ClientEndpointRPCServiceMethods;
+import com.github.tix320.sonder.internal.client.rpc.ClientOriginRPCServiceMethods;
+import com.github.tix320.sonder.internal.common.BuiltInProtocol;
+import com.github.tix320.sonder.internal.common.ProtocolOrientation;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
-import com.github.tix320.sonder.internal.common.rpc.IncompatibleTypeException;
-import com.github.tix320.sonder.internal.common.rpc.PathNotFoundException;
-import com.github.tix320.sonder.internal.common.rpc.RPCProtocolException;
-import com.github.tix320.sonder.internal.common.rpc.RPCRemoteException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
-import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod;
-import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
-import com.github.tix320.sonder.internal.common.rpc.service.Param;
-import com.github.tix320.sonder.internal.common.rpc.service.ServiceMethod;
+import com.github.tix320.sonder.internal.common.rpc.service.*;
 import com.github.tix320.sonder.internal.common.util.Threads;
+import com.github.tix320.sonder.internal.server.rpc.ServerEndpointRPCServiceMethods;
+import com.github.tix320.sonder.internal.server.rpc.ServerOriginRPCServiceMethods;
 
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toUnmodifiableMap;
 
-
-public final class ClientRPCProtocol implements Protocol {
+public class RPCProtocol implements Protocol {
 
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
+	private final ProtocolOrientation orientation;
 
 	private final Map<Class<?>, ?> originServices;
 
@@ -54,9 +53,9 @@ public final class ClientRPCProtocol implements Protocol {
 
 	private final List<AnnotationInterceptor<?, ?>> endpointInterceptors;
 
-	private final Map<Method, ClientOriginMethod> originsByMethod;
+	private final Map<Method, OriginMethod> originsByMethod;
 
-	private final Map<String, ClientOriginMethod> originsByPath;
+	private final Map<String, OriginMethod> originsByPath;
 
 	private final Map<String, EndpointMethod> endpointsByPath;
 
@@ -66,9 +65,17 @@ public final class ClientRPCProtocol implements Protocol {
 
 	private final Publisher<Transfer> outgoingRequests;
 
-	public ClientRPCProtocol(List<Class<?>> classes, List<AnnotationInterceptor<?, ?>> endpointInterceptors) {
-		ClientOriginRPCServiceMethods originServiceMethods = new ClientOriginRPCServiceMethods(classes);
-		ClientEndpointRPCServiceMethods endpointServiceMethods = new ClientEndpointRPCServiceMethods(classes);
+	public RPCProtocol(ProtocolOrientation orientation, List<Class<?>> classes,
+					   List<AnnotationInterceptor<?, ?>> endpointInterceptors) {
+		this.orientation = orientation;
+
+		OriginRPCServiceMethods<OriginMethod> originServiceMethods =
+				orientation == ProtocolOrientation.SERVER ? new ServerOriginRPCServiceMethods(classes) :
+						new ClientOriginRPCServiceMethods(classes);
+
+		EndpointRPCServiceMethods<EndpointMethod> endpointServiceMethods =
+				orientation == ProtocolOrientation.SERVER ? new ServerEndpointRPCServiceMethods(classes) :
+						new ClientEndpointRPCServiceMethods(classes);
 
 		this.endpointInterceptors = endpointInterceptors;
 
@@ -102,7 +109,7 @@ public final class ClientRPCProtocol implements Protocol {
 	}
 
 	@Override
-	public void handleIncomingTransfer(Transfer transfer) {
+	public final void handleIncomingTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
 		Boolean isInvoke = headers.getBoolean(Headers.IS_INVOKE);
@@ -158,9 +165,15 @@ public final class ClientRPCProtocol implements Protocol {
 		return proxyCreator.create();
 	}
 
-	private Object handleOriginCall(ClientOriginMethod method, List<Object> simpleArgs,
+	private Object handleOriginCall(OriginMethod method, List<Object> simpleArgs,
 									Map<Class<? extends Annotation>, ExtraArg> extraArgs) {
-		Long clientId = (Long) Optional.ofNullable(extraArgs.get(ClientID.class)).map(ExtraArg::getValue).orElse(null);
+		Long clientId;
+		if (orientation == ProtocolOrientation.SERVER) {
+			clientId = (long) extraArgs.get(ClientID.class).getValue();
+		}
+		else {
+			clientId = (Long) Optional.ofNullable(extraArgs.get(ClientID.class)).map(ExtraArg::getValue).orElse(null);
+		}
 
 		Headers.HeadersBuilder builder = Headers.builder()
 				.header(Headers.PATH, method.getPath())
@@ -172,7 +185,7 @@ public final class ClientRPCProtocol implements Protocol {
 			case ARGUMENTS:
 				builder.contentType(ContentType.JSON);
 				byte[] content = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs))
-						.getOrElseThrow(e -> new RPCProtocolException("Cannot convert arguments to json.", e));
+						.getOrElseThrow(e -> new RPCProtocolException("Cannot convert arguments to JSON", e));
 				transfer = new StaticTransfer(builder.build(), content);
 				break;
 			case BINARY:
@@ -215,6 +228,7 @@ public final class ClientRPCProtocol implements Protocol {
 				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getReturnType()));
 		}
 	}
+
 
 	private void processInvocation(Transfer transfer)
 			throws IOException {
@@ -278,11 +292,19 @@ public final class ClientRPCProtocol implements Protocol {
 				throw new UnsupportedContentTypeException(contentType);
 		}
 
-		Map<Class<? extends Annotation>, Object> extraArgs = new HashMap<>();
-		extraArgs.put(ClientID.class, sourceClientId);
+		Map<Class<? extends Annotation>, Object> extraArgs;
+		if (orientation == ProtocolOrientation.SERVER) {
+			extraArgs = Map.of(ClientID.class, sourceClientId.longValue());
+		}
+		else {
+			extraArgs = new HashMap<>();
+			extraArgs.put(ClientID.class, sourceClientId);
+		}
 
 		Object serviceInstance = endpointServices.get(endpointMethod.getRawClass());
+
 		Object[] args = appendExtraArgs(simpleArgs, endpointMethod.getExtraParams(), extraArgs);
+
 		Threads.runAsync(() -> {
 			Object result = endpointMethod.invoke(serviceInstance, args);
 
@@ -408,7 +430,7 @@ public final class ClientRPCProtocol implements Protocol {
 	}
 
 	private void sendErrorResponse(Headers headers, Exception e) {
-		Number clientId = headers.getNumber(Headers.SOURCE_CLIENT_ID);
+		Number clientId = headers.getNonNullNumber(Headers.SOURCE_CLIENT_ID);
 		Number transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY);
 
 		headers = Headers.builder()
@@ -446,7 +468,7 @@ public final class ClientRPCProtocol implements Protocol {
 				throw new UnsupportedOperationException("This method does not allowed on origin services");
 			}
 
-			ClientOriginMethod originMethod = originsByMethod.get(method);
+			OriginMethod originMethod = originsByMethod.get(method);
 			List<Param> simpleParams = originMethod.getSimpleParams();
 			List<ExtraParam> extraParams = originMethod.getExtraParams();
 

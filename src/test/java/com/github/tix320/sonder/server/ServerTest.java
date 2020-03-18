@@ -8,8 +8,8 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.github.tix320.sonder.api.common.RPCProtocolBuilder;
 import com.github.tix320.sonder.api.common.topic.Topic;
-import com.github.tix320.sonder.api.server.RPCProtocolBuilder;
 import com.github.tix320.sonder.api.server.SonderServer;
 
 /**

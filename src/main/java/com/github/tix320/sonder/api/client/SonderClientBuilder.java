@@ -11,10 +11,11 @@ import java.util.function.LongFunction;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.internal.client.SocketServerConnection;
-import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
+import com.github.tix320.sonder.internal.common.ProtocolOrientation;
 import com.github.tix320.sonder.internal.common.ro.RemoteObjectProtocol;
-import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
+import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.api.common.RPCProtocolBuilder;
 
 /**
  * Builder for socket client {@link SonderClient}.
@@ -43,16 +44,16 @@ public final class SonderClientBuilder {
 	}
 
 	/**
-	 * Register RPC protocol {@link ServerRPCProtocol} to server.
+	 * Register RPC protocol {@link RPCProtocol} to server.
 	 *
 	 * @param protocolBuilder function for configuring protocol {@link RPCProtocolBuilder}.
 	 *
 	 * @return self
 	 */
 	public SonderClientBuilder withRPCProtocol(Consumer<RPCProtocolBuilder> protocolBuilder) {
-		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder();
+		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder(ProtocolOrientation.CLIENT);
 		protocolBuilder.accept(rpcProtocolBuilder);
-		ClientRPCProtocol protocol = rpcProtocolBuilder.build();
+		RPCProtocol protocol = rpcProtocolBuilder.build();
 		protocols.put(protocol.getName(), protocol);
 		return this;
 	}
