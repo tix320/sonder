@@ -217,9 +217,9 @@ public class RPCProtocol implements Protocol {
 			case VOID:
 				Headers headers = transfer.getHeaders().compose().header(Headers.NEED_RESPONSE, false).build();
 
-				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+				Transfer transferToSend = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
-				outgoingRequests.publish(transfer);
+				Threads.runAsync(() -> outgoingRequests.publish(transferToSend));
 				return null;
 			case ASYNC_RESPONSE:
 				long transferKey = transferIdGenerator.next();
@@ -229,11 +229,11 @@ public class RPCProtocol implements Protocol {
 						.header(Headers.NEED_RESPONSE, true)
 						.build();
 
-				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+				transferToSend = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
 				MonoPublisher<Object> responsePublisher = Publisher.mono();
 				responsePublishers.put(transferKey, responsePublisher);
-				outgoingRequests.publish(transfer);
+				Threads.runAsync(() -> outgoingRequests.publish(transferToSend));
 				return responsePublisher.asObservable();
 			case SUBSCRIPTION:
 				transferKey = transferIdGenerator.next();
@@ -243,11 +243,11 @@ public class RPCProtocol implements Protocol {
 						.header(Headers.NEED_RESPONSE, true)
 						.build();
 
-				transfer = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
+				transferToSend = new ChannelTransfer(headers, transfer.channel(), transfer.getContentLength());
 
 				SimplePublisher<Object> remoteObservablePublisher = Publisher.simple();
 				remoteObservablePublishers.put(transferKey, remoteObservablePublisher);
-				outgoingRequests.publish(transfer);
+				Threads.runAsync(() -> outgoingRequests.publish(transferToSend));
 
 				Observable<Object> observable = remoteObservablePublisher.asObservable();
 				Headers headersForFutureUnsubscribe = Headers.builder()
@@ -351,23 +351,26 @@ public class RPCProtocol implements Protocol {
 				switch (endpointMethod.resultType()) {
 					case VOID:
 						builder.contentType(ContentType.BINARY);
-						outgoingRequests.publish(new StaticTransfer(builder.build(), new byte[0]));
+						Threads.runAsync(
+								() -> outgoingRequests.publish(new StaticTransfer(builder.build(), new byte[0])));
 						break;
 					case OBJECT:
 						builder.contentType(ContentType.JSON);
 						byte[] transferContent = serializeObject(result);
-						outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent));
+						Threads.runAsync(
+								() -> outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent)));
 						break;
 					case BINARY:
 						builder.contentType(ContentType.BINARY);
-						outgoingRequests.publish(new StaticTransfer(builder.build(), (byte[]) result));
+						Threads.runAsync(
+								() -> outgoingRequests.publish(new StaticTransfer(builder.build(), (byte[]) result)));
 						break;
 					case TRANSFER:
 						builder.contentType(ContentType.TRANSFER);
 						Transfer resultTransfer = (Transfer) result;
-						outgoingRequests.publish(new ChannelTransfer(
+						Threads.runAsync(() -> outgoingRequests.publish(new ChannelTransfer(
 								resultTransfer.getHeaders().compose().headers(builder.build()).build(),
-								resultTransfer.channel(), resultTransfer.getContentLength()));
+								resultTransfer.channel(), resultTransfer.getContentLength())));
 						break;
 					case SUBSCRIPTION:
 						Observable<?> observable = (Observable<?>) result;
@@ -376,7 +379,7 @@ public class RPCProtocol implements Protocol {
 							Headers headersToSend = baseHeaders.compose().contentType(ContentType.STREAM_JSON).build();
 							byte[] content = serializeObject(value);
 							Transfer transferToSend = new StaticTransfer(headersToSend, content);
-							outgoingRequests.publish(transferToSend);
+							Threads.runAsync(() -> outgoingRequests.publish(transferToSend));
 						});
 						remoteObservableSubscriptions.put(transferKey, subscription);
 						break;
@@ -407,7 +410,10 @@ public class RPCProtocol implements Protocol {
 
 		RPCRemoteException rpcRemoteException = new RPCRemoteException(new String(content));
 		rpcRemoteException.printStackTrace();
-		Threads.runAsync(() -> responsePublisher.publishError(rpcRemoteException));
+		Threads.runAsync(() -> {
+			responsePublisher.publishError(rpcRemoteException);
+			responsePublisher.complete();
+		});
 	}
 
 	private void processSuccessResult(Transfer transfer) {
@@ -511,7 +517,7 @@ public class RPCProtocol implements Protocol {
 		byte[] content = byteStream.toByteArray();
 
 		Transfer transfer = new StaticTransfer(headers, content);
-		outgoingRequests.publish(transfer);
+		Threads.runAsync(() -> outgoingRequests.publish(transfer));
 	}
 
 	private static Object[] appendExtraArgs(Object[] simpleArgs, List<ExtraParam> extraParams,
@@ -607,12 +613,12 @@ public class RPCProtocol implements Protocol {
 
 				@Override
 				public void onComplete() {
-					Transfer transfer = new StaticTransfer(headersForUnsubscribe, new byte[0]);
-					outgoingRequests.publish(transfer);
-
 					long transferKey = headersForUnsubscribe.getNonNullNumber(Headers.TRANSFER_KEY).longValue();
+					Transfer transfer = new StaticTransfer(headersForUnsubscribe, new byte[0]);
 					remoteObservablePublishers.remove(transferKey);
 					subscriber.onComplete();
+
+					Threads.runAsync(() -> outgoingRequests.publish(transfer));
 				}
 			});
 		}
