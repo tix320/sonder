@@ -210,12 +210,18 @@ public final class SocketClientsSelector implements ClientsSelector {
 	}
 
 	private void runAsync(CheckedRunnable checkedRunnable) {
-		CompletableFuture.runAsync(() -> Try.runOrRethrow(checkedRunnable), workers)
-				.whenComplete((aVoid, throwable) -> {
-					if (throwable != null) {
-						throwable.getCause().getCause().printStackTrace();
-					}
-				});
+		CompletableFuture.runAsync(() -> {
+			try {
+				checkedRunnable.run();
+			}
+			catch (Exception e) {
+				throw new SocketConnectionException("An error occurred while socket reading/writing", e);
+			}
+		}, workers).exceptionally(throwable -> {
+			Throwable realException = throwable.getCause();
+			realException.printStackTrace();
+			return null;
+		});
 	}
 
 	private static class Client {
