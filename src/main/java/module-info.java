@@ -11,4 +11,6 @@ module sonder {
 	exports com.github.tix320.sonder.api.common.rpc;
 	exports com.github.tix320.sonder.api.common.rpc.extra;
 	exports com.github.tix320.sonder.api.common.topic;
+	exports com.github.tix320.sonder.api.server.event;
+	exports com.github.tix320.sonder.api.client.event;
 }

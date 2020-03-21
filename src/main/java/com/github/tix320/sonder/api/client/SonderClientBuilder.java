@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
+import com.github.tix320.sonder.api.client.event.SonderClientEvent;
 import com.github.tix320.sonder.api.common.RPCProtocolBuilder;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
@@ -14,6 +15,8 @@ import com.github.tix320.sonder.internal.client.SocketServerConnection;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.ProtocolOrientation;
 import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.internal.event.SimpleEventDispatcher;
+import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 /**
  * Builder for socket client {@link SonderClient}.
@@ -103,8 +106,9 @@ public final class SonderClientBuilder {
 	 * @return client instance.
 	 */
 	public SonderClient build() {
+		SonderEventDispatcher<SonderClientEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
 		return new SonderClient(
-				new SocketServerConnection(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory),
-				protocols);
+				new SocketServerConnection(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory,
+						sonderEventDispatcher), protocols, sonderEventDispatcher);
 	}
 }

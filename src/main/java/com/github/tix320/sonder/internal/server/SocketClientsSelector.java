@@ -24,10 +24,14 @@ import com.github.tix320.kiwi.api.function.CheckedRunnable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
+import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
+import com.github.tix320.sonder.api.server.event.NewClientConnectionEvent;
 import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
+import com.github.tix320.sonder.internal.common.util.Threads;
+import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 public final class SocketClientsSelector implements ClientsSelector {
 
@@ -47,8 +51,11 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
+	private final SonderEventDispatcher eventDispatcher;
+
 	public SocketClientsSelector(InetSocketAddress address, Duration headersTimeoutDuration,
-								 LongFunction<Duration> contentTimeoutDurationFactory, ExecutorService workers) {
+								 LongFunction<Duration> contentTimeoutDurationFactory, ExecutorService workers,
+								 SonderEventDispatcher eventDispatcher) {
 		this.selector = Try.supplyOrRethrow(Selector::open);
 		this.incomingRequests = Publisher.simple();
 		this.clientsById = new ConcurrentHashMap<>();
@@ -56,6 +63,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		this.headersTimeoutDuration = headersTimeoutDuration;
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 		this.workers = workers;
+		this.eventDispatcher = eventDispatcher;
 
 		try {
 			serverChannel = ServerSocketChannel.open();
@@ -168,6 +176,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 		clientsById.put(clientId, client);
 		packChannel.packs().map(pack -> new ClientPack(clientId, pack)).subscribe(incomingRequests::publish);
+
+		Threads.runAsync(() -> eventDispatcher.fire(new NewClientConnectionEvent(clientId)));
 	}
 
 	private void read(Client client)
@@ -202,10 +212,15 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private void closeClientConnection(Client client)
 			throws IOException {
-		clientsById.remove(client.id);
-		PackChannel packChannel = client.channel;
-		if (packChannel.isOpen()) {
-			packChannel.close();
+		try {
+			clientsById.remove(client.id);
+			PackChannel packChannel = client.channel;
+			if (packChannel.isOpen()) {
+				packChannel.close();
+			}
+		}
+		finally {
+			Threads.runAsync(() -> eventDispatcher.fire(new ClientConnectionClosedEvent(client.id)));
 		}
 	}
 

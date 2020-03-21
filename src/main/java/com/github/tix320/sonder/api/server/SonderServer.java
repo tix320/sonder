@@ -13,12 +13,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
+import com.github.tix320.sonder.api.server.event.SonderServerEvent;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
 import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
 import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
 import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
@@ -47,6 +50,8 @@ public final class SonderServer implements Closeable {
 
 	private final ClientsSelector clientsSelector;
 
+	private final SonderEventDispatcher eventDispatcher;
+
 	/**
 	 * Prepare server creating for this socket address.
 	 *
@@ -58,9 +63,11 @@ public final class SonderServer implements Closeable {
 		return new SonderServerBuilder(inetSocketAddress);
 	}
 
-	SonderServer(ClientsSelector clientsSelector, Map<String, Protocol> protocols) {
+	SonderServer(ClientsSelector clientsSelector, Map<String, Protocol> protocols,
+				 SonderEventDispatcher eventDispatcher) {
 		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
+		this.eventDispatcher = eventDispatcher;
 
 		clientsSelector.incomingRequests().map(this::clientPackToTransfer).subscribe(this::processTransfer);
 		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
@@ -140,6 +147,10 @@ public final class SonderServer implements Closeable {
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
 		return registerTopic(topic, dataType, 0);
+	}
+
+	public <T extends SonderServerEvent> Observable<T> onEvent(Class<T> eventClass) {
+		return eventDispatcher.on(eventClass);
 	}
 
 	@Override
