@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.RPCAndRO;
+package com.github.tix320.sonder.RPC;
 
 import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;

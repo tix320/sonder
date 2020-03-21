@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.RPCAndRO;
+package com.github.tix320.sonder.RPC;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;

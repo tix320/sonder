@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.RPCAndRO;
+package com.github.tix320.sonder.RPC;
 
 
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
@@ -13,10 +13,7 @@ public class ServerEndpoint {
 
 	@Endpoint("")
 	public String getObject() {
-		RemoteObjectImpl remoteObject = new RemoteObjectImpl();
-		String objectId = "lmfao";
-		RPCAndROTest.sonderServer.registerObject(remoteObject, objectId);
-		return objectId;
+		return "lmfao";
 	}
 
 	@Endpoint("lol")

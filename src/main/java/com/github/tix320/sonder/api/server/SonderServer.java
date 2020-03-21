@@ -18,7 +18,6 @@ import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
-import com.github.tix320.sonder.internal.common.ro.RemoteObjectProtocol;
 import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
 import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
@@ -107,43 +106,6 @@ public final class SonderServer implements Closeable {
 			throw new IllegalStateException("RPC protocol not registered");
 		}
 		return ((RPCProtocol) protocol).getService(clazz);
-	}
-
-	/**
-	 * Register remote object for protocol {@link RemoteObjectProtocol}
-	 *
-	 * @param object     to register
-	 * @param identifier for object uniqueness
-	 *
-	 * @throws IllegalStateException if {@link RemoteObjectProtocol} not registered
-	 * @see RemoteObjectProtocol
-	 */
-	public void registerObject(Object object, String identifier) {
-		Protocol protocol = protocols.get(BuiltInProtocol.RO.getName());
-		if (protocol == null) {
-			throw new IllegalStateException("RO protocol not registered");
-		}
-		((RemoteObjectProtocol) protocol).registerObject(object, identifier);
-	}
-
-	/**
-	 * Get remote object from protocol {@link RemoteObjectProtocol}
-	 *
-	 * @param interfacee     for remote object
-	 * @param remoteObjectId for resolving remote object
-	 * @param <T>            type   of interface
-	 *
-	 * @return proxy object
-	 *
-	 * @throws IllegalStateException if {@link RemoteObjectProtocol} not registered
-	 * @see RemoteObjectProtocol
-	 */
-	public <T> T getRemoteObject(Class<T> interfacee, String remoteObjectId) {
-		Protocol protocol = protocols.get(BuiltInProtocol.RO.getName());
-		if (protocol == null) {
-			throw new IllegalStateException("RO protocol not registered");
-		}
-		return ((RemoteObjectProtocol) protocol).getRemoteObject(interfacee, remoteObjectId);
 	}
 
 	/**

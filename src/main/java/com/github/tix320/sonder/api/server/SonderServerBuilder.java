@@ -3,7 +3,6 @@ package com.github.tix320.sonder.api.server;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -14,7 +13,6 @@ import com.github.tix320.sonder.api.common.RPCProtocolBuilder;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.internal.common.ProtocolOrientation;
-import com.github.tix320.sonder.internal.common.ro.RemoteObjectProtocol;
 import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
 import com.github.tix320.sonder.internal.server.SocketClientsSelector;
 import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
@@ -68,17 +66,6 @@ public final class SonderServerBuilder {
 	 */
 	public SonderServerBuilder withTopicProtocol() {
 		ServerTopicProtocol protocol = new ServerTopicProtocol();
-		protocols.put(protocol.getName(), protocol);
-		return this;
-	}
-
-	/**
-	 * Register topic protocol {@link RemoteObjectProtocol} to client.
-	 *
-	 * @return self
-	 */
-	public SonderServerBuilder withRemoteObjectProtocol(List<Class<?>> interfaces) {
-		RemoteObjectProtocol protocol = new RemoteObjectProtocol(interfaces);
 		protocols.put(protocol.getName(), protocol);
 		return this;
 	}
