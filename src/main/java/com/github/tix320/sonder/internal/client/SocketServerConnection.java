@@ -10,6 +10,7 @@ import java.util.function.LongFunction;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
 import com.github.tix320.sonder.api.client.event.ConnectionEstablishedEvent;
+import com.github.tix320.sonder.api.client.event.SonderClientEvent;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
@@ -20,11 +21,11 @@ public class SocketServerConnection implements ServerConnection {
 
 	private final PackChannel channel;
 
-	private final SonderEventDispatcher eventDispatcher;
+	private final SonderEventDispatcher<SonderClientEvent> eventDispatcher;
 
 	public SocketServerConnection(InetSocketAddress address, Duration headersTimeoutDuration,
 								  LongFunction<Duration> contentTimeoutDurationFactory,
-								  SonderEventDispatcher eventDispatcher) {
+								  SonderEventDispatcher<SonderClientEvent> eventDispatcher) {
 		this.eventDispatcher = eventDispatcher;
 		try {
 			this.channel = new PackChannel(SocketChannel.open(address), headersTimeoutDuration,

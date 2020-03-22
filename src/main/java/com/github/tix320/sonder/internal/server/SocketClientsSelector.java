@@ -26,6 +26,7 @@ import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
 import com.github.tix320.sonder.api.server.event.NewClientConnectionEvent;
+import com.github.tix320.sonder.api.server.event.SonderServerEvent;
 import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
@@ -51,11 +52,11 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private final SonderEventDispatcher eventDispatcher;
+	private final SonderEventDispatcher<SonderServerEvent> eventDispatcher;
 
 	public SocketClientsSelector(InetSocketAddress address, Duration headersTimeoutDuration,
 								 LongFunction<Duration> contentTimeoutDurationFactory, ExecutorService workers,
-								 SonderEventDispatcher eventDispatcher) {
+								 SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
 		this.selector = Try.supplyOrRethrow(Selector::open);
 		this.incomingRequests = Publisher.simple();
 		this.clientsById = new ConcurrentHashMap<>();
