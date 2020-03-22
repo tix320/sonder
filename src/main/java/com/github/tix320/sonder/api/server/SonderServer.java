@@ -1,9 +1,7 @@
 package com.github.tix320.sonder.api.server;
 
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.nio.channels.ReadableByteChannel;
 import java.util.Map;
@@ -12,15 +10,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.sonder.api.common.communication.*;
+import com.github.tix320.sonder.api.common.communication.ChannelTransfer;
+import com.github.tix320.sonder.api.common.communication.Headers;
+import com.github.tix320.sonder.api.common.communication.Protocol;
+import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.api.server.event.SonderServerEvent;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
-import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
 import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
@@ -50,7 +49,7 @@ public final class SonderServer implements Closeable {
 
 	private final ClientsSelector clientsSelector;
 
-	private final SonderEventDispatcher eventDispatcher;
+	private final SonderEventDispatcher<SonderServerEvent> eventDispatcher;
 
 	/**
 	 * Prepare server creating for this socket address.
@@ -64,7 +63,7 @@ public final class SonderServer implements Closeable {
 	}
 
 	SonderServer(ClientsSelector clientsSelector, Map<String, Protocol> protocols,
-				 SonderEventDispatcher eventDispatcher) {
+				 SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
 		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 		this.eventDispatcher = eventDispatcher;
@@ -172,7 +171,7 @@ public final class SonderServer implements Closeable {
 	}
 
 	private ClientPack transferToClientPack(Transfer transfer) {
-		Number destinationClientId = transfer.getHeaders().getNonNullNumber(Headers.DESTINATION_CLIENT_ID);
+		Number destinationClientId = transfer.getHeaders().getNonNullNumber(Headers.DESTINATION_ID);
 
 		byte[] headers;
 		try {
@@ -196,7 +195,7 @@ public final class SonderServer implements Closeable {
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
-		headers = headers.compose().header(Headers.SOURCE_CLIENT_ID, clientPack.getClientId()).build();
+		headers = headers.compose().header(Headers.SOURCE_ID, clientPack.getClientId()).build();
 		ReadableByteChannel channel = dataPack.channel();
 
 		return new ChannelTransfer(headers, channel, dataPack.getContentLength());
@@ -205,61 +204,23 @@ public final class SonderServer implements Closeable {
 	private void processTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
-		Number destinationClientId = headers.getNumber(Headers.DESTINATION_CLIENT_ID);
+		Number destinationClientId = headers.getNumber(Headers.DESTINATION_ID);
 		if (destinationClientId != null) { // for any client, so we are redirecting without any processing
 			clientsSelector.send(transferToClientPack(transfer));
 		}
 		else {
-			Boolean isProtocolErrorResponse = headers.getBoolean(Headers.IS_PROTOCOL_ERROR_RESPONSE);
-			if (isProtocolErrorResponse != null && isProtocolErrorResponse) {
-				processErrorTransfer(transfer);
+			String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
+
+			Protocol protocol = protocols.get(protocolName);
+			if (protocol == null) {
+				throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
 			}
-			else {
-				wrapWithErrorResponse(headers, () -> processSuccessTransfer(transfer));
+			try {
+				protocol.handleIncomingTransfer(transfer);
 			}
-		}
-	}
-
-	private void processSuccessTransfer(Transfer transfer) {
-		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
-
-		Protocol protocol = protocols.get(protocolName);
-		if (protocol == null) {
-			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
-		}
-		try {
-			protocol.handleIncomingTransfer(transfer);
-		}
-		catch (IOException e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	private void processErrorTransfer(Transfer transfer) {
-		byte[] content = Try.supplyOrRethrow(transfer::readAll);
-		throw new SonderRemoteException(new String(content));
-	}
-
-	private void wrapWithErrorResponse(Headers requestHeaders, Runnable runnable) {
-		long clientId = requestHeaders.getNonNullNumber(Headers.SOURCE_CLIENT_ID).longValue();
-		try {
-			runnable.run();
-		}
-		catch (Exception e) {
-			e.printStackTrace();
-
-			Headers headers = Headers.builder()
-					.header(Headers.IS_PROTOCOL_ERROR_RESPONSE, true)
-					.header(Headers.DESTINATION_CLIENT_ID, clientId)
-					.build();
-
-			ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-			e.printStackTrace(new PrintStream(byteStream));
-			byte[] content = byteStream.toByteArray();
-
-			Transfer transfer = new StaticTransfer(headers, content);
-			ClientPack clientPack = transferToClientPack(transfer);
-			clientsSelector.send(clientPack);
+			catch (IOException e) {
+				throw new RuntimeException(e);
+			}
 		}
 	}
 }

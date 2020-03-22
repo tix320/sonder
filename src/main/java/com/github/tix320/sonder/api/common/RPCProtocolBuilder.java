@@ -8,7 +8,7 @@ import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Origin;
 import com.github.tix320.sonder.internal.common.ProtocolOrientation;
-import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.common.util.ClassFinder;
 
 /**

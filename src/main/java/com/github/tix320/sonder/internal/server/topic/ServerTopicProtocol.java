@@ -16,6 +16,8 @@ import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
+import com.github.tix320.sonder.internal.common.BuiltInProtocol;
+import com.github.tix320.sonder.internal.common.topic.TopicAction;
 import com.github.tix320.sonder.internal.common.util.Threads;
 
 /**
@@ -60,23 +62,23 @@ public class ServerTopicProtocol implements Protocol {
 
 		String topic = headers.getNonNullString(Headers.TOPIC);
 
-		String action = headers.getNonNullString(Headers.TOPIC_ACTION);
+		TopicAction action = TopicAction.valueOf(headers.getNonNullString(Headers.TOPIC_ACTION));
 
-		Number sourceClientId = headers.getNonNullNumber(Headers.SOURCE_CLIENT_ID);
+		Number sourceClientId = headers.getNonNullNumber(Headers.SOURCE_ID);
 
 		Queue<Long> clients = topics.computeIfAbsent(topic, key -> new ConcurrentLinkedQueue<>());
 
 		switch (action) {
-			case "publish":
+			case PUBLISH:
 				Transfer staticTransfer = new StaticTransfer(headers, transfer.readAll());
 				handleForServer(staticTransfer);
 				publishToClients(topic, staticTransfer, clients, sourceClientId.longValue());
 				break;
-			case "subscribe":
+			case SUBSCRIBE:
 				transfer.readAllInVain();
 				clients.add(sourceClientId.longValue());
 				break;
-			case "unsubscribe":
+			case UNSUBSCRIBE:
 				transfer.readAllInVain();
 				clients.remove(sourceClientId.longValue());
 				break;
@@ -92,7 +94,7 @@ public class ServerTopicProtocol implements Protocol {
 
 	@Override
 	public String getName() {
-		return "sonder-topic";
+		return BuiltInProtocol.TOPIC.getName();
 	}
 
 	@Override
@@ -111,7 +113,7 @@ public class ServerTopicProtocol implements Protocol {
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
 		if (topicPublishers.containsKey(topic)) {
-			throw new IllegalArgumentException(String.format("Publisher for topic %s already registered", topic));
+			throw new IllegalArgumentException(String.format("Topic %s already registered", topic));
 		}
 		topicPublishers.put(topic, bufferSize > 0 ? Publisher.buffered(bufferSize) : Publisher.simple());
 		dataTypesByTopic.put(topic, dataType);
@@ -148,19 +150,20 @@ public class ServerTopicProtocol implements Protocol {
 		for (Long clientId : clients) {
 			if (clientId != sourceClientId) {
 				Headers newHeaders = Headers.builder()
-						.header(Headers.SOURCE_CLIENT_ID, sourceClientId)
-						.header(Headers.DESTINATION_CLIENT_ID, clientId)
+						.header(Headers.SOURCE_ID, sourceClientId)
+						.header(Headers.DESTINATION_ID, clientId)
 						.header(Headers.TOPIC, topic)
-						.header(Headers.IS_INVOKE, true)
+						.header(Headers.TOPIC_ACTION, TopicAction.RECEIVE_ITEM)
 						.build();
 				outgoingRequests.publish(
 						new ChannelTransfer(newHeaders, transfer.channel(), transfer.getContentLength()));
 			}
 		}
 		Headers newHeaders = Headers.builder()
-				.header(Headers.DESTINATION_CLIENT_ID, sourceClientId)
+				.header(Headers.DESTINATION_ID, sourceClientId)
 				.header(Headers.TOPIC, topic)
-				.header(Headers.TRANSFER_KEY, transfer.getHeaders().get(Headers.TRANSFER_KEY))
+				.header(Headers.TOPIC_ACTION, TopicAction.PUBLISH_RESPONSE)
+				.header(Headers.RESPONSE_KEY, transfer.getHeaders().get(Headers.RESPONSE_KEY))
 				.build();
 		outgoingRequests.publish(new StaticTransfer(newHeaders, new byte[0]));
 	}
@@ -178,9 +181,9 @@ public class ServerTopicProtocol implements Protocol {
 			Queue<Long> clients = topics.computeIfAbsent(topic, key -> new ConcurrentLinkedQueue<>());
 			for (Long clientId : clients) {
 				Headers newHeaders = Headers.builder()
-						.header(Headers.DESTINATION_CLIENT_ID, clientId)
+						.header(Headers.DESTINATION_ID, clientId)
 						.header(Headers.TOPIC, topic)
-						.header(Headers.IS_INVOKE, true)
+						.header(Headers.TOPIC_ACTION, TopicAction.RECEIVE_ITEM)
 						.build();
 				outgoingRequests.publish(
 						new StaticTransfer(newHeaders, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));

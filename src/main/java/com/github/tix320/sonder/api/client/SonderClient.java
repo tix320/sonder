@@ -1,9 +1,7 @@
 package com.github.tix320.sonder.api.client;
 
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.nio.channels.ReadableByteChannel;
 import java.util.Map;
@@ -12,17 +10,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.sonder.api.common.communication.*;
+import com.github.tix320.sonder.api.client.event.SonderClientEvent;
+import com.github.tix320.sonder.api.common.communication.ChannelTransfer;
+import com.github.tix320.sonder.api.common.communication.Headers;
+import com.github.tix320.sonder.api.common.communication.Protocol;
+import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.topic.Topic;
-import com.github.tix320.sonder.api.server.event.SonderServerEvent;
 import com.github.tix320.sonder.internal.client.ServerConnection;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.communication.SonderRemoteException;
-import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 /**
@@ -49,7 +48,7 @@ public final class SonderClient implements Closeable {
 
 	private final ServerConnection connection;
 
-	private final SonderEventDispatcher eventDispatcher;
+	private final SonderEventDispatcher<SonderClientEvent> eventDispatcher;
 
 	/**
 	 * Prepare client creating for this socket address.
@@ -62,7 +61,8 @@ public final class SonderClient implements Closeable {
 		return new SonderClientBuilder(inetSocketAddress);
 	}
 
-	SonderClient(ServerConnection connection, Map<String, Protocol> protocols, SonderEventDispatcher eventDispatcher) {
+	SonderClient(ServerConnection connection, Map<String, Protocol> protocols,
+				 SonderEventDispatcher<SonderClientEvent> eventDispatcher) {
 		this.connection = connection;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 		this.eventDispatcher = eventDispatcher;
@@ -147,7 +147,7 @@ public final class SonderClient implements Closeable {
 		return registerTopic(topic, dataType, 0);
 	}
 
-	public <T extends SonderServerEvent> Observable<T> onEvent(Class<T> eventClass) {
+	public <T extends SonderClientEvent> Observable<T> onEvent(Class<T> eventClass) {
 		return eventDispatcher.on(eventClass);
 	}
 
@@ -196,16 +196,6 @@ public final class SonderClient implements Closeable {
 	}
 
 	private void processTransfer(Transfer transfer) {
-		Boolean isProtocolErrorResponse = transfer.getHeaders().getBoolean(Headers.IS_PROTOCOL_ERROR_RESPONSE);
-		if (isProtocolErrorResponse != null && isProtocolErrorResponse) {
-			processErrorTransfer(transfer);
-		}
-		else {
-			wrapWithErrorResponse(transfer.getHeaders(), () -> processSuccessTransfer(transfer));
-		}
-	}
-
-	private void processSuccessTransfer(Transfer transfer) {
 		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
 		Protocol protocol = protocols.get(protocolName);
 		if (protocol == null) {
@@ -216,34 +206,6 @@ public final class SonderClient implements Closeable {
 		}
 		catch (IOException e) {
 			throw new RuntimeException(e);
-		}
-	}
-
-	private void processErrorTransfer(Transfer transfer) {
-		byte[] content = Try.supplyOrRethrow(transfer::readAll);
-		throw new SonderRemoteException(new String(content));
-	}
-
-	private void wrapWithErrorResponse(Headers requestHeaders, Runnable runnable) {
-		Number clientId = requestHeaders.getNumber(Headers.SOURCE_CLIENT_ID);
-
-		try {
-			runnable.run();
-		}
-		catch (Exception e) {
-			e.printStackTrace();
-			Headers headers = Headers.builder()
-					.header(Headers.IS_PROTOCOL_ERROR_RESPONSE, true)
-					.header(Headers.DESTINATION_CLIENT_ID, clientId)
-					.build();
-
-			ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-			e.printStackTrace(new PrintStream(byteStream));
-			byte[] content = byteStream.toByteArray();
-
-			Transfer transfer = new StaticTransfer(headers, content);
-			Pack pack = transferToDataPack(transfer);
-			connection.send(pack);
 		}
 	}
 }

@@ -7,5 +7,4 @@ public enum ContentType {
 	BINARY,
 	JSON,
 	TRANSFER,
-	STREAM_JSON
 }

@@ -13,7 +13,7 @@ import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Origin;
-import com.github.tix320.sonder.api.common.rpc.Subscribe;
+import com.github.tix320.sonder.api.common.rpc.Subscription;
 import com.github.tix320.sonder.internal.common.rpc.StartupException;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.RequestDataType;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
@@ -49,12 +49,12 @@ public abstract class OriginRPCServiceMethods<T extends OriginMethod> extends RP
 		StartupException.checkAndThrow(method,
 				m -> String.format("Failed to resolve origin method '%s'(%s), there are the following errors. ",
 						m.getName(), m.getDeclaringClass()), StartupException.throwWhen(
-						m -> m.isAnnotationPresent(Subscribe.class)
+						m -> m.isAnnotationPresent(Subscription.class)
 							 && m.getReturnType() != Observable.class
 							 && (m.getReturnType() != void.class && m.getReturnType() != MonoObservable.class),
 						String.format(
 								"Return type must be `%s` when `@%s` annotation is present, otherwise must be be `void` or `%s`",
-								Observable.class.getSimpleName(), Subscribe.class.getSimpleName(),
+								Observable.class.getSimpleName(), Subscription.class.getSimpleName(),
 								MonoObservable.class.getSimpleName())),
 				StartupException.throwWhen(not(m -> Modifier.isPublic(m.getModifiers())), "Must be public"));
 	}
@@ -73,7 +73,7 @@ public abstract class OriginRPCServiceMethods<T extends OriginMethod> extends RP
 		else if (returnType == MonoObservable.class) {
 			return ReturnType.ASYNC_RESPONSE;
 		}
-		else if (method.isAnnotationPresent(Subscribe.class)) {
+		else if (method.isAnnotationPresent(Subscription.class)) {
 			return ReturnType.SUBSCRIPTION;
 		}
 		else {

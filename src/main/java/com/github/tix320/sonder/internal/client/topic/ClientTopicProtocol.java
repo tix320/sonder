@@ -19,6 +19,7 @@ import com.github.tix320.sonder.api.common.communication.StaticTransfer;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
+import com.github.tix320.sonder.internal.common.topic.TopicAction;
 import com.github.tix320.sonder.internal.common.util.Threads;
 
 /**
@@ -69,31 +70,36 @@ public class ClientTopicProtocol implements Protocol {
 
 		String topic = headers.getNonNullString(Headers.TOPIC);
 
-		Boolean isInvoke = headers.getBoolean(Headers.IS_INVOKE);
-		if (isInvoke != null && isInvoke) {
-			Publisher<Object> publisher = topicPublishers.get(topic);
-			if (publisher == null) {
-				throw new IllegalStateException(String.format("Topic %s not found", topic));
-			}
+		TopicAction topicAction = TopicAction.valueOf(headers.getNonNullString(Headers.TOPIC_ACTION));
 
-			TypeReference<?> dataType = dataTypesByTopic.get(topic);
-			Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
-			try {
-				Threads.runAsync(() -> publisher.publish(contentObject));
-			}
-			catch (IllegalArgumentException e) {
-				throw new IllegalStateException(
-						String.format("Registered topic's (%s) data type (%s) is not compatible with received JSON %s",
-								topic, dataType.getType().getTypeName(), contentObject), e);
-			}
-		}
-		else { // is response
-			Number transferKey = headers.getNonNullNumber(Headers.TRANSFER_KEY);
-			MonoPublisher<None> publisher = responsePublishers.get(transferKey.longValue());
-			if (publisher == null) {
-				throw new IllegalStateException("Invalid transfer key");
-			}
-			Threads.runAsync(() -> publisher.publish(None.SELF));
+		switch (topicAction) {
+			case RECEIVE_ITEM:
+				Publisher<Object> publisher = topicPublishers.get(topic);
+				if (publisher == null) {
+					throw new IllegalStateException(String.format("Topic %s not found", topic));
+				}
+
+				TypeReference<?> dataType = dataTypesByTopic.get(topic);
+				Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
+				try {
+					Threads.runAsync(() -> publisher.publish(contentObject));
+				}
+				catch (IllegalArgumentException e) {
+					throw new IllegalStateException(String.format(
+							"Registered topic's (%s) data type (%s) is not compatible with received JSON %s", topic,
+							dataType.getType().getTypeName(), contentObject), e);
+				}
+				break;
+			case PUBLISH_RESPONSE:
+				long responseKey = headers.getNonNullLong(Headers.RESPONSE_KEY);
+				MonoPublisher<None> responsePublisher = responsePublishers.get(responseKey);
+				if (responsePublisher == null) {
+					throw new IllegalStateException("Invalid transfer key");
+				}
+				Threads.runAsync(() -> responsePublisher.publish(None.SELF));
+				break;
+			default:
+				throw new IllegalStateException();
 		}
 	}
 
@@ -142,15 +148,14 @@ public class ClientTopicProtocol implements Protocol {
 
 		@Override
 		public MonoObservable<None> publish(Object data) {
-			long transferKey = transferIdGenerator.next();
+			long responseKey = transferIdGenerator.next();
 			Headers headers = Headers.builder()
 					.header(Headers.TOPIC, topic)
-					.header(Headers.TOPIC_ACTION, "publish")
-					.header(Headers.TRANSFER_KEY, transferKey)
-					.header(Headers.IS_INVOKE, true)
+					.header(Headers.TOPIC_ACTION, TopicAction.PUBLISH)
+					.header(Headers.RESPONSE_KEY, responseKey)
 					.build();
 			MonoPublisher<None> publisher = Publisher.mono();
-			responsePublishers.put(transferKey, publisher);
+			responsePublishers.put(responseKey, publisher);
 			outgoingTransfers.publish(
 					new StaticTransfer(headers, Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(data))));
 			return publisher.asObservable();
@@ -161,7 +166,7 @@ public class ClientTopicProtocol implements Protocol {
 			subscriptions.computeIfAbsent(topic, key -> {
 				Headers headers = Headers.builder()
 						.header(Headers.TOPIC, topic)
-						.header(Headers.TOPIC_ACTION, "subscribe")
+						.header(Headers.TOPIC_ACTION, TopicAction.SUBSCRIBE)
 						.build();
 				outgoingTransfers.publish(new StaticTransfer(headers, new byte[0]));
 				return None.SELF;

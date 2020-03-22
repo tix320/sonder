@@ -87,6 +87,25 @@ public final class Headers implements Serializable {
 		throw new InvalidHeaderException(key, value, Number.class);
 	}
 
+	public Long getLong(String key) {
+		Object value = values.get(key);
+		if (value == null) {
+			return null;
+		}
+		else if (value instanceof Number) {
+			return ((Number) value).longValue();
+		}
+		throw new InvalidHeaderException(key, value, Number.class);
+	}
+
+	public long getNonNullLong(String key) {
+		Object value = values.get(key);
+		if (value instanceof Number) {
+			return ((Number) value).longValue();
+		}
+		throw new InvalidHeaderException(key, value, Number.class);
+	}
+
 	public Boolean getBoolean(String key) {
 		Object value = values.get(key);
 		if (value == null || value instanceof Boolean) {
@@ -160,29 +179,21 @@ public final class Headers implements Serializable {
 
 	//	-------------------- Sonder headers
 	public static final String PROTOCOL = "protocol";
-	public static final String SOURCE_CLIENT_ID = "source-client-id";
-	public static final String DESTINATION_CLIENT_ID = "destination-client-id";
-	public static final String IS_PROTOCOL_ERROR_RESPONSE = "is-protocol-error";
+	public static final String SOURCE_ID = "source-id";
+	public static final String DESTINATION_ID = "destination-id";
 
 	//	-------------------- RPC protocol headers
-	public static final String TRANSFER_KEY = "transfer-key";
+	public static final String RESPONSE_KEY = "response-key";
 	public static final String PATH = "path";
-	public static final String IS_INVOKE = "is-invoke";
+	public static final String TRANSFER_TYPE = "transfer-type";
+	public static final String ERROR_TYPE = "error-type";
 	public static final String NEED_RESPONSE = "need-response";
-	public static final String IS_RPC_PROTOCOL_ERROR_RESPONSE = "is-rpc-protocol-error";
 	public static final String CONTENT_TYPE = "content-type";
-	public static final String UNSUBSCRIBE = "unsubscribe";
+	public static final String SUBSCRIPTION_ACTION_TYPE = "subscription-action-type";
 
 	//	-------------------- Topic protocol headers
 	public static final String TOPIC = "topic";
 	public static final String TOPIC_ACTION = "topic-action";
-
-	//	-------------------- RO protocol headers
-	public static final String RO_OBJECT_ID = "RO-object-id";
-	public static final String CLASS_NAME = "RO-class-name";
-	public static final String METHOD_ID = "RO-method-id";
-	public static final String IS_RESULT = "RO-is-result";
-	public static final String IS_PROPERTY = "RO-is-property";
 
 	public static class HeadersSerializer extends StdSerializer<Headers> {
 
@@ -198,6 +209,9 @@ public final class Headers implements Serializable {
 				Object value = entry.getValue();
 				if (value == null || value instanceof Number || value instanceof Boolean || value instanceof String) {
 					gen.writeObjectField(entry.getKey(), value);
+				}
+				else {
+					gen.writeObjectField(entry.getKey(), value.toString());
 				}
 			}
 			gen.writeEndObject();

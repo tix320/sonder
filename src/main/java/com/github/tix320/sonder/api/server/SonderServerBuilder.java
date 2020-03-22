@@ -14,7 +14,7 @@ import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.server.event.SonderServerEvent;
 import com.github.tix320.sonder.internal.common.ProtocolOrientation;
-import com.github.tix320.sonder.internal.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.event.SimpleEventDispatcher;
 import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 import com.github.tix320.sonder.internal.server.SocketClientsSelector;

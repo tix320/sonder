@@ -3,7 +3,7 @@ package com.github.tix320.sonder.RPC;
 import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.common.rpc.Origin;
-import com.github.tix320.sonder.api.common.rpc.Subscribe;
+import com.github.tix320.sonder.api.common.rpc.Subscription;
 
 @Origin("foo")
 public interface ClientService {
@@ -12,6 +12,6 @@ public interface ClientService {
 	MonoObservable<String> getRemoteObjectId();
 
 	@Origin("lol")
-	@Subscribe
+	@Subscription
 	Observable<Integer> numbers();
 }
