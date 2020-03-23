@@ -7,6 +7,7 @@ import java.util.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
+import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
 import com.github.tix320.sonder.internal.common.rpc.StartupException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParamQualifier;
@@ -20,7 +21,10 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 
 	private final List<T> serviceMethods;
 
-	public RPCServiceMethods(List<Class<?>> classes) {
+	private final List<ExtraParamDefinition<?, ?>> extraParamDefinitions;
+
+	public RPCServiceMethods(List<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
+		this.extraParamDefinitions = validateExtraParamDefinitions(extraParamDefinitions);
 		this.serviceMethods = createServiceMethods(classes);
 	}
 
@@ -37,7 +41,6 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 				.peek(this::checkMethod)
 				.map(this::createServiceMethod)
 				.peek(this::checkPath)
-				.peek(this::peek)
 				.collect(collectingAndThen(toUnmodifiableList(), methods -> {
 					checkDuplicatePaths(methods);
 					return methods;
@@ -68,7 +71,8 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 		List<Param> simpleParams = new ArrayList<>();
 		List<ExtraParam> extraParams = new ArrayList<>();
 
-		Map<Class<? extends Annotation>, ExtraParamDefinition> extraParamDefinitions = getExtraParamDefinitions();
+		Map<Class<? extends Annotation>, ExtraParamDefinition<?, ?>> extraParamDefinitions = this.extraParamDefinitions.stream()
+				.collect(toMap(ExtraParamDefinition::getAnnotationType, extraParamDefinition -> extraParamDefinition));
 		Parameter[] parameters = method.getParameters();
 		TypeFactory typeFactory = new ObjectMapper().getTypeFactory();
 		for (int i = 0; i < parameters.length; i++) {
@@ -88,10 +92,10 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 					}
 
 					extraParamAnnotationExists = true;
-					ExtraParamDefinition definition = extraParamDefinitions.get(annotation.annotationType());
-					if (parameter.getType() != definition.expectedType) {
+					ExtraParamDefinition<?, ?> definition = extraParamDefinitions.get(annotation.annotationType());
+					if (parameter.getType() != definition.getParamType()) {
 						throw new StartupException(String.format("Extra param @%s must have type %s in method %s(%s)",
-								annotation.annotationType().getSimpleName(), definition.expectedType.getName(),
+								annotation.annotationType().getSimpleName(), definition.getParamType().getName(),
 								method.getName(), method.getDeclaringClass()));
 					}
 					extraParams.add(
@@ -105,8 +109,8 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 
 		String nonExistingRequiredExtraParams = extraParamDefinitions.values()
 				.stream()
-				.filter(extraParamDefinition -> extraParamDefinition.isRequired)
-				.map(extraParamDefinition -> extraParamDefinition.annotationType)
+				.filter(ExtraParamDefinition::isRequired)
+				.map(ExtraParamDefinition::getAnnotationType)
 				.filter(annotationType -> extraParams.stream()
 						.noneMatch(extraParam -> extraParam.getAnnotation().annotationType().equals(annotationType)))
 				.map(annotation -> "@" + annotation.getSimpleName())
@@ -146,23 +150,18 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 		}
 	}
 
-	protected abstract void peek(T method);
+	private List<ExtraParamDefinition<?, ?>> validateExtraParamDefinitions(
+			List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
 
-	protected abstract Map<Class<? extends Annotation>, ExtraParamDefinition> getExtraParamDefinitions();
-
-	protected static class ExtraParamDefinition {
-
-		private final Class<? extends Annotation> annotationType;
-
-		private final Class<?> expectedType;
-
-		private final boolean isRequired;
-
-		public ExtraParamDefinition(Class<? extends Annotation> annotationType, Class<?> expectedType,
-									boolean isRequired) {
-			this.annotationType = annotationType;
-			this.expectedType = expectedType;
-			this.isRequired = isRequired;
+		for (ExtraParamDefinition<?, ?> extraParamDefinition : extraParamDefinitions) {
+			Class<?> annotationType = extraParamDefinition.getAnnotationType();
+			if (!annotationType.isAnnotationPresent(ExtraParamQualifier.class)) {
+				throw new StartupException(
+						String.format("To use annotation @%s as extra param qualifier, please annotate it with @%s",
+								annotationType.getSimpleName(), ExtraParamQualifier.class.getSimpleName()));
+			}
 		}
+
+		return extraParamDefinitions;
 	}
 }

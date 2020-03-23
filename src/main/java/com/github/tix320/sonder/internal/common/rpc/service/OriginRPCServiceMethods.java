@@ -14,16 +14,18 @@ import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Origin;
 import com.github.tix320.sonder.api.common.rpc.Subscription;
+import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
 import com.github.tix320.sonder.internal.common.rpc.StartupException;
+import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.RequestDataType;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
 
 import static java.util.function.Predicate.not;
 
-public abstract class OriginRPCServiceMethods<T extends OriginMethod> extends RPCServiceMethods<T> {
+public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 
-	public OriginRPCServiceMethods(List<Class<?>> classes) {
-		super(classes);
+	public OriginRPCServiceMethods(List<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
+		super(classes, extraParamDefinitions);
 	}
 
 	@Override
@@ -65,7 +67,14 @@ public abstract class OriginRPCServiceMethods<T extends OriginMethod> extends RP
 				.value();
 	}
 
-	protected final ReturnType constructReturnType(Method method) {
+	@Override
+	protected final OriginMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
+													 List<ExtraParam> extraParams) {
+		return new OriginMethod(path, method, simpleParams, extraParams, constructReturnType(method),
+				constructReturnJavaType(method), requestDataType(simpleParams));
+	}
+
+	private ReturnType constructReturnType(Method method) {
 		Class<?> returnType = method.getReturnType();
 		if (returnType == void.class) {
 			return ReturnType.VOID;
@@ -81,7 +90,7 @@ public abstract class OriginRPCServiceMethods<T extends OriginMethod> extends RP
 		}
 	}
 
-	protected final JavaType constructReturnJavaType(Method method) {
+	private JavaType constructReturnJavaType(Method method) {
 		TypeFactory typeFactory = new ObjectMapper().getTypeFactory();
 		Type returnType = method.getGenericReturnType();
 		if (returnType instanceof Class) { // Observable
@@ -96,7 +105,7 @@ public abstract class OriginRPCServiceMethods<T extends OriginMethod> extends RP
 		}
 	}
 
-	protected final RequestDataType requestDataType(List<Param> simpleParams) {
+	private RequestDataType requestDataType(List<Param> simpleParams) {
 		if (simpleParams.size() == 1) {
 			Param param = simpleParams.get(0);
 			if (param.getType().getRawClass() == byte[].class) {

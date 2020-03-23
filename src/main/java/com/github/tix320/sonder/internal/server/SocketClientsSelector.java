@@ -188,7 +188,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 			channel.read();
 		}
 		catch (IOException e) {
-			e.printStackTrace();
+			System.err.println(e.getMessage());
 			closeClientConnection(client);
 		}
 	}
@@ -205,7 +205,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 				channel.write(data);
 			}
 			catch (IOException e) {
-				e.printStackTrace();
+				System.err.println(String.format(e.getMessage() + ": Client id %s", client.id));
 				closeClientConnection(client);
 			}
 		}

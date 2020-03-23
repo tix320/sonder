@@ -19,9 +19,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
+import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.Headers;
-import com.github.tix320.sonder.internal.common.util.EmptyReadableByteChannel;
-import com.github.tix320.sonder.internal.common.util.LimitedReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
 import com.github.tix320.sonder.internal.common.util.Threads;
 
 public final class PackChannel implements Closeable {
@@ -60,7 +60,7 @@ public final class PackChannel implements Closeable {
 
 	private final AtomicLong contentLength;
 
-	private final AtomicReference<LimitedReadableByteChannel> currentContentChannel;
+	private final AtomicReference<CertainReadableByteChannel> currentContentChannel;
 
 	public PackChannel(ByteChannel channel, Duration headersTimeoutDuration,
 					   LongFunction<Duration> contentTimeoutDurationFactory) {
@@ -80,8 +80,9 @@ public final class PackChannel implements Closeable {
 
 	public void write(Pack pack)
 			throws IOException {
-		writeHeaders(pack.getHeaders(), pack.getContentLength());
-		writeContent(pack.channel(), pack.getContentLength());
+		long contentLength = pack.channel().getContentLength();
+		writeHeaders(pack.getHeaders(), contentLength);
+		writeContent(pack.channel(), contentLength);
 	}
 
 	/**
@@ -256,7 +257,7 @@ public final class PackChannel implements Closeable {
 	}
 
 	private void constructPack(byte[] headers, long contentLength) {
-		ReadableByteChannel channel;
+		CertainReadableByteChannel channel;
 		if (contentLength == 0) {
 			channel = EmptyReadableByteChannel.SELF;
 			reset();
@@ -274,7 +275,7 @@ public final class PackChannel implements Closeable {
 			currentContentChannel.set(limitedChannel);
 		}
 
-		Pack pack = new Pack(headers, channel, contentLength);
+		Pack pack = new Pack(headers, channel);
 
 		Threads.runAsync(() -> packs.publish(pack));
 	}
@@ -316,7 +317,7 @@ public final class PackChannel implements Closeable {
 		currentContentChannel.updateAndGet(channel -> {
 			if (channel != null) {
 				if (channel.getRemaining() > 0) {
-					Try.runOrRethrow(channel::readAllInVain);
+					Try.runOrRethrow(channel::readRemainingInVain);
 				}
 			}
 			return channel;

@@ -7,8 +7,12 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JavaType;
@@ -16,9 +20,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.github.tix320.kiwi.api.check.Try;
-import com.github.tix320.kiwi.api.proxy.AnnotationBasedProxyCreator;
-import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
-import com.github.tix320.kiwi.api.proxy.ProxyCreator;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
 import com.github.tix320.kiwi.api.reactive.observable.Subscription;
@@ -29,9 +30,9 @@ import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
-import com.github.tix320.sonder.api.common.rpc.extra.ClientID;
-import com.github.tix320.sonder.internal.client.rpc.ClientEndpointRPCServiceMethods;
-import com.github.tix320.sonder.internal.client.rpc.ClientOriginRPCServiceMethods;
+import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgExtractor;
+import com.github.tix320.sonder.api.common.rpc.extra.ExtraArg;
+import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.ProtocolOrientation;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
@@ -39,13 +40,13 @@ import com.github.tix320.sonder.internal.common.rpc.IncompatibleTypeException;
 import com.github.tix320.sonder.internal.common.rpc.PathNotFoundException;
 import com.github.tix320.sonder.internal.common.rpc.RPCProtocolException;
 import com.github.tix320.sonder.internal.common.rpc.RPCRemoteException;
-import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
+import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArgExtractionException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
+import com.github.tix320.sonder.internal.common.rpc.extra.extractor.EndpointMethodClientIdExtractor;
+import com.github.tix320.sonder.internal.common.rpc.extra.extractor.OriginMethodClientIdExtractor;
 import com.github.tix320.sonder.internal.common.rpc.service.*;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
 import com.github.tix320.sonder.internal.common.util.Threads;
-import com.github.tix320.sonder.internal.server.rpc.ServerEndpointRPCServiceMethods;
-import com.github.tix320.sonder.internal.server.rpc.ServerOriginRPCServiceMethods;
 
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toUnmodifiableMap;
@@ -64,6 +65,9 @@ public class RPCProtocol implements Protocol {
 
 	private final Map<String, EndpointMethod> endpointsByPath;
 
+	private final List<OriginExtraArgExtractor<?>> originExtraArgExtractors;
+	private final Map<Class<? extends Annotation>, EndpointExtraArgExtractor<?, ?>> endpointExtraArgExtractors;
+
 	private final Map<Long, RequestMetadata> requestMetadataByResponseKey;
 
 	private final Map<Long, Subscription> realSubscriptions;
@@ -73,16 +77,23 @@ public class RPCProtocol implements Protocol {
 	private final Publisher<Transfer> outgoingRequests;
 
 	public RPCProtocol(ProtocolOrientation orientation, List<Class<?>> classes,
-					   List<AnnotationInterceptor<?, ?>> endpointInterceptors) {
+					   List<OriginExtraArgExtractor<?>> originExtraArgExtractors,
+					   List<EndpointExtraArgExtractor<?, ?>> endpointExtraArgExtractors) {
 		this.orientation = orientation;
 
-		OriginRPCServiceMethods<OriginMethod> originServiceMethods =
-				orientation == ProtocolOrientation.SERVER ? new ServerOriginRPCServiceMethods(classes) :
-						new ClientOriginRPCServiceMethods(classes);
+		this.originExtraArgExtractors = appendBuiltInOriginExtraArgExtractors(originExtraArgExtractors);
+		this.endpointExtraArgExtractors = appendBuiltInEndpointExtraArgExtractors(endpointExtraArgExtractors);
 
-		EndpointRPCServiceMethods<EndpointMethod> endpointServiceMethods =
-				orientation == ProtocolOrientation.SERVER ? new ServerEndpointRPCServiceMethods(classes) :
-						new ClientEndpointRPCServiceMethods(classes);
+		OriginRPCServiceMethods originServiceMethods = new OriginRPCServiceMethods(classes,
+				this.originExtraArgExtractors.stream()
+						.map(OriginExtraArgExtractor::getParamDefinition)
+						.collect(Collectors.toList()));
+
+		EndpointRPCServiceMethods endpointServiceMethods = new EndpointRPCServiceMethods(classes,
+				this.endpointExtraArgExtractors.values()
+						.stream()
+						.map(EndpointExtraArgExtractor::getParamDefinition)
+						.collect(Collectors.toList()));
 
 		this.originsByMethod = originServiceMethods.get()
 				.stream()
@@ -102,8 +113,7 @@ public class RPCProtocol implements Protocol {
 				.stream()
 				.map(ServiceMethod::getRawClass)
 				.distinct()
-				.collect(
-						toUnmodifiableMap(clazz -> clazz, clazz -> creatEndpointInstance(clazz, endpointInterceptors)));
+				.collect(toUnmodifiableMap(clazz -> clazz, this::creatEndpointInstance));
 
 		this.requestMetadataByResponseKey = new ConcurrentHashMap<>();
 		this.realSubscriptions = new ConcurrentHashMap<>();
@@ -112,26 +122,33 @@ public class RPCProtocol implements Protocol {
 	}
 
 	@Override
-	public final void handleIncomingTransfer(Transfer transfer) {
+	public final void handleIncomingTransfer(Transfer transfer)
+			throws IOException {
 		Headers headers = transfer.getHeaders();
 
 		TransferType transferType = TransferType.valueOf(headers.getNonNullString(Headers.TRANSFER_TYPE));
 
-		switch (transferType) {
-			case INVOCATION:
-				processMethodInvocation(transfer);
-				break;
-			case INVOCATION_RESULT:
-				processInvocationResult(transfer);
-				break;
-			case SUBSCRIPTION_RESULT:
-				processSubscriptionResult(transfer);
-				break;
-			case ERROR_RESULT:
-				processErrorResult(transfer);
-				break;
-			default:
-				throw new IllegalStateException();
+		try {
+			switch (transferType) {
+				case INVOCATION:
+					processMethodInvocation(transfer);
+					break;
+				case INVOCATION_RESULT:
+					processInvocationResult(transfer);
+					break;
+				case SUBSCRIPTION_RESULT:
+					processSubscriptionResult(transfer);
+					break;
+				case ERROR_RESULT:
+					processErrorResult(transfer);
+					break;
+				default:
+					throw new IllegalStateException();
+			}
+		}
+		finally {
+			CertainReadableByteChannel channel = transfer.channel();
+			channel.readRemainingInVain();
 		}
 	}
 
@@ -165,26 +182,65 @@ public class RPCProtocol implements Protocol {
 		return Proxy.newProxyInstance(clazz.getClassLoader(), new Class[]{clazz}, new OriginInvocationHandler());
 	}
 
-	@SuppressWarnings("all")
-	private Object creatEndpointInstance(Class<?> clazz, List<AnnotationInterceptor<?, ?>> endpointInterceptors) {
-		ProxyCreator proxyCreator = new AnnotationBasedProxyCreator(clazz, endpointInterceptors);
-		return proxyCreator.create();
+	private Object creatEndpointInstance(Class<?> clazz) {
+		return Try.supplyOrRethrow(() -> clazz.getConstructor().newInstance());
+	}
+
+	private List<OriginExtraArgExtractor<?>> appendBuiltInOriginExtraArgExtractors(
+			List<OriginExtraArgExtractor<?>> extraArgExtractors) {
+
+		extraArgExtractors = new ArrayList<>(extraArgExtractors);
+
+		OriginMethodClientIdExtractor clientIdExtractor = new OriginMethodClientIdExtractor(orientation);
+		extraArgExtractors.add(clientIdExtractor);
+
+		return extraArgExtractors;
+	}
+
+	private Map<Class<? extends Annotation>, EndpointExtraArgExtractor<?, ?>> appendBuiltInEndpointExtraArgExtractors(
+			List<EndpointExtraArgExtractor<?, ?>> extraArgExtractors) {
+
+		Map<Class<? extends Annotation>, EndpointExtraArgExtractor<?, ?>> extraArgExtractorsMap = new HashMap<>();
+
+		for (EndpointExtraArgExtractor<?, ?> extraArgExtractor : extraArgExtractors) {
+			extraArgExtractorsMap.put(extraArgExtractor.getParamDefinition().getAnnotationType(), extraArgExtractor);
+		}
+
+		EndpointMethodClientIdExtractor clientIdExtractor = new EndpointMethodClientIdExtractor(orientation);
+		extraArgExtractorsMap.put(clientIdExtractor.getParamDefinition().getAnnotationType(), clientIdExtractor);
+
+		return extraArgExtractorsMap;
 	}
 
 	private Object handleOriginCall(OriginMethod method, List<Object> simpleArgs,
-									Map<Class<? extends Annotation>, ExtraArg> extraArgs) {
-		Long clientId;
-		if (orientation == ProtocolOrientation.SERVER) {
-			clientId = (long) extraArgs.get(ClientID.class).getValue();
-		}
-		else {
-			clientId = (Long) Optional.ofNullable(extraArgs.get(ClientID.class)).map(ExtraArg::getValue).orElse(null);
+									Map<Class<? extends Annotation>, ExtraArg<?>> extraArgs) {
+		HeadersBuilder headersBuilder = Headers.builder();
+
+		for (OriginExtraArgExtractor<?> originExtraArgExtractor : originExtraArgExtractors) {
+			Class<?> annotationType = originExtraArgExtractor.getParamDefinition().getAnnotationType();
+
+			@SuppressWarnings("unchecked")
+			ExtraArg<Annotation> extraArg = (ExtraArg<Annotation>) extraArgs.get(annotationType);
+			if (extraArg == null) {
+				continue;
+			}
+
+			@SuppressWarnings("unchecked")
+			OriginExtraArgExtractor<Annotation> castedExtractor = (OriginExtraArgExtractor<Annotation>) originExtraArgExtractor;
+
+			try {
+				Headers headers = castedExtractor.extract(extraArg, method.getRawMethod());
+				headersBuilder.headers(headers);
+			}
+			catch (Exception e) {
+				throw new ExtraArgExtractionException("An error occurred while extracting extra argument", e);
+			}
 		}
 
-		Headers.HeadersBuilder builder = Headers.builder()
-				.header(Headers.DESTINATION_ID, clientId)
-				.header(Headers.TRANSFER_TYPE, TransferType.INVOCATION)
+		Headers.HeadersBuilder builder = headersBuilder.header(Headers.TRANSFER_TYPE, TransferType.INVOCATION)
 				.header(Headers.PATH, method.getPath());
+
+		Long clientId = builder.build().getLong(Headers.DESTINATION_ID);
 
 		Transfer transferToSend;
 		switch (method.getRequestDataType()) {
@@ -203,7 +259,7 @@ public class RPCProtocol implements Protocol {
 				transferToSend = (Transfer) simpleArgs.get(0);
 				transferToSend = new ChannelTransfer(
 						transferToSend.getHeaders().compose().headers(builder.build()).build(),
-						transferToSend.channel(), transferToSend.getContentLength());
+						transferToSend.channel());
 				break;
 			default:
 				throw new IllegalStateException();
@@ -212,7 +268,7 @@ public class RPCProtocol implements Protocol {
 		switch (method.getReturnType()) {
 			case VOID:
 				Transfer transfer = transferToSend;
-				Threads.runAsync(() -> outgoingRequests.publish(transfer));
+				outgoingRequests.publish(transfer);
 				return null;
 			case ASYNC_RESPONSE:
 				long responseKey = responseKeyGenerator.next();
@@ -225,8 +281,8 @@ public class RPCProtocol implements Protocol {
 				MonoPublisher<Object> responsePublisher = Publisher.mono();
 				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(responsePublisher, method));
 
-				transfer = new ChannelTransfer(headers, transferToSend.channel(), transferToSend.getContentLength());
-				Threads.runAsync(() -> outgoingRequests.publish(transfer));
+				transfer = new ChannelTransfer(headers, transferToSend.channel());
+				outgoingRequests.publish(transfer);
 				return responsePublisher.asObservable();
 			case SUBSCRIPTION:
 				responseKey = responseKeyGenerator.next();
@@ -236,7 +292,7 @@ public class RPCProtocol implements Protocol {
 						.header(Headers.NEED_RESPONSE, true)
 						.build();
 
-				transfer = new ChannelTransfer(headers, transferToSend.channel(), transferToSend.getContentLength());
+				transfer = new ChannelTransfer(headers, transferToSend.channel());
 
 				SimplePublisher<Object> dummyPublisher = Publisher.simple();
 				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(dummyPublisher, method));
@@ -244,7 +300,7 @@ public class RPCProtocol implements Protocol {
 				Observable<Object> observable = dummyPublisher.asObservable();
 				DummyObservable dummyObservable = new DummyObservable(observable, clientId, responseKey);
 
-				Threads.runAsync(() -> outgoingRequests.publish(transfer));
+				outgoingRequests.publish(transfer);
 				return dummyObservable;
 			default:
 				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getReturnType()));
@@ -281,15 +337,24 @@ public class RPCProtocol implements Protocol {
 				throw new UnsupportedContentTypeException(contentType);
 		}
 
-		Map<Class<? extends Annotation>, Object> extraArgs = extractExtraArgs(headers);
-		Object[] args = concatSimpleAndExtraArgs(simpleArgs, endpointMethod.getExtraParams(), extraArgs);
+		Object[] extraArgs = extractExtraArgs(headers, endpointMethod.getExtraParams(), endpointMethod.getRawMethod());
+		Object[] args = mergeArrays(simpleArgs, extraArgs);
 
 		Object serviceInstance = endpointServices.get(endpointMethod.getRawClass());
 
 		Threads.runAsync(() -> {
-			Object result = endpointMethod.invoke(serviceInstance, args);
-
+			Object result;
 			boolean needResponse = headers.has(Headers.NEED_RESPONSE);
+			try {
+				result = endpointMethod.invoke(serviceInstance, args);
+			}
+			catch (Exception e) {
+				if (needResponse) {
+					onMethodInvocationException(headers, e);
+				}
+				throw e;
+			}
+
 
 			if (needResponse) {
 				processEndpointMethodResult(headers, endpointMethod, result);
@@ -307,7 +372,7 @@ public class RPCProtocol implements Protocol {
 					String.format("Response publisher not found for response key %s", responseKey));
 		}
 
-		byte[] content = Try.supplyOrRethrow(transfer::readAll);
+		byte[] content = Try.supplyOrRethrow(transfer.channel()::readAll);
 
 		ErrorType errorType = ErrorType.valueOf(headers.getNonNullString(Headers.ERROR_TYPE));
 		Exception exception;
@@ -318,6 +383,7 @@ public class RPCProtocol implements Protocol {
 						new PathNotFoundException("Endpoint with path '" + path + "' not found"));
 				break;
 			case INCOMPATIBLE_REQUEST:
+			case INTERNAL_SERVER_ERROR:
 				exception = new RPCRemoteException(new String(content));
 				break;
 			default:
@@ -369,7 +435,7 @@ public class RPCProtocol implements Protocol {
 				Publisher<Object> dummyPublisher = requestMetadata.getResponsePublisher();
 
 				JavaType returnJavaType = originMethod.getReturnJavaType();
-				Object value = deserializeObject(Try.supplyOrRethrow(transfer::readAll), returnJavaType);
+				Object value = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
 				Threads.runAsync(() -> dummyPublisher.publish(value));
 				break;
 			default:
@@ -392,11 +458,11 @@ public class RPCProtocol implements Protocol {
 
 		JavaType returnJavaType = originMethod.getReturnJavaType();
 		if (returnJavaType.getRawClass() == None.class) {
-			Try.runOrRethrow(transfer::readAllInVain);
+			Try.runOrRethrow(transfer.channel()::readRemainingInVain);
 
 			Threads.runAsync(() -> responsePublisher.publish(None.SELF));
 		}
-		else if (transfer.getContentLength() == 0) {
+		else if (transfer.channel().getContentLength() == 0) {
 			throw new IllegalStateException(
 					String.format("Response content is empty, and it cannot be converted to type %s", returnJavaType));
 		}
@@ -406,10 +472,10 @@ public class RPCProtocol implements Protocol {
 			Object result;
 			switch (contentType) {
 				case BINARY:
-					result = Try.supplyOrRethrow(transfer::readAll);
+					result = Try.supplyOrRethrow(transfer.channel()::readAll);
 					break;
 				case JSON:
-					result = deserializeObject(Try.supplyOrRethrow(transfer::readAll), returnJavaType);
+					result = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
 					break;
 				case TRANSFER:
 					result = transfer;
@@ -444,7 +510,7 @@ public class RPCProtocol implements Protocol {
 			throw new RPCProtocolException(errorMessage);
 		}
 
-		byte[] data = Try.supplyOrRethrow(transfer::readAll);
+		byte[] data = Try.supplyOrRethrow(transfer.channel()::readAll);
 
 		return new Object[]{data};
 	}
@@ -455,7 +521,7 @@ public class RPCProtocol implements Protocol {
 		List<Param> simpleParams = endpointMethod.getSimpleParams();
 
 		ArrayNode argsNode;
-		byte[] content = Try.supplyOrRethrow(transfer::readAll);
+		byte[] content = Try.supplyOrRethrow(transfer.channel()::readAll);
 		try {
 			argsNode = JSON_MAPPER.readValue(content, ArrayNode.class);
 		}
@@ -500,17 +566,28 @@ public class RPCProtocol implements Protocol {
 		return new Object[]{transfer};
 	}
 
-	private Map<Class<? extends Annotation>, Object> extractExtraArgs(Headers headers) {
-		Long sourceClientId = headers.getLong(Headers.SOURCE_ID);
+	private Object[] extractExtraArgs(Headers headers, List<ExtraParam> extraParams, Method method) {
+		Object[] extraArgs = new Object[extraParams.size()];
 
-		if (orientation == ProtocolOrientation.SERVER) {
-			return Map.of(ClientID.class, sourceClientId); // sourceClientId is not null in SERVER orientation
+		for (int i = 0; i < extraParams.size(); i++) {
+			ExtraParam extraParam = extraParams.get(i);
+
+			Annotation annotation = extraParam.getAnnotation();
+			Class<? extends Annotation> annotationClass = annotation.annotationType();
+
+			@SuppressWarnings("unchecked")
+			EndpointExtraArgExtractor<Annotation, ?> extraArgExtractor = (EndpointExtraArgExtractor<Annotation, ?>) endpointExtraArgExtractors
+					.get(annotationClass);
+			try {
+				Object extraArg = extraArgExtractor.extract(annotation, headers, method);
+				extraArgs[i] = extraArg;
+			}
+			catch (Exception e) {
+				throw new ExtraArgExtractionException("An error occurred while extracting extra argument", e);
+			}
 		}
-		else {
-			Map<Class<? extends Annotation>, Object> extraArgs = new HashMap<>();
-			extraArgs.put(ClientID.class, sourceClientId);
-			return extraArgs;
-		}
+
+		return extraArgs;
 	}
 
 	private void processEndpointMethodResult(Headers headers, EndpointMethod endpointMethod, Object result) {
@@ -526,24 +603,22 @@ public class RPCProtocol implements Protocol {
 		switch (endpointMethod.resultType()) {
 			case VOID:
 				builder.contentType(ContentType.BINARY);
-				Threads.runAsync(() -> outgoingRequests.publish(new StaticTransfer(builder.build(), new byte[0])));
+				outgoingRequests.publish(new StaticTransfer(builder.build(), new byte[0]));
 				break;
 			case OBJECT:
 				builder.contentType(ContentType.JSON);
 				byte[] transferContent = serializeObject(result);
-				Threads.runAsync(() -> outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent)));
+				outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent));
 				break;
 			case BINARY:
 				builder.contentType(ContentType.BINARY);
-				Threads.runAsync(() -> outgoingRequests.publish(new StaticTransfer(builder.build(), (byte[]) result)));
+				outgoingRequests.publish(new StaticTransfer(builder.build(), (byte[]) result));
 				break;
 			case TRANSFER:
 				builder.contentType(ContentType.TRANSFER);
 				Transfer resultTransfer = (Transfer) result;
 				Headers finalHeaders = resultTransfer.getHeaders().compose().headers(builder.build()).build();
-				Threads.runAsync(() -> outgoingRequests.publish(
-						new ChannelTransfer(finalHeaders, resultTransfer.channel(),
-								resultTransfer.getContentLength())));
+				outgoingRequests.publish(new ChannelTransfer(finalHeaders, resultTransfer.channel()));
 				break;
 			case SUBSCRIPTION:
 				Observable<?> observable = (Observable<?>) result;
@@ -576,11 +651,23 @@ public class RPCProtocol implements Protocol {
 		sendErrorResult(errorHeaders, content);
 	}
 
+	private void onMethodInvocationException(Headers headers, Exception e) {
+		Headers errorHeaders = Headers.builder()
+				.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
+				.header(Headers.RESPONSE_KEY, headers.getNonNullLong(Headers.RESPONSE_KEY))
+				.header(Headers.ERROR_TYPE, ErrorType.INTERNAL_SERVER_ERROR)
+				.build();
+
+		byte[] content = exceptionStacktraceToBytes(e);
+
+		sendErrorResult(errorHeaders, content);
+	}
+
 	private void sendErrorResult(Headers headers, byte[] content) {
 		headers = headers.compose().header(Headers.TRANSFER_TYPE, TransferType.ERROR_RESULT.name()).build();
 
 		Transfer transfer = new StaticTransfer(headers, content);
-		Threads.runAsync(() -> outgoingRequests.publish(transfer));
+		outgoingRequests.publish(transfer);
 	}
 
 	private static byte[] exceptionStacktraceToBytes(Throwable e) {
@@ -589,15 +676,11 @@ public class RPCProtocol implements Protocol {
 		return byteStream.toByteArray();
 	}
 
-	private static Object[] concatSimpleAndExtraArgs(Object[] simpleArgs, List<ExtraParam> extraParams,
-													 Map<Class<? extends Annotation>, Object> extraArgs) {
-		Object[] allArgs = new Object[simpleArgs.length + extraParams.size()];
+	private static Object[] mergeArrays(Object[] array1, Object[] array2) {
+		Object[] allArgs = new Object[array1.length + array2.length];
 
-		System.arraycopy(simpleArgs, 0, allArgs, 0, simpleArgs.length); // fill simple args
-
-		for (ExtraParam extraParam : extraParams) {
-			allArgs[extraParam.getIndex()] = extraArgs.get(extraParam.getAnnotation().annotationType());
-		}
+		System.arraycopy(array1, 0, allArgs, 0, array1.length);
+		System.arraycopy(array2, 0, allArgs, array1.length, array2.length);
 
 		return allArgs;
 	}
@@ -634,7 +717,7 @@ public class RPCProtocol implements Protocol {
 			List<ExtraParam> extraParams = originMethod.getExtraParams();
 
 			List<Object> simpleArgs = new ArrayList<>(simpleParams.size());
-			Map<Class<? extends Annotation>, ExtraArg> extraArgs = new HashMap<>(extraParams.size());
+			Map<Class<? extends Annotation>, ExtraArg<?>> extraArgs = new HashMap<>(extraParams.size());
 
 			for (Param simpleParam : simpleParams) {
 				int index = simpleParam.getIndex();
@@ -644,7 +727,7 @@ public class RPCProtocol implements Protocol {
 			for (ExtraParam extraParam : extraParams) {
 				int index = extraParam.getIndex();
 				extraArgs.put(extraParam.getAnnotation().annotationType(),
-						new ExtraArg(args[index], extraParam.getAnnotation()));
+						new ExtraArg<>(args[index], extraParam.getAnnotation()));
 			}
 
 			return handleOriginCall(originMethod, simpleArgs, extraArgs);
@@ -666,8 +749,8 @@ public class RPCProtocol implements Protocol {
 		}
 
 		@Override
-		public Subscription subscribe(Subscriber<? super Object> subscriber) {
-			return observable.subscribe(new Subscriber<>() {
+		public void subscribe(Subscriber<? super Object> subscriber) {
+			observable.subscribe(new Subscriber<>() {
 				@Override
 				public void onSubscribe(Subscription subscription) {
 					subscriber.onSubscribe(subscription);
@@ -696,7 +779,7 @@ public class RPCProtocol implements Protocol {
 					requestMetadataByResponseKey.remove(responseKey);
 					subscriber.onComplete();
 
-					Threads.runAsync(() -> outgoingRequests.publish(transfer));
+					outgoingRequests.publish(transfer);
 				}
 			});
 		}
@@ -729,7 +812,7 @@ public class RPCProtocol implements Protocol {
 			byte[] content = serializeObject(item);
 			Transfer transferToSend = new StaticTransfer(headers, content);
 
-			Threads.runAsync(() -> outgoingRequests.publish(transferToSend));
+			outgoingRequests.publish(transferToSend);
 
 			return true;
 		}
@@ -745,7 +828,7 @@ public class RPCProtocol implements Protocol {
 			byte[] content = exceptionStacktraceToBytes(throwable);
 			Transfer transferToSend = new StaticTransfer(headers, content);
 
-			Threads.runAsync(() -> outgoingRequests.publish(transferToSend));
+			outgoingRequests.publish(transferToSend);
 
 			return true;
 		}
@@ -762,7 +845,7 @@ public class RPCProtocol implements Protocol {
 
 			Transfer transferToSend = new StaticTransfer(headers, new byte[0]);
 
-			Threads.runAsync(() -> outgoingRequests.publish(transferToSend));
+			outgoingRequests.publish(transferToSend);
 		}
 	}
 

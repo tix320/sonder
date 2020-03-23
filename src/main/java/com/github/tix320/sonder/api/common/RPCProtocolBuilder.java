@@ -4,9 +4,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import com.github.tix320.kiwi.api.proxy.AnnotationInterceptor;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Origin;
+import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgExtractor;
+import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.internal.common.ProtocolOrientation;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.common.util.ClassFinder;
@@ -14,7 +15,7 @@ import com.github.tix320.sonder.internal.common.util.ClassFinder;
 /**
  * Builder for RPC protocol {@link RPCProtocol}.
  */
-public class RPCProtocolBuilder {
+public final class RPCProtocolBuilder {
 
 	private final ProtocolOrientation orientation;
 
@@ -22,13 +23,16 @@ public class RPCProtocolBuilder {
 
 	private final List<Class<?>> classes;
 
-	protected final List<AnnotationInterceptor<?, ?>> interceptors;
+	private final List<OriginExtraArgExtractor<?>> originExtraArgExtractors;
+
+	private final List<EndpointExtraArgExtractor<?, ?>> endpointExtraArgExtractors;
 
 	public RPCProtocolBuilder(ProtocolOrientation orientation) {
 		this.orientation = orientation;
 		packagesToScan = new ArrayList<>();
 		classes = new ArrayList<>();
-		interceptors = new ArrayList<>();
+		originExtraArgExtractors = new ArrayList<>();
+		endpointExtraArgExtractors = new ArrayList<>();
 	}
 
 	/**
@@ -57,18 +61,30 @@ public class RPCProtocolBuilder {
 	}
 
 	/**
-	 * Register interceptor for intercepting endpoint calls.
+	 * Register extra argument extractor for origin methods.
 	 *
-	 * @param interceptors to register.
+	 * @param extractors to register.
 	 *
 	 * @return self
 	 */
-	public RPCProtocolBuilder registerInterceptor(AnnotationInterceptor<?, ?>... interceptors) {
-		this.interceptors.addAll(Arrays.asList(interceptors));
+	public RPCProtocolBuilder registerOriginExtraArgExtractor(OriginExtraArgExtractor<?>... extractors) {
+		this.originExtraArgExtractors.addAll(Arrays.asList(extractors));
 		return this;
 	}
 
-	protected List<Class<?>> resolveClasses() {
+	/**
+	 * Register extra argument extractor for endpoint methods.
+	 *
+	 * @param extractors to register.
+	 *
+	 * @return self
+	 */
+	public RPCProtocolBuilder registerEndpointExtraArgExtractor(EndpointExtraArgExtractor<?, ?>... extractors) {
+		this.endpointExtraArgExtractors.addAll(Arrays.asList(extractors));
+		return this;
+	}
+
+	private List<Class<?>> resolveClasses() {
 		List<Class<?>> packageClasses = ClassFinder.getPackageClasses(packagesToScan);
 		List<Class<?>> classes = this.classes;
 		List<Class<?>> allClasses = new ArrayList<>();
@@ -79,6 +95,6 @@ public class RPCProtocolBuilder {
 
 	public RPCProtocol build() {
 		List<Class<?>> classes = resolveClasses();
-		return new RPCProtocol(orientation, classes, interceptors);
+		return new RPCProtocol(orientation, classes, originExtraArgExtractors, endpointExtraArgExtractors);
 	}
 }

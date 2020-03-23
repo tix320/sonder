@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.common.util;
+package com.github.tix320.sonder.api.common.communication;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -9,9 +9,11 @@ import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.None;
 
-public class LimitedReadableByteChannel implements ReadableByteChannel {
+public final class LimitedReadableByteChannel implements CertainReadableByteChannel {
 
 	private final ReadableByteChannel channel;
+
+	private final long limit;
 
 	private long remaining;
 
@@ -24,6 +26,7 @@ public class LimitedReadableByteChannel implements ReadableByteChannel {
 			throw new IllegalArgumentException("Limit: " + limit);
 		}
 
+		this.limit = limit;
 		this.channel = channel;
 		this.remaining = limit;
 		this.isOpen = true;
@@ -74,11 +77,39 @@ public class LimitedReadableByteChannel implements ReadableByteChannel {
 		return finishEvent.asObservable().toMono();
 	}
 
-	public long getRemaining() {
+	@Override
+	public synchronized long getContentLength() {
+		return limit;
+	}
+
+	public synchronized long getRemaining() {
 		return remaining;
 	}
 
-	public synchronized void readAllInVain()
+	@Override
+	public synchronized byte[] readAll()
+			throws IOException {
+		if (limit > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException(
+					"Cannot read all bytes, due there are larger than Integer.MAX_VALUE");
+		}
+
+		if (remaining != limit) {
+			throw new IllegalStateException("readAll not allowed, when any bytes already was read");
+		}
+
+		ByteBuffer buffer = ByteBuffer.allocate((int) limit);
+		while (buffer.hasRemaining()) {
+			int read = read(buffer);
+			if (read < 0) {
+				throw new IllegalStateException(
+						String.format("Content channel ended, but still remaining %s bytes", buffer.remaining()));
+			}
+		}
+		return buffer.array();
+	}
+
+	public synchronized void readRemainingInVain()
 			throws IOException {
 		ByteBuffer buffer = ByteBuffer.allocate(1024 * 64);
 		while (remaining > 0) {

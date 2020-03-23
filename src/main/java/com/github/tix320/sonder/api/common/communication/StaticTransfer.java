@@ -1,10 +1,8 @@
 package com.github.tix320.sonder.api.common.communication;
 
-import java.io.IOException;
-import java.nio.channels.ReadableByteChannel;
 import java.util.Arrays;
 
-import com.github.tix320.sonder.internal.common.util.ReadableByteArrayChannel;
+import com.github.tix320.sonder.internal.common.communication.ReadableByteArrayChannel;
 
 /**
  * The byte array implementation of transfer.
@@ -24,25 +22,8 @@ public final class StaticTransfer implements Transfer {
 		return headers;
 	}
 
-	public ReadableByteChannel channel() {
+	public CertainReadableByteChannel channel() {
 		return new ReadableByteArrayChannel(content);
-	}
-
-	@Override
-	public long getContentLength() {
-		return content.length;
-	}
-
-	@Override
-	public byte[] readAll()
-			throws IOException {
-		return content;
-	}
-
-	@Override
-	public void readAllInVain()
-			throws IOException {
-
 	}
 
 	@Override

@@ -9,13 +9,15 @@ import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Subscription;
+import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
 import com.github.tix320.sonder.internal.common.rpc.StartupException;
+import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod.ResultType;
 
-public abstract class EndpointRPCServiceMethods<T extends EndpointMethod> extends RPCServiceMethods<T> {
+public final class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointMethod> {
 
-	public EndpointRPCServiceMethods(List<Class<?>> classes) {
-		super(classes);
+	public EndpointRPCServiceMethods(List<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
+		super(classes, extraParamDefinitions);
 	}
 
 	@Override
@@ -61,7 +63,13 @@ public abstract class EndpointRPCServiceMethods<T extends EndpointMethod> extend
 				Endpoint.class).value();
 	}
 
-	protected final ResultType resultType(Method method) {
+	@Override
+	protected final EndpointMethod createServiceMethod(String path, Method method, List<Param> simpleParams,
+													   List<ExtraParam> extraParams) {
+		return new EndpointMethod(path, method, simpleParams, extraParams, resultType(method));
+	}
+
+	private ResultType resultType(Method method) {
 		Class<?> returnType = method.getReturnType();
 		if (returnType == void.class) {
 			return ResultType.VOID;

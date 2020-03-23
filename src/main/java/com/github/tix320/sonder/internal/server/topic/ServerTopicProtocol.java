@@ -58,32 +58,37 @@ public class ServerTopicProtocol implements Protocol {
 	@Override
 	public void handleIncomingTransfer(Transfer transfer)
 			throws IOException {
-		Headers headers = transfer.getHeaders();
+		try {
+			Headers headers = transfer.getHeaders();
 
-		String topic = headers.getNonNullString(Headers.TOPIC);
+			String topic = headers.getNonNullString(Headers.TOPIC);
 
-		TopicAction action = TopicAction.valueOf(headers.getNonNullString(Headers.TOPIC_ACTION));
+			TopicAction action = TopicAction.valueOf(headers.getNonNullString(Headers.TOPIC_ACTION));
 
-		Number sourceClientId = headers.getNonNullNumber(Headers.SOURCE_ID);
+			Number sourceClientId = headers.getNonNullNumber(Headers.SOURCE_ID);
 
-		Queue<Long> clients = topics.computeIfAbsent(topic, key -> new ConcurrentLinkedQueue<>());
+			Queue<Long> clients = topics.computeIfAbsent(topic, key -> new ConcurrentLinkedQueue<>());
 
-		switch (action) {
-			case PUBLISH:
-				Transfer staticTransfer = new StaticTransfer(headers, transfer.readAll());
-				handleForServer(staticTransfer);
-				publishToClients(topic, staticTransfer, clients, sourceClientId.longValue());
-				break;
-			case SUBSCRIBE:
-				transfer.readAllInVain();
-				clients.add(sourceClientId.longValue());
-				break;
-			case UNSUBSCRIBE:
-				transfer.readAllInVain();
-				clients.remove(sourceClientId.longValue());
-				break;
-			default:
-				throw new IllegalStateException(String.format("Invalid topic action %s", action));
+			switch (action) {
+				case PUBLISH:
+					Transfer staticTransfer = new StaticTransfer(headers, transfer.channel().readAll());
+					handleForServer(staticTransfer);
+					publishToClients(topic, staticTransfer, clients, sourceClientId.longValue());
+					break;
+				case SUBSCRIBE:
+					transfer.channel().readRemainingInVain();
+					clients.add(sourceClientId.longValue());
+					break;
+				case UNSUBSCRIBE:
+					transfer.channel().readRemainingInVain();
+					clients.remove(sourceClientId.longValue());
+					break;
+				default:
+					throw new IllegalStateException(String.format("Invalid topic action %s", action));
+			}
+		}
+		finally {
+			transfer.channel().readRemainingInVain();
 		}
 	}
 
@@ -123,7 +128,7 @@ public class ServerTopicProtocol implements Protocol {
 	private void handleForServer(Transfer transfer)
 			throws IOException {
 		Headers headers = transfer.getHeaders();
-		byte[] content = transfer.readAll();
+		byte[] content = transfer.channel().readAll();
 
 		String topic = (String) headers.get(Headers.TOPIC);
 
@@ -155,8 +160,7 @@ public class ServerTopicProtocol implements Protocol {
 						.header(Headers.TOPIC, topic)
 						.header(Headers.TOPIC_ACTION, TopicAction.RECEIVE_ITEM)
 						.build();
-				outgoingRequests.publish(
-						new ChannelTransfer(newHeaders, transfer.channel(), transfer.getContentLength()));
+				outgoingRequests.publish(new ChannelTransfer(newHeaders, transfer.channel()));
 			}
 		}
 		Headers newHeaders = Headers.builder()

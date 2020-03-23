@@ -64,42 +64,47 @@ public class ClientTopicProtocol implements Protocol {
 	@Override
 	public void handleIncomingTransfer(Transfer transfer)
 			throws IOException {
-		Headers headers = transfer.getHeaders();
+		try {
+			Headers headers = transfer.getHeaders();
 
-		byte[] content = transfer.readAll();
+			byte[] content = transfer.channel().readAll();
 
-		String topic = headers.getNonNullString(Headers.TOPIC);
+			String topic = headers.getNonNullString(Headers.TOPIC);
 
-		TopicAction topicAction = TopicAction.valueOf(headers.getNonNullString(Headers.TOPIC_ACTION));
+			TopicAction topicAction = TopicAction.valueOf(headers.getNonNullString(Headers.TOPIC_ACTION));
 
-		switch (topicAction) {
-			case RECEIVE_ITEM:
-				Publisher<Object> publisher = topicPublishers.get(topic);
-				if (publisher == null) {
-					throw new IllegalStateException(String.format("Topic %s not found", topic));
-				}
+			switch (topicAction) {
+				case RECEIVE_ITEM:
+					Publisher<Object> publisher = topicPublishers.get(topic);
+					if (publisher == null) {
+						throw new IllegalStateException(String.format("Topic %s not found", topic));
+					}
 
-				TypeReference<?> dataType = dataTypesByTopic.get(topic);
-				Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
-				try {
-					Threads.runAsync(() -> publisher.publish(contentObject));
-				}
-				catch (IllegalArgumentException e) {
-					throw new IllegalStateException(String.format(
-							"Registered topic's (%s) data type (%s) is not compatible with received JSON %s", topic,
-							dataType.getType().getTypeName(), contentObject), e);
-				}
-				break;
-			case PUBLISH_RESPONSE:
-				long responseKey = headers.getNonNullLong(Headers.RESPONSE_KEY);
-				MonoPublisher<None> responsePublisher = responsePublishers.get(responseKey);
-				if (responsePublisher == null) {
-					throw new IllegalStateException("Invalid transfer key");
-				}
-				Threads.runAsync(() -> responsePublisher.publish(None.SELF));
-				break;
-			default:
-				throw new IllegalStateException();
+					TypeReference<?> dataType = dataTypesByTopic.get(topic);
+					Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
+					try {
+						Threads.runAsync(() -> publisher.publish(contentObject));
+					}
+					catch (IllegalArgumentException e) {
+						throw new IllegalStateException(String.format(
+								"Registered topic's (%s) data type (%s) is not compatible with received JSON %s", topic,
+								dataType.getType().getTypeName(), contentObject), e);
+					}
+					break;
+				case PUBLISH_RESPONSE:
+					long responseKey = headers.getNonNullLong(Headers.RESPONSE_KEY);
+					MonoPublisher<None> responsePublisher = responsePublishers.get(responseKey);
+					if (responsePublisher == null) {
+						throw new IllegalStateException("Invalid transfer key");
+					}
+					Threads.runAsync(() -> responsePublisher.publish(None.SELF));
+					break;
+				default:
+					throw new IllegalStateException();
+			}
+		}
+		finally {
+			transfer.channel().readRemainingInVain();
 		}
 	}
 

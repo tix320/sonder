@@ -3,7 +3,6 @@ package com.github.tix320.sonder.api.server;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.channels.ReadableByteChannel;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -11,10 +10,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.sonder.api.common.communication.ChannelTransfer;
-import com.github.tix320.sonder.api.common.communication.Headers;
-import com.github.tix320.sonder.api.common.communication.Protocol;
-import com.github.tix320.sonder.api.common.communication.Transfer;
+import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.api.server.event.SonderServerEvent;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
@@ -167,11 +163,11 @@ public final class SonderServer implements Closeable {
 
 	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
 		return new ChannelTransfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
-				transfer.channel(), transfer.getContentLength());
+				transfer.channel());
 	}
 
 	private ClientPack transferToClientPack(Transfer transfer) {
-		Number destinationClientId = transfer.getHeaders().getNonNullNumber(Headers.DESTINATION_ID);
+		long destinationId = transfer.getHeaders().getNonNullLong(Headers.DESTINATION_ID);
 
 		byte[] headers;
 		try {
@@ -181,8 +177,8 @@ public final class SonderServer implements Closeable {
 			throw new IllegalStateException("Cannot write JSON", e);
 		}
 
-		ReadableByteChannel channel = transfer.channel();
-		return new ClientPack(destinationClientId.longValue(), new Pack(headers, channel, transfer.getContentLength()));
+		CertainReadableByteChannel channel = transfer.channel();
+		return new ClientPack(destinationId, new Pack(headers, channel));
 	}
 
 	private Transfer clientPackToTransfer(ClientsSelector.ClientPack clientPack) {
@@ -196,16 +192,16 @@ public final class SonderServer implements Closeable {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
 		headers = headers.compose().header(Headers.SOURCE_ID, clientPack.getClientId()).build();
-		ReadableByteChannel channel = dataPack.channel();
+		CertainReadableByteChannel channel = dataPack.channel();
 
-		return new ChannelTransfer(headers, channel, dataPack.getContentLength());
+		return new ChannelTransfer(headers, channel);
 	}
 
 	private void processTransfer(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
-		Number destinationClientId = headers.getNumber(Headers.DESTINATION_ID);
-		if (destinationClientId != null) { // for any client, so we are redirecting without any processing
+		Number destinationId = headers.getNumber(Headers.DESTINATION_ID);
+		if (destinationId != null) { // for any client, so we are redirecting without any processing
 			clientsSelector.send(transferToClientPack(transfer));
 		}
 		else {

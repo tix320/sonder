@@ -3,7 +3,9 @@ package com.github.tix320.sonder.RPC;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
+import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
 import com.github.tix320.kiwi.api.reactive.observable.Subscription;
 import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.server.SonderServer;
@@ -33,7 +35,9 @@ public class RPCObservableTest {
 		ClientService rpcService = sonderClient.getRPCService(ClientService.class);
 
 		List<Integer> list = new ArrayList<>();
-		Subscription subscription = rpcService.numbers().subscribe(list::add);
+		AtomicReference<Subscription> subscriptionHolder = new AtomicReference<>();
+		rpcService.numbers()
+				.subscribe(Subscriber.<Integer>builder().onSubscribe(subscriptionHolder::set).onPublish(list::add));
 
 		Thread.sleep(300);
 		ServerEndpoint.publisher.publish(4);
@@ -42,7 +46,7 @@ public class RPCObservableTest {
 		ServerEndpoint.publisher.publish(5);
 		Thread.sleep(300);
 		assertEquals(List.of(4, 5), list);
-		subscription.unsubscribe();
+		subscriptionHolder.get().unsubscribe();
 		Thread.sleep(500);
 		ServerEndpoint.publisher.publish(6);
 		assertEquals(List.of(4, 5), list);
