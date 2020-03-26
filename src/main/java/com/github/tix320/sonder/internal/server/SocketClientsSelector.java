@@ -92,8 +92,10 @@ public final class SocketClientsSelector implements ClientsSelector {
 		if (client == null) {
 			throw new IllegalArgumentException(String.format("Client by id %s not found", clientId));
 		}
-		Queue<Pack> queue = client.packsForSend;
-		queue.add(clientPack.getPack());
+		if (client.isConnected) {
+			Queue<Pack> queue = client.packsForSend;
+			queue.add(clientPack.getPack());
+		}
 	}
 
 	@Override
@@ -171,7 +173,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		long clientId = clientIdGenerator.next();
 		PackChannel packChannel = new PackChannel(clientChannel, headersTimeoutDuration, contentTimeoutDurationFactory);
 
-		Client client = new Client(clientId, packChannel, new ConcurrentLinkedQueue<>(), new ReentrantLock());
+		Client client = new Client(clientId, packChannel, new ConcurrentLinkedQueue<>(), new ReentrantLock(), true);
 
 		clientChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, client);
 
@@ -214,8 +216,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 	private void closeClientConnection(Client client)
 			throws IOException {
 		try {
-			clientsById.remove(client.id);
 			PackChannel packChannel = client.channel;
+			client.isConnected = false;
 			if (packChannel.isOpen()) {
 				packChannel.close();
 			}
@@ -245,12 +247,14 @@ public final class SocketClientsSelector implements ClientsSelector {
 		private final PackChannel channel;
 		private final Queue<Pack> packsForSend;
 		private final Lock lock;
+		private volatile boolean isConnected;
 
-		private Client(long id, PackChannel channel, Queue<Pack> packsForSend, Lock lock) {
+		private Client(long id, PackChannel channel, Queue<Pack> packsForSend, Lock lock, boolean isConnected) {
 			this.id = id;
 			this.channel = channel;
 			this.packsForSend = packsForSend;
 			this.lock = lock;
+			this.isConnected = isConnected;
 		}
 	}
 }

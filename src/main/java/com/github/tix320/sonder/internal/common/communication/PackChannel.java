@@ -89,7 +89,7 @@ public final class PackChannel implements Closeable {
 	 * @throws IOException          If any I/O error occurs
 	 * @throws InvalidPackException If invalid pack is consumed
 	 */
-	public void read()
+	public synchronized void read()
 			throws IOException, InvalidPackException {
 		if (state.get() == State.last()) {
 			return;
@@ -304,7 +304,7 @@ public final class PackChannel implements Closeable {
 		}, delay, TimeUnit.MILLISECONDS);
 	}
 
-	private void reset() {
+	private synchronized void reset() {
 		state.set(State.first());
 		protocolHeaderBuffer.clear();
 		headersLengthBuffer.clear();
@@ -312,7 +312,7 @@ public final class PackChannel implements Closeable {
 		headersBuffer.set(null);
 	}
 
-	private void resetWithContent() {
+	private synchronized void resetWithContent() {
 		reset();
 		currentContentChannel.updateAndGet(channel -> {
 			if (channel != null) {
