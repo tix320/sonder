@@ -63,8 +63,20 @@ public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMetho
 
 	@Override
 	protected final String getPath(Method method) {
-		return method.getDeclaringClass().getAnnotation(Origin.class).value() + ":" + method.getAnnotation(Origin.class)
-				.value();
+		Class<?> declaringClass = method.getDeclaringClass();
+		Origin classAnnotation = declaringClass.getAnnotation(Origin.class);
+		Origin methodAnnotation = method.getAnnotation(Origin.class);
+
+		String classPath = classAnnotation.value();
+
+		if (classPath.isBlank()) {
+			throw new StartupException(
+					String.format("@%s value on class must be non empty. (%s)", Origin.class.getSimpleName(),
+							declaringClass));
+		}
+
+		String methodPath = methodAnnotation.value().isEmpty() ? method.getName() : methodAnnotation.value();
+		return classPath + ":" + methodPath;
 	}
 
 	@Override

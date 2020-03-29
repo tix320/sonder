@@ -59,8 +59,20 @@ public final class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointM
 
 	@Override
 	protected final String getPath(Method method) {
-		return method.getDeclaringClass().getAnnotation(Endpoint.class).value() + ":" + method.getAnnotation(
-				Endpoint.class).value();
+		Class<?> declaringClass = method.getDeclaringClass();
+		Endpoint classAnnotation = declaringClass.getAnnotation(Endpoint.class);
+		Endpoint methodAnnotation = method.getAnnotation(Endpoint.class);
+
+		String classPath = classAnnotation.value();
+
+		if (classPath.isBlank()) {
+			throw new StartupException(
+					String.format("@%s value on class must be non empty. (%s)", Endpoint.class.getSimpleName(),
+							declaringClass));
+		}
+
+		String methodPath = methodAnnotation.value().isEmpty() ? method.getName() : methodAnnotation.value();
+		return classPath + ":" + methodPath;
 	}
 
 	@Override
