@@ -73,13 +73,14 @@ public class SocketServerConnection implements ServerConnection {
 
 	private void start() {
 		new Thread(() -> {
-			while (true) {
+			while (channel.isOpen()) {
 				try {
 					channel.read();
 				}
 				catch (ClosedChannelException e) {
 					Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));
-					throw new SocketConnectionException("Socket connection is closed", e);
+					System.err.println("Connection closed: " + e.getMessage());
+					break;
 				}
 				catch (IOException e) {
 					Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));
