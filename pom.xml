@@ -130,7 +130,7 @@
 		<dependency>
 			<groupId>com.github.tix320</groupId>
 			<artifactId>kiwi</artifactId>
-			<version>0.16.1-SNAPSHOT</version>
+			<version>0.17.1</version>
 		</dependency>
 
 		<dependency>
