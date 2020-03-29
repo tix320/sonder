@@ -408,13 +408,6 @@ public class RPCProtocol implements Protocol {
 			case REGULAR_ERROR:
 				remoteSubscriptionPublisher = remoteSubscriptionPublishers.get(responseKey);
 				if (remoteSubscriptionPublisher == null) {
-					try {
-						Object value = JSON_MAPPER.readTree(Try.supplyOrRethrow(transfer.channel()::readAll));
-						System.out.println("not found object: ----     " + value);
-					}
-					catch (IOException e) {
-						e.printStackTrace();
-					}
 					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
 				}
 
@@ -794,7 +787,6 @@ public class RPCProtocol implements Protocol {
 
 				@Override
 				public boolean onPublish(Object item) {
-					System.out.println("responseKEy: " + responseKey + "  -------   " + item);
 					return subscriber.onPublish(item);
 				}
 
@@ -805,7 +797,6 @@ public class RPCProtocol implements Protocol {
 
 				@Override
 				public void onComplete(CompletionType completionType) {
-					System.out.println("responseKEy: " + responseKey + "  -------   completed with " + completionType);
 					remoteSubscriptionPublishers.remove(responseKey);
 					subscriber.onComplete(completionType);
 					if (completionType == CompletionType.UNSUBSCRIPTION) {
@@ -843,7 +834,6 @@ public class RPCProtocol implements Protocol {
 
 		@Override
 		public synchronized boolean onPublish(Object item) {
-			System.out.println("send with responseKEy: " + responseKey + "  -------   " + item);
 			Headers headers = Headers.builder()
 					.header(Headers.DESTINATION_ID, destinationId)
 					.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
