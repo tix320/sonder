@@ -27,6 +27,7 @@ import com.github.tix320.kiwi.api.reactive.observable.Subscription;
 import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
+import com.github.tix320.kiwi.api.util.CantorPair;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
@@ -71,7 +72,9 @@ public class RPCProtocol implements Protocol {
 
 	private final Map<Long, RequestMetadata> requestMetadataByResponseKey;
 
-	private final Map<Long, Subscription> realSubscriptions;
+	private final Map<Long, RemoteSubscriptionPublisher> remoteSubscriptionPublishers;
+
+	private final Map<CantorPair, Subscription> realSubscriptions; // [clientId, responseKey] in CantorPair
 
 	private final IDGenerator responseKeyGenerator;
 
@@ -117,8 +120,9 @@ public class RPCProtocol implements Protocol {
 				.collect(toUnmodifiableMap(clazz -> clazz, this::creatEndpointInstance));
 
 		this.requestMetadataByResponseKey = new ConcurrentHashMap<>();
+		this.remoteSubscriptionPublishers = new ConcurrentHashMap<>();
 		this.realSubscriptions = new ConcurrentHashMap<>();
-		this.responseKeyGenerator = new IDGenerator();
+		this.responseKeyGenerator = new IDGenerator(1);
 		this.outgoingRequests = Publisher.simple();
 	}
 
@@ -278,10 +282,7 @@ public class RPCProtocol implements Protocol {
 				outgoingRequests.publish(transfer);
 				return null;
 			case ASYNC_RESPONSE:
-				Headers headers = transferToSend.getHeaders()
-						.compose()
-						.header(Headers.NEED_RESPONSE, true)
-						.build();
+				Headers headers = transferToSend.getHeaders().compose().header(Headers.NEED_RESPONSE, true).build();
 
 				responsePublisher = Publisher.mono();
 				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(responsePublisher, method));
@@ -290,15 +291,12 @@ public class RPCProtocol implements Protocol {
 				outgoingRequests.publish(transfer);
 				return responsePublisher.asObservable();
 			case SUBSCRIPTION:
-				headers = transferToSend.getHeaders()
-						.compose()
-						.header(Headers.NEED_RESPONSE, true)
-						.build();
+				headers = transferToSend.getHeaders().compose().header(Headers.NEED_RESPONSE, true).build();
 
 				transfer = new ChannelTransfer(headers, transferToSend.channel());
 
 				SimplePublisher<Object> dummyPublisher = Publisher.simple();
-				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(dummyPublisher, method));
+				remoteSubscriptionPublishers.put(responseKey, new RemoteSubscriptionPublisher(dummyPublisher, method));
 
 				Observable<Object> observable = dummyPublisher.asObservable();
 				DummyObservable dummyObservable = new DummyObservable(observable, clientId, responseKey);
@@ -306,7 +304,7 @@ public class RPCProtocol implements Protocol {
 				outgoingRequests.publish(transfer);
 				return dummyObservable;
 			default:
-				throw new RPCProtocolException(String.format("Unknown enum type %s", method.getReturnType()));
+				throw new IllegalStateException(String.format("Unknown enum type %s", method.getReturnType()));
 		}
 	}
 
@@ -386,45 +384,59 @@ public class RPCProtocol implements Protocol {
 		SubscriptionActionType subscriptionActionType = SubscriptionActionType.valueOf(
 				headers.getNonNullString(Headers.SUBSCRIPTION_ACTION_TYPE));
 
+		Long sourceId = headers.getLong(Headers.SOURCE_ID);
 		long responseKey = headers.getNonNullLong(Headers.RESPONSE_KEY);
 
 		switch (subscriptionActionType) {
 			case UNSUBSCRIBE:
-				Subscription subscription = realSubscriptions.remove(responseKey);
+				Subscription subscription = realSubscriptions.remove(
+						new CantorPair(sourceId == null ? -1 : sourceId, responseKey));
+				if (subscription == null) {
+					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
+				}
 				subscription.unsubscribe();
 				break;
 			case SUBSCRIPTION_COMPLETED:
-				RequestMetadata metadata = requestMetadataByResponseKey.remove(responseKey);
-				Publisher<Object> publisher = metadata.getResponsePublisher();
-				publisher.complete();
+				RemoteSubscriptionPublisher remoteSubscriptionPublisher = remoteSubscriptionPublishers.remove(
+						responseKey);
+				if (remoteSubscriptionPublisher == null) {
+					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
+				}
+				remoteSubscriptionPublisher.complete();
 				break;
 			case REGULAR_ITEM:
 			case REGULAR_ERROR:
-				RequestMetadata requestMetadata = requestMetadataByResponseKey.get(responseKey);
-				if (requestMetadata == null) {
-					throw new IllegalStateException(
-							String.format("Request metadata not found for response key %s", responseKey));
+				remoteSubscriptionPublisher = remoteSubscriptionPublishers.get(responseKey);
+				if (remoteSubscriptionPublisher == null) {
+					try {
+						Object value = JSON_MAPPER.readTree(Try.supplyOrRethrow(transfer.channel()::readAll));
+						System.out.println("not found object: ----     " + value);
+					}
+					catch (IOException e) {
+						e.printStackTrace();
+					}
+					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
 				}
 
-				OriginMethod originMethod = requestMetadata.getOriginMethod();
+				OriginMethod originMethod = remoteSubscriptionPublisher.getOriginMethod();
 				if (originMethod.getReturnType() != ReturnType.SUBSCRIPTION) {
 					throw new RPCProtocolException(
 							String.format("Subscription result was received, but origin method %s(%s) not expect it",
 									originMethod.getRawClass().getName(), originMethod.getRawMethod().getName()));
 				}
 
-				Publisher<Object> dummyPublisher = requestMetadata.getResponsePublisher();
+				long itemId = headers.getNonNullLong(Headers.SUBSCRIPTION_RESULT_ITEM_ID);
 
 				if (subscriptionActionType == SubscriptionActionType.REGULAR_ITEM) {
 					JavaType returnJavaType = originMethod.getReturnJavaType();
 					Object value = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
-					Threads.runAsync(() -> dummyPublisher.publish(value));
+					Threads.runAsync(() -> remoteSubscriptionPublisher.publish(itemId, true, value));
 				}
 				else {
 					byte[] content = Try.supplyOrRethrow(transfer.channel()::readAll);
 					String stacktrace = new String(content);
 					Throwable error = new RPCRemoteException(stacktrace);
-					Threads.runAsync(() -> dummyPublisher.publishError(error));
+					Threads.runAsync(() -> remoteSubscriptionPublisher.publish(itemId, false, error));
 				}
 
 				break;
@@ -631,7 +643,7 @@ public class RPCProtocol implements Protocol {
 			case SUBSCRIPTION:
 				Observable<?> observable = (Observable<?>) result;
 
-				observable.subscribe(new LocalSubscriber(sourceId, responseKey));
+				observable.subscribe(new RealSubscriber(sourceId, responseKey));
 				break;
 			default:
 				throw new IllegalStateException();
@@ -782,6 +794,7 @@ public class RPCProtocol implements Protocol {
 
 				@Override
 				public boolean onPublish(Object item) {
+					System.out.println("responseKEy: " + responseKey + "  -------   " + item);
 					return subscriber.onPublish(item);
 				}
 
@@ -792,7 +805,8 @@ public class RPCProtocol implements Protocol {
 
 				@Override
 				public void onComplete(CompletionType completionType) {
-					requestMetadataByResponseKey.remove(responseKey);
+					System.out.println("responseKEy: " + responseKey + "  -------   completed with " + completionType);
+					remoteSubscriptionPublishers.remove(responseKey);
 					subscriber.onComplete(completionType);
 					if (completionType == CompletionType.UNSUBSCRIPTION) {
 						Headers headers = Headers.builder()
@@ -810,28 +824,32 @@ public class RPCProtocol implements Protocol {
 		}
 	}
 
-	public class LocalSubscriber implements Subscriber<Object> {
+	public class RealSubscriber implements Subscriber<Object> {
 
-		private final Long destinationId;
+		private final long destinationId;
 		private final long responseKey;
+		private IDGenerator itemIdGenerator;
 
-		public LocalSubscriber(Long destinationId, long responseKey) {
-			this.destinationId = destinationId;
+		public RealSubscriber(Long destinationId, long responseKey) {
+			this.destinationId = destinationId == null ? -1 : destinationId;
 			this.responseKey = responseKey;
+			this.itemIdGenerator = new IDGenerator(1);
 		}
 
 		@Override
 		public void onSubscribe(Subscription subscription) {
-			realSubscriptions.put(responseKey, subscription);
+			realSubscriptions.put(new CantorPair(destinationId, responseKey), subscription);
 		}
 
 		@Override
-		public boolean onPublish(Object item) {
+		public synchronized boolean onPublish(Object item) {
+			System.out.println("send with responseKEy: " + responseKey + "  -------   " + item);
 			Headers headers = Headers.builder()
 					.header(Headers.DESTINATION_ID, destinationId)
 					.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
-					.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.REGULAR_ITEM)
 					.header(Headers.RESPONSE_KEY, responseKey)
+					.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.REGULAR_ITEM)
+					.header(Headers.SUBSCRIPTION_RESULT_ITEM_ID, itemIdGenerator.next())
 					.build();
 
 			byte[] content = serializeObject(item);
@@ -843,7 +861,7 @@ public class RPCProtocol implements Protocol {
 		}
 
 		@Override
-		public boolean onError(Throwable throwable) {
+		public synchronized boolean onError(Throwable throwable) {
 			Headers headers = Headers.builder()
 					.header(Headers.DESTINATION_ID, destinationId)
 					.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)

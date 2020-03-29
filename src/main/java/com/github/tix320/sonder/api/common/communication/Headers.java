@@ -190,6 +190,7 @@ public final class Headers implements Serializable {
 	public static final String NEED_RESPONSE = "need-response";
 	public static final String CONTENT_TYPE = "content-type";
 	public static final String SUBSCRIPTION_ACTION_TYPE = "subscription-action-type";
+	public static final String SUBSCRIPTION_RESULT_ITEM_ID = "subscription_result_item_id";
 
 	//	-------------------- Topic protocol headers
 	public static final String TOPIC = "topic";

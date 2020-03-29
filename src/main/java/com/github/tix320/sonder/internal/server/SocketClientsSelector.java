@@ -60,7 +60,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		this.selector = Try.supplyOrRethrow(Selector::open);
 		this.incomingRequests = Publisher.simple();
 		this.clientsById = new ConcurrentHashMap<>();
-		this.clientIdGenerator = new IDGenerator(1);
+		this.clientIdGenerator = new IDGenerator(1); // 1 is important aspect, do not touch!
 		this.headersTimeoutDuration = headersTimeoutDuration;
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 		this.workers = workers;
