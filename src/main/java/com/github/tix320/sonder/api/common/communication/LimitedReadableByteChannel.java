@@ -106,6 +106,8 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 						String.format("Content channel ended, but still remaining %s bytes", buffer.remaining()));
 			}
 		}
+
+		finishEvent.publish(None.SELF);
 		return buffer.array();
 	}
 
@@ -120,6 +122,8 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 			remaining -= read;
 			buffer.clear();
 		}
+
+		finishEvent.publish(None.SELF);
 	}
 
 	private boolean isFinished() {
