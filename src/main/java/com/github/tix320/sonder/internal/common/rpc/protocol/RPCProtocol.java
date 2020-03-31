@@ -343,21 +343,19 @@ public class RPCProtocol implements Protocol {
 
 		Object serviceInstance = endpointServices.get(endpointMethod.getRawClass());
 
-		Threads.runAsync(() -> {
-			Object result;
-			try {
-				result = endpointMethod.invoke(serviceInstance, args);
-			}
-			catch (Exception e) {
-				onMethodInvocationException(headers, e);
-				throw e;
-			}
+		Object result;
+		try {
+			result = endpointMethod.invoke(serviceInstance, args);
+		}
+		catch (Exception e) {
+			onMethodInvocationException(headers, e);
+			throw e;
+		}
 
-			boolean needResponse = headers.has(Headers.NEED_RESPONSE);
-			if (needResponse) {
-				processEndpointMethodResult(headers, endpointMethod, result);
-			}
-		});
+		boolean needResponse = headers.has(Headers.NEED_RESPONSE);
+		if (needResponse) {
+			processEndpointMethodResult(headers, endpointMethod, result);
+		}
 	}
 
 	private void processErrorResult(Transfer transfer) {
@@ -372,10 +370,8 @@ public class RPCProtocol implements Protocol {
 
 		Exception exception = extractExceptionFromErrorResult(transfer);
 
-		Threads.runAsync(() -> {
-			responsePublisher.publishError(exception);
-			responsePublisher.complete();
-		});
+		responsePublisher.publishError(exception);
+		responsePublisher.complete();
 	}
 
 	private void processSubscriptionResult(Transfer transfer) {
@@ -423,13 +419,13 @@ public class RPCProtocol implements Protocol {
 				if (subscriptionActionType == SubscriptionActionType.REGULAR_ITEM) {
 					JavaType returnJavaType = originMethod.getReturnJavaType();
 					Object value = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
-					Threads.runAsync(() -> remoteSubscriptionPublisher.publish(itemId, true, value));
+					remoteSubscriptionPublisher.publish(itemId, true, value);
 				}
 				else {
 					byte[] content = Try.supplyOrRethrow(transfer.channel()::readAll);
 					String stacktrace = new String(content);
 					Throwable error = new RPCRemoteException(stacktrace);
-					Threads.runAsync(() -> remoteSubscriptionPublisher.publish(itemId, false, error));
+					remoteSubscriptionPublisher.publish(itemId, false, error);
 				}
 
 				break;
@@ -479,14 +475,12 @@ public class RPCProtocol implements Protocol {
 					throw new UnsupportedContentTypeException(contentType);
 			}
 
-			Threads.runAsync(() -> {
-				try {
-					responsePublisher.publish(result);
-				}
-				catch (ClassCastException e) {
-					throw IncompatibleTypeException.forMethodReturnType(originMethod.getRawMethod(), e);
-				}
-			});
+			try {
+				responsePublisher.publish(result);
+			}
+			catch (ClassCastException e) {
+				throw IncompatibleTypeException.forMethodReturnType(originMethod.getRawMethod(), e);
+			}
 		}
 	}
 

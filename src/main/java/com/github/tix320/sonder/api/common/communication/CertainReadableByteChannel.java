@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.nio.channels.ReadableByteChannel;
 
 /**
- * Channel for transferring any data in transfers.
+ * Channel for transferring any data in transfer objects {@link Transfer}.
  * Channel hold information about content length and remaining length.
  * Maximum bytes, which you can read, is equal to content length, after this it will be empty.
  *
