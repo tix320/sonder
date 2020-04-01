@@ -50,14 +50,16 @@ public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMetho
 	protected final void checkMethod(Method method) {
 		StartupException.checkAndThrow(method,
 				m -> String.format("Failed to resolve origin method '%s'(%s), there are the following errors. ",
-						m.getName(), m.getDeclaringClass()), StartupException.throwWhen(
-						m -> m.isAnnotationPresent(Subscription.class)
-							 && m.getReturnType() != Observable.class
-							 && (m.getReturnType() != void.class && m.getReturnType() != MonoObservable.class),
-						String.format(
-								"Return type must be `%s` when `@%s` annotation is present, otherwise must be be `void` or `%s`",
-								Observable.class.getSimpleName(), Subscription.class.getSimpleName(),
-								MonoObservable.class.getSimpleName())),
+						m.getName(), m.getDeclaringClass()), StartupException.throwWhen(m -> {
+					if (m.isAnnotationPresent(Subscription.class)) {
+						return m.getReturnType() != Observable.class;
+					}
+
+					return m.getReturnType() != void.class && m.getReturnType() != MonoObservable.class;
+				}, String.format(
+						"Return type must be `%s` when `@%s` annotation is present, otherwise must be be `void` or `%s`",
+						Observable.class.getSimpleName(), Subscription.class.getSimpleName(),
+						MonoObservable.class.getSimpleName())),
 				StartupException.throwWhen(not(m -> Modifier.isPublic(m.getModifiers())), "Must be public"));
 	}
 
