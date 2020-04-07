@@ -7,12 +7,15 @@ import java.nio.channels.ByteChannel;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ReadableByteChannel;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongFunction;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -62,6 +65,9 @@ public final class PackChannel implements Closeable {
 
 	private final AtomicReference<CertainReadableByteChannel> currentContentChannel;
 
+	private final Lock readLock = new ReentrantLock();
+	private final Lock writeLock = new ReentrantLock();
+
 	public PackChannel(ByteChannel channel, Duration headersTimeoutDuration,
 					   LongFunction<Duration> contentTimeoutDurationFactory) {
 		this.channel = channel;
@@ -80,31 +86,44 @@ public final class PackChannel implements Closeable {
 
 	public void write(Pack pack)
 			throws IOException {
-		long contentLength = pack.channel().getContentLength();
-		writeHeaders(pack.getHeaders(), contentLength);
-		writeContent(pack.channel(), contentLength);
+		writeLock.lock();
+		try {
+			long contentLength = pack.channel().getContentLength();
+			writeHeaders(pack.getHeaders(), contentLength);
+			writeContent(pack.channel(), contentLength);
+		}
+		finally {
+			writeLock.unlock();
+		}
 	}
 
 	/**
 	 * @throws IOException          If any I/O error occurs
 	 * @throws InvalidPackException If invalid pack is consumed
 	 */
-	public synchronized void read()
+	public void read()
 			throws IOException, InvalidPackException {
-		if (state.get() == State.last()) {
-			return;
-		}
-
+		readLock.lock();
 		try {
-			consume();
+
+			if (state.get() == State.last()) {
+				return;
+			}
+
+			try {
+				consume();
+			}
+			catch (Exception e) {
+				resetWithContent();
+				throw e;
+			}
+			catch (Throwable e) {
+				close();
+				throw new IllegalStateException("Error occurs while consuming pack", e);
+			}
 		}
-		catch (Exception e) {
-			resetWithContent();
-			throw e;
-		}
-		catch (Throwable e) {
-			close();
-			throw new IllegalStateException("Error occurs while consuming pack", e);
+		finally {
+			readLock.unlock();
 		}
 	}
 
@@ -186,7 +205,8 @@ public final class PackChannel implements Closeable {
 
 					boolean isHeader = isHeader(protocolHeaderBuffer.array());
 					if (!isHeader) {
-						throw new InvalidPackException("Invalid protocol header");
+						throw new InvalidPackException(String.format("Invalid protocol header %s",
+								Arrays.toString(protocolHeaderBuffer.array())));
 					}
 
 					this.state.updateAndGet(State::next);
@@ -270,7 +290,6 @@ public final class PackChannel implements Closeable {
 				reset();
 			});
 
-
 			channel = limitedChannel;
 			currentContentChannel.set(limitedChannel);
 		}
@@ -304,24 +323,37 @@ public final class PackChannel implements Closeable {
 		}, delay, TimeUnit.MILLISECONDS);
 	}
 
-	private synchronized void reset() {
-		state.set(State.first());
-		protocolHeaderBuffer.clear();
-		headersLengthBuffer.clear();
-		contentLengthBuffer.clear();
-		headersBuffer.set(null);
+	private void reset() {
+		readLock.lock();
+		try {
+
+			state.set(State.first());
+			protocolHeaderBuffer.clear();
+			headersLengthBuffer.clear();
+			contentLengthBuffer.clear();
+			headersBuffer.set(null);
+		}
+		finally {
+			readLock.unlock();
+		}
 	}
 
-	private synchronized void resetWithContent() {
-		reset();
-		currentContentChannel.updateAndGet(channel -> {
-			if (channel != null) {
-				if (channel.getRemaining() > 0) {
-					Try.runOrRethrow(channel::readRemainingInVain);
+	private void resetWithContent() {
+		readLock.lock();
+		try {
+			reset();
+			currentContentChannel.updateAndGet(channel -> {
+				if (channel != null) {
+					if (channel.getRemaining() > 0) {
+						Try.runOrRethrow(channel::readRemainingInVain);
+					}
 				}
-			}
-			return channel;
-		});
+				return channel;
+			});
+		}
+		finally {
+			readLock.unlock();
+		}
 	}
 
 	private static boolean isHeader(byte[] array) {
