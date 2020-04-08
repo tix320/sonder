@@ -38,6 +38,10 @@ public final class RemoteSubscriptionPublisher {
 		}
 	}
 
+	public synchronized void forcePublishError(Throwable throwable) {
+		itemsPublisher.publishError(throwable);
+	}
+
 	public synchronized void complete() {
 		itemsPublisher.complete();
 	}

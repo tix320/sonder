@@ -7,10 +7,8 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -35,6 +33,8 @@ import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgExtractor;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
+import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
+import com.github.tix320.sonder.api.server.event.SonderServerEvent;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.ProtocolOrientation;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
@@ -49,6 +49,7 @@ import com.github.tix320.sonder.internal.common.rpc.extra.extractor.OriginMethod
 import com.github.tix320.sonder.internal.common.rpc.service.*;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
 import com.github.tix320.sonder.internal.common.util.Threads;
+import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toUnmodifiableMap;
@@ -58,6 +59,8 @@ public class RPCProtocol implements Protocol {
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
 	private final ProtocolOrientation orientation;
+
+	private final SonderEventDispatcher<?> sonderEventDispatcher;
 
 	private final Map<Class<?>, ?> originServices;
 
@@ -80,10 +83,11 @@ public class RPCProtocol implements Protocol {
 
 	private final Publisher<Transfer> outgoingRequests;
 
-	public RPCProtocol(ProtocolOrientation orientation, List<Class<?>> classes,
-					   List<OriginExtraArgExtractor<?>> originExtraArgExtractors,
+	public RPCProtocol(ProtocolOrientation orientation, SonderEventDispatcher<?> sonderEventDispatcher,
+					   List<Class<?>> classes, List<OriginExtraArgExtractor<?>> originExtraArgExtractors,
 					   List<EndpointExtraArgExtractor<?, ?>> endpointExtraArgExtractors) {
 		this.orientation = orientation;
+		this.sonderEventDispatcher = sonderEventDispatcher;
 
 		this.originExtraArgExtractors = appendBuiltInOriginExtraArgExtractors(originExtraArgExtractors);
 		this.endpointExtraArgExtractors = appendBuiltInEndpointExtraArgExtractors(endpointExtraArgExtractors);
@@ -124,6 +128,8 @@ public class RPCProtocol implements Protocol {
 		this.realSubscriptions = new ConcurrentHashMap<>();
 		this.responseKeyGenerator = new IDGenerator(1);
 		this.outgoingRequests = Publisher.simple();
+
+		listenConnectionCloses();
 	}
 
 	@Override
@@ -361,17 +367,25 @@ public class RPCProtocol implements Protocol {
 	private void processErrorResult(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 		long responseKey = headers.getNonNullLong(Headers.RESPONSE_KEY);
-		RequestMetadata requestMetadata = requestMetadataByResponseKey.remove(responseKey);
-		Publisher<Object> responsePublisher = requestMetadata.getResponsePublisher();
-		if (responsePublisher == null) {
-			throw new RPCProtocolException(
-					String.format("Response publisher not found for response key %s", responseKey));
-		}
 
 		Exception exception = extractExceptionFromErrorResult(transfer);
 
-		responsePublisher.publishError(exception);
-		responsePublisher.complete();
+		RequestMetadata requestMetadata = requestMetadataByResponseKey.remove(responseKey);
+		if (requestMetadata == null) {
+			RemoteSubscriptionPublisher remoteSubscriptionPublisher = remoteSubscriptionPublishers.get(responseKey);
+			if (remoteSubscriptionPublisher == null) {
+				throw new RPCProtocolException(
+						String.format("Request metadata or remote subscription not found for response key %s",
+								responseKey));
+			}
+			remoteSubscriptionPublisher.forcePublishError(exception);
+		}
+		else {
+			Publisher<Object> responsePublisher = requestMetadata.getResponsePublisher();
+
+			responsePublisher.publishError(exception);
+			responsePublisher.complete();
+		}
 	}
 
 	private void processSubscriptionResult(Transfer transfer) {
@@ -660,6 +674,7 @@ public class RPCProtocol implements Protocol {
 					.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
 					.header(Headers.RESPONSE_KEY, headers.getLong(Headers.RESPONSE_KEY))
 					.header(Headers.ERROR_TYPE, ErrorType.INCOMPATIBLE_REQUEST)
+					.header(Headers.PATH, headers.getNonNullString(Headers.PATH))
 					.build();
 
 			sendErrorResult(errorHeaders, content);
@@ -675,6 +690,7 @@ public class RPCProtocol implements Protocol {
 					.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
 					.header(Headers.RESPONSE_KEY, headers.getNonNullLong(Headers.RESPONSE_KEY))
 					.header(Headers.ERROR_TYPE, ErrorType.INTERNAL_SERVER_ERROR)
+					.header(Headers.PATH, headers.getNonNullString(Headers.PATH))
 					.build();
 
 			byte[] content = exceptionStacktraceToBytes(exception);
@@ -691,6 +707,31 @@ public class RPCProtocol implements Protocol {
 
 		Transfer transfer = new StaticTransfer(headers, content);
 		outgoingRequests.publish(transfer);
+	}
+
+	private void listenConnectionCloses() {
+		if (orientation == ProtocolOrientation.SERVER) {
+			@SuppressWarnings("unchecked")
+			SonderEventDispatcher<SonderServerEvent> serverEventDispatcher = (SonderEventDispatcher<SonderServerEvent>) this.sonderEventDispatcher;
+
+			serverEventDispatcher.on(ClientConnectionClosedEvent.class).subscribe(event -> {
+				cleanupSubscriptionsOfClient(event.getClientId());
+			});
+		}
+	}
+
+	private void cleanupSubscriptionsOfClient(long clientIdForDelete) {
+		Iterator<Entry<CantorPair, Subscription>> iterator = realSubscriptions.entrySet().iterator();
+		while (iterator.hasNext()) {
+			Entry<CantorPair, Subscription> entry = iterator.next();
+			CantorPair cantorPair = entry.getKey();
+			long clientId = cantorPair.first();
+			if (clientId == clientIdForDelete) {
+				Subscription subscription = entry.getValue();
+				subscription.unsubscribe();
+				iterator.remove();
+			}
+		}
 	}
 
 	private static byte[] exceptionStacktraceToBytes(Throwable e) {

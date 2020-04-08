@@ -31,6 +31,8 @@ public final class SonderClientBuilder {
 
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
+	private SonderEventDispatcher<SonderClientEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
+
 	SonderClientBuilder(InetSocketAddress inetSocketAddress) {
 		if (inetSocketAddress.getAddress().isAnyLocalAddress()) {
 			throw new IllegalArgumentException("Please specify host");
@@ -52,7 +54,7 @@ public final class SonderClientBuilder {
 	 * @return self
 	 */
 	public SonderClientBuilder withRPCProtocol(Consumer<RPCProtocolBuilder> protocolBuilder) {
-		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder(ProtocolOrientation.CLIENT);
+		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder(ProtocolOrientation.CLIENT, sonderEventDispatcher);
 		protocolBuilder.accept(rpcProtocolBuilder);
 		RPCProtocol protocol = rpcProtocolBuilder.build();
 		protocols.put(protocol.getName(), protocol);
@@ -106,7 +108,6 @@ public final class SonderClientBuilder {
 	 * @return client instance.
 	 */
 	public SonderClient build() {
-		SonderEventDispatcher<SonderClientEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
 		return new SonderClient(
 				new SocketServerConnection(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory,
 						sonderEventDispatcher), protocols, sonderEventDispatcher);

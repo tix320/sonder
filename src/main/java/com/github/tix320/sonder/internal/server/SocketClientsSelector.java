@@ -96,6 +96,9 @@ public final class SocketClientsSelector implements ClientsSelector {
 			Queue<Pack> queue = client.packsForSend;
 			queue.add(clientPack.getPack());
 		}
+		else {
+			new IllegalArgumentException(String.format("Client %s is disconnected", clientId)).printStackTrace();
+		}
 	}
 
 	@Override
@@ -190,7 +193,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 			channel.read();
 		}
 		catch (IOException e) {
-			System.err.println(e.getMessage());
+			System.err.println(String.format(e.getMessage() + ": Client id %s", client.id));
 			closeClientConnection(client);
 		}
 	}

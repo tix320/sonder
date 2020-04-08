@@ -35,6 +35,8 @@ public final class SonderServerBuilder {
 
 	private ExecutorService workers;
 
+	private SonderEventDispatcher<SonderServerEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
+
 	public SonderServerBuilder(InetSocketAddress inetSocketAddress) {
 		this.inetSocketAddress = inetSocketAddress;
 		this.protocols = new HashMap<>();
@@ -55,7 +57,8 @@ public final class SonderServerBuilder {
 	 * @return self
 	 */
 	public SonderServerBuilder withRPCProtocol(Consumer<RPCProtocolBuilder> protocolBuilder) {
-		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder(ProtocolOrientation.SERVER);
+		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder(ProtocolOrientation.SERVER,
+				sonderEventDispatcher);
 		protocolBuilder.accept(rpcProtocolBuilder);
 		RPCProtocol protocol = rpcProtocolBuilder.build();
 		protocols.put(protocol.getName(), protocol);
@@ -122,7 +125,6 @@ public final class SonderServerBuilder {
 	 * @return server instance.
 	 */
 	public SonderServer build() {
-		SonderEventDispatcher<SonderServerEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
 		return new SonderServer(
 				new SocketClientsSelector(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory,
 						workers, sonderEventDispatcher), protocols, sonderEventDispatcher);
