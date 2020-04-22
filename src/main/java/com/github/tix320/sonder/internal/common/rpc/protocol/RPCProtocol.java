@@ -133,8 +133,7 @@ public class RPCProtocol implements Protocol {
 	}
 
 	@Override
-	public final void handleIncomingTransfer(Transfer transfer)
-			throws IOException {
+	public final void handleIncomingTransfer(Transfer transfer) throws IOException {
 		Headers headers = transfer.getHeaders();
 
 		TransferType transferType = TransferType.valueOf(headers.getNonNullString(Headers.TRANSFER_TYPE));
@@ -412,7 +411,10 @@ public class RPCProtocol implements Protocol {
 				if (remoteSubscriptionPublisher == null) {
 					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
 				}
-				remoteSubscriptionPublisher.complete();
+
+				long orderId = headers.getNonNullLong(Headers.SUBSCRIPTION_RESULT_ORDER_ID);
+
+				remoteSubscriptionPublisher.complete(orderId);
 				break;
 			case REGULAR_ITEM:
 			case REGULAR_ERROR:
@@ -428,18 +430,18 @@ public class RPCProtocol implements Protocol {
 									originMethod.getRawClass().getName(), originMethod.getRawMethod().getName()));
 				}
 
-				long itemId = headers.getNonNullLong(Headers.SUBSCRIPTION_RESULT_ITEM_ID);
+				orderId = headers.getNonNullLong(Headers.SUBSCRIPTION_RESULT_ORDER_ID);
 
 				if (subscriptionActionType == SubscriptionActionType.REGULAR_ITEM) {
 					JavaType returnJavaType = originMethod.getReturnJavaType();
 					Object value = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
-					remoteSubscriptionPublisher.publish(itemId, true, value);
+					remoteSubscriptionPublisher.publish(orderId, true, value);
 				}
 				else {
 					byte[] content = Try.supplyOrRethrow(transfer.channel()::readAll);
 					String stacktrace = new String(content);
 					Throwable error = new RPCRemoteException(stacktrace);
-					remoteSubscriptionPublisher.publish(itemId, false, error);
+					remoteSubscriptionPublisher.publish(orderId, false, error);
 				}
 
 				break;
@@ -714,9 +716,8 @@ public class RPCProtocol implements Protocol {
 			@SuppressWarnings("unchecked")
 			SonderEventDispatcher<SonderServerEvent> serverEventDispatcher = (SonderEventDispatcher<SonderServerEvent>) this.sonderEventDispatcher;
 
-			serverEventDispatcher.on(ClientConnectionClosedEvent.class).subscribe(event -> {
-				cleanupSubscriptionsOfClient(event.getClientId());
-			});
+			serverEventDispatcher.on(ClientConnectionClosedEvent.class)
+					.subscribe(event -> cleanupSubscriptionsOfClient(event.getClientId()));
 		}
 	}
 
@@ -814,7 +815,7 @@ public class RPCProtocol implements Protocol {
 
 		@Override
 		public void subscribe(Subscriber<? super Object> subscriber) {
-			observable.subscribe(new Subscriber<>() {
+			observable.subscribe(new Subscriber<Object>() {
 				@Override
 				public void onSubscribe(Subscription subscription) {
 					subscriber.onSubscribe(subscription);
@@ -854,12 +855,12 @@ public class RPCProtocol implements Protocol {
 
 		private final long destinationId;
 		private final long responseKey;
-		private IDGenerator itemIdGenerator;
+		private final IDGenerator orderIdGenerator;
 
 		public RealSubscriber(Long destinationId, long responseKey) {
 			this.destinationId = destinationId == null ? -1 : destinationId;
 			this.responseKey = responseKey;
-			this.itemIdGenerator = new IDGenerator(1);
+			this.orderIdGenerator = new IDGenerator(1);
 		}
 
 		@Override
@@ -874,7 +875,7 @@ public class RPCProtocol implements Protocol {
 					.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 					.header(Headers.RESPONSE_KEY, responseKey)
 					.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.REGULAR_ITEM)
-					.header(Headers.SUBSCRIPTION_RESULT_ITEM_ID, itemIdGenerator.next())
+					.header(Headers.SUBSCRIPTION_RESULT_ORDER_ID, orderIdGenerator.next())
 					.build();
 
 			byte[] content = serializeObject(item);
@@ -890,8 +891,9 @@ public class RPCProtocol implements Protocol {
 			Headers headers = Headers.builder()
 					.header(Headers.DESTINATION_ID, destinationId)
 					.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
-					.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.REGULAR_ERROR)
 					.header(Headers.RESPONSE_KEY, responseKey)
+					.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.REGULAR_ERROR)
+					.header(Headers.SUBSCRIPTION_RESULT_ORDER_ID, orderIdGenerator.next())
 					.build();
 
 			byte[] content = exceptionStacktraceToBytes(throwable);
@@ -908,8 +910,9 @@ public class RPCProtocol implements Protocol {
 				Headers headers = Headers.builder()
 						.header(Headers.DESTINATION_ID, destinationId)
 						.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
-						.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.SUBSCRIPTION_COMPLETED)
 						.header(Headers.RESPONSE_KEY, responseKey)
+						.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.SUBSCRIPTION_COMPLETED)
+						.header(Headers.SUBSCRIPTION_RESULT_ORDER_ID, orderIdGenerator.next())
 						.contentType(ContentType.BINARY)
 						.build();
 

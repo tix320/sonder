@@ -12,29 +12,31 @@ import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
  */
 public final class RemoteSubscriptionPublisher {
 
+	private final Object completeObject = new Object();
+
 	private final Publisher<Object> itemsPublisher;
 
 	private final OriginMethod originMethod;
 
 	private final TreeMap<Long, Tuple<Boolean, Object>> itemsBuffer;
 
-	private long lastPublishedObjectId;
+	private long lastOrderId;
 
 	public RemoteSubscriptionPublisher(Publisher<Object> itemsPublisher, OriginMethod originMethod) {
 		this.itemsPublisher = itemsPublisher;
 		this.originMethod = originMethod;
 		this.itemsBuffer = new TreeMap<>();
-		this.lastPublishedObjectId = 0;
+		this.lastOrderId = 0;
 	}
 
-	public synchronized void publish(long objectId, boolean isNormal, Object item) {
-		if (objectId == lastPublishedObjectId + 1) {
+	public synchronized void publish(long orderId, boolean isNormal, Object item) {
+		if (orderId == lastOrderId + 1) {
 			publish(item, isNormal);
-			lastPublishedObjectId = objectId;
+			lastOrderId = orderId;
 			checkBuffer();
 		}
 		else {
-			itemsBuffer.put(objectId, new Tuple<>(isNormal, item));
+			itemsBuffer.put(orderId, new Tuple<>(isNormal, item));
 		}
 	}
 
@@ -42,15 +44,26 @@ public final class RemoteSubscriptionPublisher {
 		itemsPublisher.publishError(throwable);
 	}
 
-	public synchronized void complete() {
-		itemsPublisher.complete();
+	public synchronized void complete(long orderId) {
+		if (orderId == lastOrderId + 1) {
+			itemsPublisher.complete();
+			lastOrderId = orderId;
+		}
+		else {
+			itemsBuffer.put(orderId, new Tuple<>(true, completeObject));
+		}
 	}
 
 	private void checkBuffer() {
 		Long objectId;
-		while (!itemsBuffer.isEmpty() && (objectId = itemsBuffer.firstKey()) == lastPublishedObjectId + 1) {
+		while (!itemsBuffer.isEmpty() && (objectId = itemsBuffer.firstKey()) == lastOrderId + 1) {
 			Tuple<Boolean, Object> tuple = itemsBuffer.pollFirstEntry().getValue();
-			publish(objectId, tuple.first(), tuple.second());
+			Object object = tuple.second();
+			if (object == completeObject) {
+				itemsPublisher.complete();
+				break;
+			}
+			publish(objectId, tuple.first(), object);
 		}
 	}
 

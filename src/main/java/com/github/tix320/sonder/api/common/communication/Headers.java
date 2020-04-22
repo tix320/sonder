@@ -190,7 +190,7 @@ public final class Headers implements Serializable {
 	public static final String NEED_RESPONSE = "need-response";
 	public static final String CONTENT_TYPE = "content-type";
 	public static final String SUBSCRIPTION_ACTION_TYPE = "subscription-action-type";
-	public static final String SUBSCRIPTION_RESULT_ITEM_ID = "subscription_result_item_id";
+	public static final String SUBSCRIPTION_RESULT_ORDER_ID = "subscription_result_order_id";
 
 	//	-------------------- Topic protocol headers
 	public static final String TOPIC = "topic";
@@ -203,8 +203,7 @@ public final class Headers implements Serializable {
 		}
 
 		@Override
-		public void serialize(Headers headers, JsonGenerator gen, SerializerProvider provider)
-				throws IOException {
+		public void serialize(Headers headers, JsonGenerator gen, SerializerProvider provider) throws IOException {
 			gen.writeStartObject();
 			for (Map.Entry<String, Object> entry : headers.values.entrySet()) {
 				Object value = entry.getValue();
@@ -226,8 +225,7 @@ public final class Headers implements Serializable {
 		}
 
 		@Override
-		public Headers deserialize(JsonParser p, DeserializationContext ctxt)
-				throws IOException {
+		public Headers deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
 			JsonNode node = p.getCodec().readTree(p);
 
 			if (!(node instanceof ObjectNode)) {
