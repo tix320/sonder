@@ -1,8 +1,6 @@
 package com.github.tix320.sonder.internal.common.rpc.protocol;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -439,8 +437,8 @@ public class RPCProtocol implements Protocol {
 				}
 				else {
 					byte[] content = Try.supplyOrRethrow(transfer.channel()::readAll);
-					String stacktrace = new String(content);
-					Throwable error = new RPCRemoteException(stacktrace);
+					String errors = new String(content);
+					Throwable error = new RPCRemoteException(errors);
 					remoteSubscriptionPublisher.publish(orderId, false, error);
 				}
 
@@ -549,7 +547,7 @@ public class RPCProtocol implements Protocol {
 			argsNode = JSON_MAPPER.readValue(content, ArrayNode.class);
 		}
 		catch (IOException e) {
-			onIncompatibilityRequestAndMethod(headers, exceptionStacktraceToBytes(e));
+			onIncompatibilityRequestAndMethod(headers, exceptionMessagesToString(e).getBytes());
 			throw new RPCProtocolException("Cannot parse bytes to ArrayNode", e);
 		}
 
@@ -561,7 +559,7 @@ public class RPCProtocol implements Protocol {
 				simpleArgs[i] = JSON_MAPPER.convertValue(argNode, param.getType());
 			}
 			catch (IllegalArgumentException e) {
-				onIncompatibilityRequestAndMethod(headers, exceptionStacktraceToBytes(e));
+				onIncompatibilityRequestAndMethod(headers, exceptionMessagesToString(e).getBytes());
 				throw new RPCProtocolException(
 						String.format("Fail to build object of type `%s` from json %s", param.getType(),
 								argsNode.toPrettyString()), e);
@@ -671,7 +669,6 @@ public class RPCProtocol implements Protocol {
 
 	private void onIncompatibilityRequestAndMethod(Headers headers, byte[] content) {
 		try {
-
 			Headers errorHeaders = Headers.builder()
 					.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
 					.header(Headers.RESPONSE_KEY, headers.getLong(Headers.RESPONSE_KEY))
@@ -695,7 +692,7 @@ public class RPCProtocol implements Protocol {
 					.header(Headers.PATH, headers.getNonNullString(Headers.PATH))
 					.build();
 
-			byte[] content = exceptionStacktraceToBytes(exception);
+			byte[] content = exceptionMessagesToString(exception).getBytes();
 
 			sendErrorResult(errorHeaders, content);
 		}
@@ -735,10 +732,15 @@ public class RPCProtocol implements Protocol {
 		}
 	}
 
-	private static byte[] exceptionStacktraceToBytes(Throwable e) {
-		ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
-		e.printStackTrace(new PrintStream(byteStream));
-		return byteStream.toByteArray();
+	private static String exceptionMessagesToString(Throwable e) {
+		StringJoiner errorsBuilder = new StringJoiner("\nCaused by: ");
+		while (e != null) {
+			String message = e.getClass().getName() + ": " + e.getMessage();
+			errorsBuilder.add(message);
+			e = e.getCause();
+		}
+
+		return errorsBuilder.toString();
 	}
 
 	private static Object[] mergeArrays(Object[] array1, Object[] array2) {
@@ -897,7 +899,7 @@ public class RPCProtocol implements Protocol {
 					.header(Headers.SUBSCRIPTION_RESULT_ORDER_ID, orderIdGenerator.next())
 					.build();
 
-			byte[] content = exceptionStacktraceToBytes(throwable);
+			byte[] content = exceptionMessagesToString(throwable).getBytes();
 			Transfer transferToSend = new StaticTransfer(headers, content);
 
 			outgoingRequests.publish(transferToSend);
