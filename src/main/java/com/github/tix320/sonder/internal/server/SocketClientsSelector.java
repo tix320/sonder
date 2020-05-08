@@ -102,8 +102,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 	}
 
 	@Override
-	public void close()
-			throws IOException {
+	public void close() throws IOException {
 		incomingRequests.complete();
 		selector.close();
 	}
@@ -169,8 +168,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		}).start();
 	}
 
-	private void accept()
-			throws IOException {
+	private void accept() throws IOException {
 		SocketChannel clientChannel = serverChannel.accept();
 		clientChannel.configureBlocking(false);
 		long clientId = clientIdGenerator.next();
@@ -186,8 +184,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		Threads.runAsync(() -> eventDispatcher.fire(new NewClientConnectionEvent(clientId)));
 	}
 
-	private void read(Client client)
-			throws InvalidPackException, IOException {
+	private void read(Client client) throws InvalidPackException, IOException {
 		PackChannel channel = client.channel;
 		try {
 			channel.read();
@@ -198,8 +195,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		}
 	}
 
-	private void write(Client client)
-			throws IOException {
+	private void write(Client client) throws IOException {
 		PackChannel channel = client.channel;
 
 		Queue<Pack> queue = client.packsForSend;
@@ -216,9 +212,11 @@ public final class SocketClientsSelector implements ClientsSelector {
 		}
 	}
 
-	private void closeClientConnection(Client client)
-			throws IOException {
+	private void closeClientConnection(Client client) throws IOException {
 		try {
+			if (!client.isConnected) {
+				return;
+			}
 			PackChannel packChannel = client.channel;
 			client.isConnected = false;
 			if (packChannel.isOpen()) {

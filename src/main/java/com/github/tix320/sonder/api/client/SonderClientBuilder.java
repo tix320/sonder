@@ -31,7 +31,7 @@ public final class SonderClientBuilder {
 
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private SonderEventDispatcher<SonderClientEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
+	private final SonderEventDispatcher<SonderClientEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
 
 	SonderClientBuilder(InetSocketAddress inetSocketAddress) {
 		if (inetSocketAddress.getAddress().isAnyLocalAddress()) {

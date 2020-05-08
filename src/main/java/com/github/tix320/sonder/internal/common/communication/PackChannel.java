@@ -12,7 +12,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -53,17 +52,17 @@ public final class PackChannel implements Closeable {
 
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private final AtomicReference<ScheduledFuture<?>> headersTimeout;
-
-	private final AtomicReference<ByteBuffer> headersBuffer;
-
 	private final Publisher<Pack> packs;
 
 	private final AtomicReference<State> state;
 
-	private final AtomicLong contentLength;
+	private ScheduledFuture<?> headersTimeout;
 
-	private final AtomicReference<CertainReadableByteChannel> currentContentChannel;
+	private ByteBuffer headersBuffer;
+
+	private long contentLength;
+
+	private CertainReadableByteChannel currentContentChannel;
 
 	private final Lock readLock = new ReentrantLock();
 	private final Lock writeLock = new ReentrantLock();
@@ -71,21 +70,20 @@ public final class PackChannel implements Closeable {
 	public PackChannel(ByteChannel channel, Duration headersTimeoutDuration,
 					   LongFunction<Duration> contentTimeoutDurationFactory) {
 		this.channel = channel;
-		this.protocolHeaderBuffer = ByteBuffer.allocate(PROTOCOL_HEADER_BYTES.length);
-		this.headersLengthBuffer = ByteBuffer.allocate(HEADERS_LENGTH_BYTES);
-		this.contentLengthBuffer = ByteBuffer.allocate(CONTENT_LENGTH_BYTES);
+		this.protocolHeaderBuffer = ByteBuffer.allocateDirect(PROTOCOL_HEADER_BYTES.length);
+		this.headersLengthBuffer = ByteBuffer.allocateDirect(HEADERS_LENGTH_BYTES);
+		this.contentLengthBuffer = ByteBuffer.allocateDirect(CONTENT_LENGTH_BYTES);
 		this.headersTimeoutDuration = headersTimeoutDuration;
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
-		this.headersBuffer = new AtomicReference<>(null);
+		this.headersBuffer = null;
 		this.packs = Publisher.simple();
 		this.state = new AtomicReference<>(State.PROTOCOL_HEADER);
-		this.headersTimeout = new AtomicReference<>(null);
-		this.contentLength = new AtomicLong(0);
-		this.currentContentChannel = new AtomicReference<>(null);
+		this.headersTimeout = null;
+		this.contentLength = 0;
+		this.currentContentChannel = EmptyReadableByteChannel.SELF;
 	}
 
-	public void write(Pack pack)
-			throws IOException {
+	public void write(Pack pack) throws IOException {
 		writeLock.lock();
 		try {
 			long contentLength = pack.channel().getContentLength();
@@ -101,26 +99,22 @@ public final class PackChannel implements Closeable {
 	 * @throws IOException          If any I/O error occurs
 	 * @throws InvalidPackException If invalid pack is consumed
 	 */
-	public void read()
-			throws IOException, InvalidPackException {
+	public void read() throws IOException, InvalidPackException {
+		if (state.get() == State.last()) {
+			return;
+		}
 		readLock.lock();
 		try {
-
-			if (state.get() == State.last()) {
-				return;
-			}
-
-			try {
-				consume();
-			}
-			catch (Exception e) {
-				resetWithContent();
-				throw e;
-			}
-			catch (Throwable e) {
-				close();
-				throw new IllegalStateException("Error occurs while consuming pack", e);
-			}
+			consume();
+		}
+		catch (Exception e) {
+			reset();
+			Try.run(currentContentChannel::readRemainingInVain).onFailure(Throwable::printStackTrace);
+			throw e;
+		}
+		catch (Throwable e) {
+			close();
+			throw new IllegalStateException("Error occurs while consuming pack", e);
 		}
 		finally {
 			readLock.unlock();
@@ -136,15 +130,13 @@ public final class PackChannel implements Closeable {
 	}
 
 	@Override
-	public void close()
-			throws IOException {
+	public void close() throws IOException {
 		packs.complete();
 		channel.close();
 	}
 
 
-	private void writeHeaders(byte[] headers, long contentLength)
-			throws IOException {
+	private void writeHeaders(byte[] headers, long contentLength) throws IOException {
 		int headersLength = headers.length;
 
 		ByteBuffer headersWriteBuffer = ByteBuffer.allocate(
@@ -161,8 +153,7 @@ public final class PackChannel implements Closeable {
 		}
 	}
 
-	private void writeContent(ReadableByteChannel contentChannel, long contentLength)
-			throws IOException {
+	private void writeContent(ReadableByteChannel contentChannel, long contentLength) throws IOException {
 		int capacity = 1024 * 64;
 		ByteBuffer contentWriteBuffer = ByteBuffer.allocate(capacity);
 
@@ -185,19 +176,15 @@ public final class PackChannel implements Closeable {
 		}
 	}
 
-	private void consume()
-			throws IOException, InvalidPackException {
+	private void consume() throws IOException, InvalidPackException {
 		cycle:
 		while (true) {
 			State state = this.state.get();
 			switch (state) {
 				case PROTOCOL_HEADER:
-					int read = channel.read(protocolHeaderBuffer);
-					if (read == -1) {
-						close();
-						throw new ClosedChannelException();
-					}
-					headersTimeout.set(scheduleHeadersTimeout());
+					readToBuffer(protocolHeaderBuffer);
+
+					headersTimeout = scheduleHeadersTimeout();
 
 					if (protocolHeaderBuffer.hasRemaining()) {
 						break cycle;
@@ -212,11 +199,7 @@ public final class PackChannel implements Closeable {
 					this.state.updateAndGet(State::next);
 					break;
 				case HEADERS_LENGTH:
-					read = channel.read(headersLengthBuffer);
-					if (read == -1) {
-						close();
-						throw new ClosedChannelException();
-					}
+					readToBuffer(headersLengthBuffer);
 
 					if (headersLengthBuffer.hasRemaining()) {
 						break cycle;
@@ -229,14 +212,10 @@ public final class PackChannel implements Closeable {
 					}
 
 					this.state.updateAndGet(State::next);
-					headersBuffer.set(ByteBuffer.allocate(headersLength));
+					headersBuffer = ByteBuffer.allocate(headersLength);
 					break;
 				case CONTENT_LENGTH:
-					read = channel.read(contentLengthBuffer);
-					if (read == -1) {
-						close();
-						throw new ClosedChannelException();
-					}
+					readToBuffer(contentLengthBuffer);
 
 					if (contentLengthBuffer.hasRemaining()) {
 						break cycle;
@@ -244,7 +223,7 @@ public final class PackChannel implements Closeable {
 
 					contentLengthBuffer.flip();
 					long contentLength = contentLengthBuffer.getLong();
-					this.contentLength.set(contentLength);
+					this.contentLength = contentLength;
 					if (contentLength < 0) {
 						throw new InvalidPackException(String.format("Invalid content length: %s", contentLength));
 					}
@@ -252,27 +231,22 @@ public final class PackChannel implements Closeable {
 					this.state.updateAndGet(State::next);
 					break;
 				case HEADERS:
-					ByteBuffer buffer = headersBuffer.get();
-					read = channel.read(buffer);
-					if (read == -1) {
-						close();
-						throw new ClosedChannelException();
-					}
+					ByteBuffer buffer = headersBuffer;
+					readToBuffer(buffer);
 
 					if (buffer.hasRemaining()) {
 						break cycle;
 					}
 
-					headersTimeout.get().cancel(false);
+					headersTimeout.cancel(false);
 					byte[] headers = buffer.array();
 
 					this.state.updateAndGet(State::next);
-					constructPack(headers, this.contentLength.get());
+					constructPack(headers, this.contentLength);
 					break cycle;
 				default:
 					throw new IllegalStateException(state.name());
 			}
-
 		}
 	}
 
@@ -286,12 +260,18 @@ public final class PackChannel implements Closeable {
 			LimitedReadableByteChannel limitedChannel = new LimitedReadableByteChannel(this.channel, contentLength);
 			ScheduledFuture<?> contentTimeout = scheduleContentTimeout(headers, limitedChannel);
 			limitedChannel.onFinish().subscribe(none -> {
-				contentTimeout.cancel(false);
-				reset();
+				readLock.lock();
+				try {
+					contentTimeout.cancel(false);
+					reset();
+				}
+				finally {
+					readLock.unlock();
+				}
 			});
 
 			channel = limitedChannel;
-			currentContentChannel.set(limitedChannel);
+			currentContentChannel = limitedChannel;
 		}
 
 		Pack pack = new Pack(headers, channel);
@@ -302,57 +282,52 @@ public final class PackChannel implements Closeable {
 	private ScheduledFuture<?> scheduleHeadersTimeout() {
 		long delay = headersTimeoutDuration.toMillis();
 		return TIMEOUT_SCHEDULER.schedule(() -> {
-			reset();
-			new TimeoutException(String.format("Headers not received long time: %sms", delay)).printStackTrace();
+			readLock.lock();
+			try {
+				reset();
+				new TimeoutException(String.format("Headers not received long time: %sms", delay)).printStackTrace();
+			}
+			finally {
+				readLock.unlock();
+			}
 		}, delay, TimeUnit.MILLISECONDS);
 	}
 
 	private ScheduledFuture<?> scheduleContentTimeout(byte[] headers, LimitedReadableByteChannel channel) {
-		long delay = contentTimeoutDurationFactory.apply(contentLength.get()).toMillis();
+		long delay = contentTimeoutDurationFactory.apply(contentLength).toMillis();
 		return TIMEOUT_SCHEDULER.schedule(() -> {
-			channel.close();
-			reset();
-			long remaining = channel.getRemaining();
-			if (remaining != 0) {
-				String headersString = Try.supply(() -> JSON_MAPPER.readValue(headers, Headers.class).toString())
-						.getOrElse("Unknown headers");
-				new TimeoutException(String.format(
-						"The provided channel is not was fully read long time: %sms. Content length is %s, left to read %s bytes.\nHeaders: %s",
-						delay, contentLength, remaining, headersString)).printStackTrace();
+			readLock.lock();
+			try {
+				channel.close();
+				reset();
+				long remaining = channel.getRemaining();
+				if (remaining != 0) {
+					String headersString = Try.supply(() -> JSON_MAPPER.readValue(headers, Headers.class).toString())
+							.getOrElse("Unknown headers");
+					new TimeoutException(String.format(
+							"The provided channel is not was fully read long time: %sms. Content length is %s, left to read %s bytes.\nHeaders: %s",
+							delay, contentLength, remaining, headersString)).printStackTrace();
+				}
+			}
+			finally {
+				readLock.unlock();
 			}
 		}, delay, TimeUnit.MILLISECONDS);
 	}
 
 	private void reset() {
-		readLock.lock();
-		try {
-
-			state.set(State.first());
-			protocolHeaderBuffer.clear();
-			headersLengthBuffer.clear();
-			contentLengthBuffer.clear();
-			headersBuffer.set(null);
-		}
-		finally {
-			readLock.unlock();
-		}
+		state.set(State.first());
+		protocolHeaderBuffer.clear();
+		headersLengthBuffer.clear();
+		contentLengthBuffer.clear();
+		headersBuffer = null;
 	}
 
-	private void resetWithContent() {
-		readLock.lock();
-		try {
-			reset();
-			currentContentChannel.updateAndGet(channel -> {
-				if (channel != null) {
-					if (channel.getRemaining() > 0) {
-						Try.runOrRethrow(channel::readRemainingInVain);
-					}
-				}
-				return channel;
-			});
-		}
-		finally {
-			readLock.unlock();
+	private void readToBuffer(ByteBuffer byteBuffer) throws IOException {
+		int read = this.channel.read(byteBuffer);
+		if (read == -1) {
+			close();
+			throw new ClosedChannelException();
 		}
 	}
 

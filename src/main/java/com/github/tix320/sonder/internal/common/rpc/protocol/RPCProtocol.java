@@ -418,7 +418,10 @@ public class RPCProtocol implements Protocol {
 			case REGULAR_ERROR:
 				remoteSubscriptionPublisher = remoteSubscriptionPublishers.get(responseKey);
 				if (remoteSubscriptionPublisher == null) {
-					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
+					// This may happen, when we are unsubscribe from observable locally, but unsubscription still not reached to other end and he send regular value.
+					// So we are ignoring this case, just log it
+					System.err.println(String.format("Subscription not found for key %s", responseKey));
+					return;
 				}
 
 				OriginMethod originMethod = remoteSubscriptionPublisher.getOriginMethod();
