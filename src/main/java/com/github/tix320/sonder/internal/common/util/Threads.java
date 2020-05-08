@@ -1,18 +1,19 @@
 package com.github.tix320.sonder.internal.common.util;
 
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 
 public class Threads {
 
-	private static final ExecutorService EXECUTOR_SERVICE = new ThreadPoolExecutor(15, Integer.MAX_VALUE, 60L,
-			TimeUnit.SECONDS, new SynchronousQueue<>(), r -> {
-		Thread thread = new Thread(r);
-		thread.setDaemon(true);
-		return thread;
-	});
+	public static void runAsync(Runnable runnable, ExecutorService executorService) {
+		CompletableFuture.runAsync(runnable, executorService).exceptionally(throwable -> {
+			throwable.getCause().printStackTrace();
+			return null;
+		});
+	}
 
 	public static void runAsync(Runnable runnable) {
-		CompletableFuture.runAsync(runnable, EXECUTOR_SERVICE).exceptionally(throwable -> {
+		CompletableFuture.runAsync(runnable).exceptionally(throwable -> {
 			throwable.getCause().printStackTrace();
 			return null;
 		});

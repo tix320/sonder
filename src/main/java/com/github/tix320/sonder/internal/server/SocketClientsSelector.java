@@ -31,7 +31,6 @@ import com.github.tix320.sonder.internal.common.communication.InvalidPackExcepti
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
-import com.github.tix320.sonder.internal.common.util.Threads;
 import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 public final class SocketClientsSelector implements ClientsSelector {
@@ -48,20 +47,16 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final IDGenerator clientIdGenerator;
 
-	private final Duration headersTimeoutDuration;
-
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
 	private final SonderEventDispatcher<SonderServerEvent> eventDispatcher;
 
-	public SocketClientsSelector(InetSocketAddress address, Duration headersTimeoutDuration,
-								 LongFunction<Duration> contentTimeoutDurationFactory, ExecutorService workers,
-								 SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
+	public SocketClientsSelector(InetSocketAddress address, LongFunction<Duration> contentTimeoutDurationFactory,
+								 ExecutorService workers, SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
 		this.selector = Try.supplyOrRethrow(Selector::open);
 		this.incomingRequests = Publisher.simple();
 		this.clientsById = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1); // 1 is important aspect, do not touch!
-		this.headersTimeoutDuration = headersTimeoutDuration;
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 		this.workers = workers;
 		this.eventDispatcher = eventDispatcher;
@@ -172,7 +167,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		SocketChannel clientChannel = serverChannel.accept();
 		clientChannel.configureBlocking(false);
 		long clientId = clientIdGenerator.next();
-		PackChannel packChannel = new PackChannel(clientChannel, headersTimeoutDuration, contentTimeoutDurationFactory);
+		PackChannel packChannel = new PackChannel(clientChannel, contentTimeoutDurationFactory);
 
 		Client client = new Client(clientId, packChannel, new ConcurrentLinkedQueue<>(), new ReentrantLock(), true);
 
@@ -181,7 +176,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		clientsById.put(clientId, client);
 		packChannel.packs().map(pack -> new ClientPack(clientId, pack)).subscribe(incomingRequests::publish);
 
-		Threads.runAsync(() -> eventDispatcher.fire(new NewClientConnectionEvent(clientId)));
+		runAsync(() -> eventDispatcher.fire(new NewClientConnectionEvent(clientId)));
 	}
 
 	private void read(Client client) throws InvalidPackException, IOException {
@@ -224,7 +219,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 			}
 		}
 		finally {
-			Threads.runAsync(() -> eventDispatcher.fire(new ClientConnectionClosedEvent(client.id)));
+			runAsync(() -> eventDispatcher.fire(new ClientConnectionClosedEvent(client.id)));
 		}
 	}
 
@@ -234,7 +229,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 				checkedRunnable.run();
 			}
 			catch (Exception e) {
-				throw new SocketConnectionException("An error occurred while socket reading/writing", e);
+				throw new RuntimeException(e);
 			}
 		}, workers).exceptionally(throwable -> {
 			Throwable realException = throwable.getCause();

@@ -46,7 +46,6 @@ import com.github.tix320.sonder.internal.common.rpc.extra.extractor.EndpointMeth
 import com.github.tix320.sonder.internal.common.rpc.extra.extractor.OriginMethodClientIdExtractor;
 import com.github.tix320.sonder.internal.common.rpc.service.*;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
-import com.github.tix320.sonder.internal.common.util.Threads;
 import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 import static java.util.function.Function.identity;
@@ -468,7 +467,7 @@ public class RPCProtocol implements Protocol {
 		if (returnJavaType.getRawClass() == None.class) {
 			Try.runOrRethrow(transfer.channel()::readRemainingInVain);
 
-			Threads.runAsync(() -> responsePublisher.publish(None.SELF));
+			responsePublisher.publish(None.SELF);
 		}
 		else if (transfer.channel().getContentLength() == 0) {
 			throw new IllegalStateException(

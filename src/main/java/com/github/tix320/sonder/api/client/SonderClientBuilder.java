@@ -27,8 +27,6 @@ public final class SonderClientBuilder {
 
 	private final Map<String, Protocol> protocols;
 
-	private Duration headersTimeoutDuration;
-
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
 	private final SonderEventDispatcher<SonderClientEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
@@ -39,7 +37,6 @@ public final class SonderClientBuilder {
 		}
 		this.inetSocketAddress = inetSocketAddress;
 		this.protocols = new HashMap<>();
-		this.headersTimeoutDuration = Duration.ofSeconds(5);
 		this.contentTimeoutDurationFactory = contentLength -> {
 			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
 			return Duration.ofSeconds(timout);
@@ -54,7 +51,8 @@ public final class SonderClientBuilder {
 	 * @return self
 	 */
 	public SonderClientBuilder withRPCProtocol(Consumer<RPCProtocolBuilder> protocolBuilder) {
-		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder(ProtocolOrientation.CLIENT, sonderEventDispatcher);
+		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder(ProtocolOrientation.CLIENT,
+				sonderEventDispatcher);
 		protocolBuilder.accept(rpcProtocolBuilder);
 		RPCProtocol protocol = rpcProtocolBuilder.build();
 		protocols.put(protocol.getName(), protocol);
@@ -69,21 +67,6 @@ public final class SonderClientBuilder {
 	public SonderClientBuilder withTopicProtocol() {
 		ClientTopicProtocol protocol = new ClientTopicProtocol();
 		protocols.put(protocol.getName(), protocol);
-		return this;
-	}
-
-	/**
-	 * Set timeout for transfer {@link Transfer} headers receiving.
-	 * If headers will not fully received in this duration, then transferring will be reset.
-	 *
-	 * @param duration timeout to set
-	 *
-	 * @return self
-	 *
-	 * @see Transfer
-	 */
-	public SonderClientBuilder headersTimeoutDuration(Duration duration) {
-		headersTimeoutDuration = duration;
 		return this;
 	}
 
@@ -109,7 +92,7 @@ public final class SonderClientBuilder {
 	 */
 	public SonderClient build() {
 		return new SonderClient(
-				new SocketServerConnection(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory,
-						sonderEventDispatcher), protocols, sonderEventDispatcher);
+				new SocketServerConnection(inetSocketAddress, contentTimeoutDurationFactory, sonderEventDispatcher),
+				protocols, sonderEventDispatcher);
 	}
 }

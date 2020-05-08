@@ -20,7 +20,6 @@ import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.topic.TopicAction;
-import com.github.tix320.sonder.internal.common.util.Threads;
 
 /**
  * Topic protocol implementation, which stores topics for communicating with other clients without using server directly.
@@ -62,8 +61,7 @@ public class ClientTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void handleIncomingTransfer(Transfer transfer)
-			throws IOException {
+	public void handleIncomingTransfer(Transfer transfer) throws IOException {
 		try {
 			Headers headers = transfer.getHeaders();
 
@@ -83,7 +81,7 @@ public class ClientTopicProtocol implements Protocol {
 					TypeReference<?> dataType = dataTypesByTopic.get(topic);
 					Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
 					try {
-						Threads.runAsync(() -> publisher.publish(contentObject));
+						publisher.publish(contentObject);
 					}
 					catch (IllegalArgumentException e) {
 						throw new IllegalStateException(String.format(
@@ -97,7 +95,7 @@ public class ClientTopicProtocol implements Protocol {
 					if (responsePublisher == null) {
 						throw new IllegalStateException("Invalid transfer key");
 					}
-					Threads.runAsync(() -> responsePublisher.publish(None.SELF));
+					responsePublisher.publish(None.SELF);
 					break;
 				default:
 					throw new IllegalStateException();

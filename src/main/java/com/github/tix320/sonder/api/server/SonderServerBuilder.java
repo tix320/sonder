@@ -29,19 +29,15 @@ public final class SonderServerBuilder {
 
 	private final Map<String, Protocol> protocols;
 
-	private Duration headersTimeoutDuration;
-
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
 	private ExecutorService workers;
 
-	private SonderEventDispatcher<SonderServerEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
+	private final SonderEventDispatcher<SonderServerEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
 
 	public SonderServerBuilder(InetSocketAddress inetSocketAddress) {
 		this.inetSocketAddress = inetSocketAddress;
 		this.protocols = new HashMap<>();
-		this.headersTimeoutDuration = Duration.ofSeconds(Integer.MAX_VALUE);
-		this.headersTimeoutDuration = Duration.ofSeconds(5);
 		this.contentTimeoutDurationFactory = contentLength -> {
 			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
 			return Duration.ofSeconds(timout);
@@ -73,21 +69,6 @@ public final class SonderServerBuilder {
 	public SonderServerBuilder withTopicProtocol() {
 		ServerTopicProtocol protocol = new ServerTopicProtocol();
 		protocols.put(protocol.getName(), protocol);
-		return this;
-	}
-
-	/**
-	 * Set timeout for transfer {@link Transfer} headers receiving.
-	 * If headers will not fully received in this duration, then transferring will be reset.
-	 *
-	 * @param duration timeout to set
-	 *
-	 * @return self
-	 *
-	 * @see Transfer
-	 */
-	public SonderServerBuilder headersTimeoutDuration(Duration duration) {
-		headersTimeoutDuration = duration;
 		return this;
 	}
 
@@ -125,8 +106,7 @@ public final class SonderServerBuilder {
 	 * @return server instance.
 	 */
 	public SonderServer build() {
-		return new SonderServer(
-				new SocketClientsSelector(inetSocketAddress, headersTimeoutDuration, contentTimeoutDurationFactory,
-						workers, sonderEventDispatcher), protocols, sonderEventDispatcher);
+		return new SonderServer(new SocketClientsSelector(inetSocketAddress, contentTimeoutDurationFactory, workers,
+				sonderEventDispatcher), protocols, sonderEventDispatcher);
 	}
 }

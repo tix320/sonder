@@ -23,13 +23,11 @@ public class SocketServerConnection implements ServerConnection {
 
 	private final SonderEventDispatcher<SonderClientEvent> eventDispatcher;
 
-	public SocketServerConnection(InetSocketAddress address, Duration headersTimeoutDuration,
-								  LongFunction<Duration> contentTimeoutDurationFactory,
+	public SocketServerConnection(InetSocketAddress address, LongFunction<Duration> contentTimeoutDurationFactory,
 								  SonderEventDispatcher<SonderClientEvent> eventDispatcher) {
 		this.eventDispatcher = eventDispatcher;
 		try {
-			this.channel = new PackChannel(SocketChannel.open(address), headersTimeoutDuration,
-					contentTimeoutDurationFactory);
+			this.channel = new PackChannel(SocketChannel.open(address), contentTimeoutDurationFactory);
 			Threads.runAsync(() -> eventDispatcher.fire(new ConnectionEstablishedEvent()));
 		}
 		catch (IOException e) {
@@ -66,8 +64,7 @@ public class SocketServerConnection implements ServerConnection {
 	}
 
 	@Override
-	public void close()
-			throws IOException {
+	public void close() throws IOException {
 		channel.close();
 	}
 

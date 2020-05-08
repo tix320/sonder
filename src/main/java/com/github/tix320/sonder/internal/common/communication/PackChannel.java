@@ -8,10 +8,6 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ReadableByteChannel;
 import java.time.Duration;
 import java.util.Arrays;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -37,9 +33,6 @@ public final class PackChannel implements Closeable {
 
 	private static final int CONTENT_LENGTH_BYTES = 8;
 
-	private static final ScheduledExecutorService TIMEOUT_SCHEDULER = Executors.newScheduledThreadPool(3,
-			PackChannel::daemonThread);
-
 	private final ByteChannel channel;
 
 	private final ByteBuffer protocolHeaderBuffer;
@@ -48,39 +41,29 @@ public final class PackChannel implements Closeable {
 
 	private final ByteBuffer contentLengthBuffer;
 
-	private final Duration headersTimeoutDuration;
-
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
 	private final Publisher<Pack> packs;
 
 	private final AtomicReference<State> state;
 
-	private ScheduledFuture<?> headersTimeout;
-
 	private ByteBuffer headersBuffer;
 
 	private long contentLength;
 
-	private CertainReadableByteChannel currentContentChannel;
-
 	private final Lock readLock = new ReentrantLock();
 	private final Lock writeLock = new ReentrantLock();
 
-	public PackChannel(ByteChannel channel, Duration headersTimeoutDuration,
-					   LongFunction<Duration> contentTimeoutDurationFactory) {
+	public PackChannel(ByteChannel channel, LongFunction<Duration> contentTimeoutDurationFactory) {
 		this.channel = channel;
 		this.protocolHeaderBuffer = ByteBuffer.allocateDirect(PROTOCOL_HEADER_BYTES.length);
 		this.headersLengthBuffer = ByteBuffer.allocateDirect(HEADERS_LENGTH_BYTES);
 		this.contentLengthBuffer = ByteBuffer.allocateDirect(CONTENT_LENGTH_BYTES);
-		this.headersTimeoutDuration = headersTimeoutDuration;
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 		this.headersBuffer = null;
 		this.packs = Publisher.simple();
 		this.state = new AtomicReference<>(State.PROTOCOL_HEADER);
-		this.headersTimeout = null;
 		this.contentLength = 0;
-		this.currentContentChannel = EmptyReadableByteChannel.SELF;
 	}
 
 	public void write(Pack pack) throws IOException {
@@ -107,9 +90,11 @@ public final class PackChannel implements Closeable {
 		try {
 			consume();
 		}
-		catch (Exception e) {
-			reset();
-			Try.run(currentContentChannel::readRemainingInVain).onFailure(Throwable::printStackTrace);
+		catch (InvalidPackException e) {
+			e.printStackTrace();
+		}
+		catch (IOException e) {
+			close();
 			throw e;
 		}
 		catch (Throwable e) {
@@ -184,16 +169,17 @@ public final class PackChannel implements Closeable {
 				case PROTOCOL_HEADER:
 					readToBuffer(protocolHeaderBuffer);
 
-					headersTimeout = scheduleHeadersTimeout();
-
 					if (protocolHeaderBuffer.hasRemaining()) {
 						break cycle;
 					}
 
-					boolean isHeader = isHeader(protocolHeaderBuffer.array());
+					protocolHeaderBuffer.flip();
+					boolean isHeader = isHeader(protocolHeaderBuffer);
 					if (!isHeader) {
-						throw new InvalidPackException(String.format("Invalid protocol header %s",
-								Arrays.toString(protocolHeaderBuffer.array())));
+						byte[] bytes = new byte[8];
+						protocolHeaderBuffer.get(bytes);
+						throw new InvalidPackException(
+								String.format("Invalid protocol header %s", Arrays.toString(bytes)));
 					}
 
 					this.state.updateAndGet(State::next);
@@ -238,7 +224,6 @@ public final class PackChannel implements Closeable {
 						break cycle;
 					}
 
-					headersTimeout.cancel(false);
 					byte[] headers = buffer.array();
 
 					this.state.updateAndGet(State::next);
@@ -251,68 +236,41 @@ public final class PackChannel implements Closeable {
 	}
 
 	private void constructPack(byte[] headers, long contentLength) {
-		CertainReadableByteChannel channel;
 		if (contentLength == 0) {
-			channel = EmptyReadableByteChannel.SELF;
 			reset();
+
+			CertainReadableByteChannel channel = EmptyReadableByteChannel.SELF;
+			Pack pack = new Pack(headers, channel);
+			Threads.runAsync(() -> packs.publish(pack));
 		}
 		else {
 			LimitedReadableByteChannel limitedChannel = new LimitedReadableByteChannel(this.channel, contentLength);
-			ScheduledFuture<?> contentTimeout = scheduleContentTimeout(headers, limitedChannel);
-			limitedChannel.onFinish().subscribe(none -> {
-				readLock.lock();
-				try {
-					contentTimeout.cancel(false);
-					reset();
-				}
-				finally {
-					readLock.unlock();
-				}
-			});
 
-			channel = limitedChannel;
-			currentContentChannel = limitedChannel;
-		}
+			Duration timeoutDuration = contentTimeoutDurationFactory.apply(contentLength);
 
-		Pack pack = new Pack(headers, channel);
+			Pack pack = new Pack(headers, limitedChannel);
+			Threads.runAsync(() -> packs.publish(pack));
 
-		Threads.runAsync(() -> packs.publish(pack));
-	}
-
-	private ScheduledFuture<?> scheduleHeadersTimeout() {
-		long delay = headersTimeoutDuration.toMillis();
-		return TIMEOUT_SCHEDULER.schedule(() -> {
-			readLock.lock();
 			try {
+				limitedChannel.onFinish().get(timeoutDuration);
 				reset();
-				new TimeoutException(String.format("Headers not received long time: %sms", delay)).printStackTrace();
 			}
-			finally {
-				readLock.unlock();
+			catch (InterruptedException e) {
+				throw new IllegalStateException(e);
 			}
-		}, delay, TimeUnit.MILLISECONDS);
-	}
-
-	private ScheduledFuture<?> scheduleContentTimeout(byte[] headers, LimitedReadableByteChannel channel) {
-		long delay = contentTimeoutDurationFactory.apply(contentLength).toMillis();
-		return TIMEOUT_SCHEDULER.schedule(() -> {
-			readLock.lock();
-			try {
-				channel.close();
+			catch (com.github.tix320.kiwi.api.reactive.observable.TimeoutException e) {
+				limitedChannel.close();
 				reset();
-				long remaining = channel.getRemaining();
+				long remaining = limitedChannel.getRemaining();
 				if (remaining != 0) {
 					String headersString = Try.supply(() -> JSON_MAPPER.readValue(headers, Headers.class).toString())
 							.getOrElse("Unknown headers");
 					new TimeoutException(String.format(
 							"The provided channel is not was fully read long time: %sms. Content length is %s, left to read %s bytes.\nHeaders: %s",
-							delay, contentLength, remaining, headersString)).printStackTrace();
+							timeoutDuration.toMillis(), contentLength, remaining, headersString)).printStackTrace();
 				}
 			}
-			finally {
-				readLock.unlock();
-			}
-		}, delay, TimeUnit.MILLISECONDS);
+		}
 	}
 
 	private void reset() {
@@ -331,21 +289,18 @@ public final class PackChannel implements Closeable {
 		}
 	}
 
-	private static boolean isHeader(byte[] array) {
+	private static boolean isHeader(ByteBuffer buffer) {
 		int end = PROTOCOL_HEADER_BYTES.length;
 		int index = 0;
 		for (int i = 0; i < end; i++) {
-			if (array[i] != PROTOCOL_HEADER_BYTES[index++]) {
+			if (buffer.get() != PROTOCOL_HEADER_BYTES[index++]) {
+				buffer.flip();
 				return false;
 			}
 		}
-		return true;
-	}
 
-	private static Thread daemonThread(Runnable runnable) {
-		Thread thread = new Thread(runnable);
-		thread.setDaemon(true);
-		return thread;
+		buffer.flip();
+		return true;
 	}
 
 	private enum State {
