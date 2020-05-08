@@ -4,8 +4,6 @@ import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
@@ -31,7 +29,7 @@ public final class SonderServerBuilder {
 
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private ExecutorService workers;
+	private int workersCoreCount;
 
 	private final SonderEventDispatcher<SonderServerEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
 
@@ -42,7 +40,7 @@ public final class SonderServerBuilder {
 			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
 			return Duration.ofSeconds(timout);
 		};
-		this.workers = Executors.newCachedThreadPool();
+		this.workersCoreCount = Runtime.getRuntime().availableProcessors();
 	}
 
 	/**
@@ -88,15 +86,14 @@ public final class SonderServerBuilder {
 	}
 
 	/**
-	 * Set maximum count of threads, which will be used for handling clients transfers.
-	 * If not set, then {@link Executors#newCachedThreadPool()}  will be used.
+	 * Set core count of threads, which will be used for handling clients transfers.
 	 *
-	 * @param count max threads count
+	 * @param count core threads count
 	 *
 	 * @return self
 	 */
-	public SonderServerBuilder workersCount(int count) {
-		workers = Executors.newFixedThreadPool(count);
+	public SonderServerBuilder workersCoreCount(int count) {
+		workersCoreCount = count;
 		return this;
 	}
 
@@ -106,7 +103,8 @@ public final class SonderServerBuilder {
 	 * @return server instance.
 	 */
 	public SonderServer build() {
-		return new SonderServer(new SocketClientsSelector(inetSocketAddress, contentTimeoutDurationFactory, workers,
-				sonderEventDispatcher), protocols, sonderEventDispatcher);
+		return new SonderServer(
+				new SocketClientsSelector(inetSocketAddress, contentTimeoutDurationFactory, workersCoreCount,
+						sonderEventDispatcher), protocols, sonderEventDispatcher);
 	}
 }

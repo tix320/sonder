@@ -11,10 +11,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongFunction;
@@ -24,6 +21,7 @@ import com.github.tix320.kiwi.api.function.CheckedRunnable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
+import com.github.tix320.kiwi.api.util.Threads;
 import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
 import com.github.tix320.sonder.api.server.event.NewClientConnectionEvent;
 import com.github.tix320.sonder.api.server.event.SonderServerEvent;
@@ -52,13 +50,14 @@ public final class SocketClientsSelector implements ClientsSelector {
 	private final SonderEventDispatcher<SonderServerEvent> eventDispatcher;
 
 	public SocketClientsSelector(InetSocketAddress address, LongFunction<Duration> contentTimeoutDurationFactory,
-								 ExecutorService workers, SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
+								 int workersCoreCount, SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
 		this.selector = Try.supplyOrRethrow(Selector::open);
 		this.incomingRequests = Publisher.simple();
 		this.clientsById = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1); // 1 is important aspect, do not touch!
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
-		this.workers = workers;
+		this.workers = new ThreadPoolExecutor(workersCoreCount, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
+				new SynchronousQueue<>(), Threads::daemon);
 		this.eventDispatcher = eventDispatcher;
 
 		try {
