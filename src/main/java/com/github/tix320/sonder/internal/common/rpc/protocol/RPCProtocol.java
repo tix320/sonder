@@ -1,12 +1,10 @@
 package com.github.tix320.sonder.internal.common.rpc.protocol;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.nio.channels.Channels;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
@@ -436,7 +434,7 @@ public class RPCProtocol implements Protocol {
 
 				if (subscriptionActionType == SubscriptionActionType.REGULAR_ITEM) {
 					JavaType returnJavaType = originMethod.getReturnJavaType();
-					Object value = deserializeObject(transfer.channel(), returnJavaType);
+					Object value = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
 					remoteSubscriptionPublisher.publish(orderId, true, value);
 				}
 				else {
@@ -484,7 +482,7 @@ public class RPCProtocol implements Protocol {
 					result = Try.supplyOrRethrow(transfer.channel()::readAll);
 					break;
 				case JSON:
-					result = deserializeObject(transfer.channel(), returnJavaType);
+					result = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
 					break;
 				case TRANSFER:
 					result = transfer;
@@ -765,10 +763,9 @@ public class RPCProtocol implements Protocol {
 		}
 	}
 
-	private static Object deserializeObject(CertainReadableByteChannel channel, JavaType expectedType) {
-		InputStream inputStream = Channels.newInputStream(channel);
+	private static Object deserializeObject(byte[] bytes, JavaType expectedType) {
 		try {
-			return JSON_MAPPER.readValue(inputStream, expectedType);
+			return JSON_MAPPER.readValue(bytes, expectedType);
 		}
 		catch (IOException e) {
 			throw new IncompatibleTypeException(String.format("Expected type %s cannot deserialized from given bytes",
