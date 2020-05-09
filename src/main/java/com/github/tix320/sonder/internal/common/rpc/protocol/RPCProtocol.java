@@ -153,9 +153,10 @@ public class RPCProtocol implements Protocol {
 					throw new IllegalStateException();
 			}
 		}
-		finally {
+		catch (Exception e) {
 			CertainReadableByteChannel channel = transfer.channel();
 			channel.readRemainingInVain();
+			channel.close();
 		}
 	}
 
@@ -529,8 +530,8 @@ public class RPCProtocol implements Protocol {
 					"The content type is %s. Consequently endpoint method %s(%s) must have only one parameter with type byte[]",
 					ContentType.BINARY.name(), endpointMethod.getRawMethod().getName(),
 					endpointMethod.getRawClass().getName());
-			onIncompatibilityRequestAndMethod(headers,
-					Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(errorMessage)));
+			onIncompatibilityRequestAndMethod(headers, Try.supply(() -> JSON_MAPPER.writeValueAsBytes(errorMessage))
+					.getOrElseThrow(RPCProtocolException::new));
 			throw new RPCProtocolException(errorMessage);
 		}
 
