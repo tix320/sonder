@@ -19,6 +19,8 @@ import java.util.function.LongFunction;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.function.CheckedRunnable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.property.Property;
+import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.LoopThread;
@@ -26,6 +28,7 @@ import com.github.tix320.kiwi.api.util.Threads;
 import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
 import com.github.tix320.sonder.api.server.event.NewClientConnectionEvent;
 import com.github.tix320.sonder.api.server.event.SonderServerEvent;
+import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
@@ -52,7 +55,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private ServerSocketChannel serverChannel;
 
-	private boolean closed;
+	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
 	public SocketClientsSelector(InetSocketAddress address, LongFunction<Duration> contentTimeoutDurationFactory,
 								 int workersCoreCount, SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
@@ -67,10 +70,11 @@ public final class SocketClientsSelector implements ClientsSelector {
 	}
 
 	public synchronized void run() throws IOException {
-		if (closed) {
-			throw new IllegalStateException();
+		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
+		if (!changed) {
+			throw new IllegalStateException("Already runned");
 		}
-		reset();
+
 		selector = Try.supplyOrRethrow(Selector::open);
 		serverChannel = ServerSocketChannel.open();
 		serverChannel.bind(address);
@@ -82,11 +86,15 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	@Override
 	public Observable<ClientPack> incomingRequests() {
+		state.checkValue(State.RUNNING);
+
 		return incomingRequests.asObservable();
 	}
 
 	@Override
 	public void send(ClientPack clientPack) {
+		state.checkValue(State.RUNNING);
+
 		long clientId = clientPack.getClientId();
 
 		Client client = clientsById.get(clientId);
@@ -104,11 +112,13 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	@Override
 	public synchronized void close() throws IOException {
-		closed = true;
-		incomingRequests.complete();
-		if (selector != null) {
+		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
+
+		if (changed) {
+			incomingRequests.complete();
 			selector.close();
 		}
+
 	}
 
 	private void runLoop() {
@@ -245,30 +255,6 @@ public final class SocketClientsSelector implements ClientsSelector {
 			realException.printStackTrace();
 			return null;
 		});
-	}
-
-	private void reset() {
-		if (selector != null) {
-			try {
-				selector.close();
-			}
-			catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-
-		if (serverChannel != null) {
-			try {
-				serverChannel.close();
-			}
-			catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-
-		clientsById.clear();
-		selector = null;
-		serverChannel = null;
 	}
 
 	private static class Client {

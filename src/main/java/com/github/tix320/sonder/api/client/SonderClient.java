@@ -3,26 +3,24 @@ package com.github.tix320.sonder.api.client;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
-import com.github.tix320.kiwi.api.reactive.observable.Subscription;
+import com.github.tix320.kiwi.api.reactive.property.Property;
+import com.github.tix320.kiwi.api.reactive.property.StateProperty;
+import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.client.event.SonderClientEvent;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.client.ServerConnection;
 import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
+import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
@@ -53,7 +51,7 @@ public final class SonderClient implements Closeable {
 
 	private final SonderEventDispatcher<SonderClientEvent> eventDispatcher;
 
-	private final CopyOnWriteArrayList<Subscription> subscriptions;
+	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
 	/**
 	 * Prepare client creating for this socket address.
@@ -71,25 +69,17 @@ public final class SonderClient implements Closeable {
 		this.connection = connection;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 		this.eventDispatcher = eventDispatcher;
-		this.subscriptions = new CopyOnWriteArrayList<>();
 	}
 
 	public synchronized void connect() throws IOException {
-		reset();
+		state.compareAndSetValue(State.INITIAL, State.RUNNING);
 
 		connection.connect();
-
-		List<Subscription> subscriptionList = new ArrayList<>();
-
 		connection.incomingRequests()
 				.map(this::convertDataPackToTransfer)
-				.subscribe(Subscriber.<Transfer>builder().onSubscribe((Consumer<Subscription>) subscriptionList::add)
-						.onPublish(this::processTransfer)
-						.build());
-
-		protocols.forEach((protocolName, protocol) -> subscriptionList.add(listenProtocol(protocol)));
-
-		subscriptions.addAll(subscriptionList);
+				.takeUntil(closed())
+				.subscribe(this::processTransfer);
+		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
 	}
 
 	/**
@@ -102,6 +92,8 @@ public final class SonderClient implements Closeable {
 	 * @see Protocol
 	 */
 	public void registerProtocol(Protocol protocol) {
+		state.checkValue(State.INITIAL, State.RUNNING);
+
 		String protocolName = protocol.getName();
 		if (BuiltInProtocol.NAMES.contains(protocolName)) {
 			throw new IllegalArgumentException(String.format("Protocol name %s is reserved", protocolName));
@@ -110,7 +102,7 @@ public final class SonderClient implements Closeable {
 			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));
 		}
 
-		subscriptions.add(listenProtocol(protocol));
+		listenProtocol(protocol);
 
 		protocols.put(protocolName, protocol);
 	}
@@ -127,6 +119,8 @@ public final class SonderClient implements Closeable {
 	 * @see RPCProtocol
 	 */
 	public <T> T getRPCService(Class<T> clazz) {
+		state.checkValue(State.INITIAL, State.RUNNING);
+
 		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("RPC protocol not registered");
@@ -147,6 +141,8 @@ public final class SonderClient implements Closeable {
 	 * @throws IllegalStateException if {@link ClientTopicProtocol} not registered
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
+		state.checkValue(State.INITIAL, State.RUNNING);
+
 		Protocol protocol = protocols.get(BuiltInProtocol.TOPIC.getName());
 		if (protocol == null) {
 			throw new IllegalStateException("Topic protocol not registered");
@@ -165,33 +161,37 @@ public final class SonderClient implements Closeable {
 	 * @return topic {@link Topic}
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
+		state.checkValue(State.INITIAL, State.RUNNING);
+
 		return registerTopic(topic, dataType, 0);
 	}
 
 	public <T extends SonderClientEvent> Observable<T> onEvent(Class<T> eventClass) {
+		state.checkValue(State.INITIAL, State.RUNNING);
+
 		return eventDispatcher.on(eventClass);
 	}
 
 	@Override
 	public void close() throws IOException {
-		connection.close();
+		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
+
+		if (changed) {
+			state.close();
+			connection.close();
+		}
 	}
 
-	private void reset() {
-		subscriptions.forEach(Subscription::unsubscribe);
-		subscriptions.clear();
+	private MonoObservable<None> closed() {
+		return state.asObservable().filter(state -> state == State.CLOSED).map(s -> None.SELF).toMono();
 	}
 
-	private Subscription listenProtocol(Protocol protocol) {
-		AtomicReference<Subscription> subscriptionHolder = new AtomicReference<>();
+	private void listenProtocol(Protocol protocol) {
 		protocol.outgoingTransfers()
 				.map(transfer -> setProtocolHeader(transfer, protocol.getName()))
 				.map(this::transferToDataPack)
-				.subscribe(Subscriber.<Pack>builder().onSubscribe(subscriptionHolder::set)
-						.onPublish(connection::send)
-						.build());
-
-		return subscriptionHolder.get();
+				.takeUntil(closed())
+				.subscribe(connection::send);
 	}
 
 	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {

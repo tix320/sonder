@@ -8,9 +8,9 @@ import com.github.tix320.sonder.internal.common.communication.Pack;
 
 public interface ServerConnection extends Closeable {
 
+	void connect() throws IOException;
+
 	Observable<Pack> incomingRequests();
 
 	void send(Pack pack);
-
-	void connect() throws IOException;
 }

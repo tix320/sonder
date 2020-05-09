@@ -9,10 +9,13 @@ import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.property.Property;
+import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.kiwi.api.util.LoopThread;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
 import com.github.tix320.sonder.api.client.event.ConnectionEstablishedEvent;
 import com.github.tix320.sonder.api.client.event.SonderClientEvent;
+import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
@@ -29,7 +32,7 @@ public class SocketServerConnection implements ServerConnection {
 
 	private PackChannel channel;
 
-	private boolean closed;
+	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
 	public SocketServerConnection(InetSocketAddress address, LongFunction<Duration> contentTimeoutDurationFactory,
 								  SonderEventDispatcher<SonderClientEvent> eventDispatcher) {
@@ -39,12 +42,28 @@ public class SocketServerConnection implements ServerConnection {
 	}
 
 	@Override
+	public synchronized void connect() throws IOException {
+		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
+		if (!changed) {
+			throw new IllegalStateException("Already runned");
+		}
+
+		this.channel = new PackChannel(SocketChannel.open(address), contentTimeoutDurationFactory);
+		Threads.runAsync(() -> eventDispatcher.fire(new ConnectionEstablishedEvent()));
+		runLoop();
+	}
+
+	@Override
 	public Observable<Pack> incomingRequests() {
+		state.checkValue(State.RUNNING);
+
 		return channel.packs();
 	}
 
 	@Override
 	public void send(Pack pack) {
+		state.checkValue(State.RUNNING);
+
 		try {
 			channel.write(pack);
 		}
@@ -66,20 +85,10 @@ public class SocketServerConnection implements ServerConnection {
 	}
 
 	@Override
-	public synchronized void connect() throws IOException {
-		if (closed) {
-			throw new IllegalStateException();
-		}
-		reset();
-		this.channel = new PackChannel(SocketChannel.open(address), contentTimeoutDurationFactory);
-		Threads.runAsync(() -> eventDispatcher.fire(new ConnectionEstablishedEvent()));
-		runLoop();
-	}
-
-	@Override
 	public synchronized void close() throws IOException {
-		if (!closed) {
-			closed = true;
+		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
+
+		if (changed) {
 			if (channel != null) {
 				channel.close();
 			}
@@ -105,17 +114,5 @@ public class SocketServerConnection implements ServerConnection {
 
 			return true;
 		}, false).start();
-	}
-
-	private void reset() {
-		if (channel != null) {
-			try {
-				channel.close();
-			}
-			catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-		channel = null;
 	}
 }
