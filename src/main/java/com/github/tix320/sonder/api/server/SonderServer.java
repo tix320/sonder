@@ -3,13 +3,20 @@ package com.github.tix320.sonder.api.server;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
+import com.github.tix320.kiwi.api.reactive.observable.Subscription;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.api.server.event.SonderServerEvent;
@@ -47,6 +54,8 @@ public final class SonderServer implements Closeable {
 
 	private final SonderEventDispatcher<SonderServerEvent> eventDispatcher;
 
+	private final CopyOnWriteArrayList<Subscription> subscriptions;
+
 	/**
 	 * Prepare server creating for this socket address.
 	 *
@@ -63,9 +72,25 @@ public final class SonderServer implements Closeable {
 		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 		this.eventDispatcher = eventDispatcher;
+		this.subscriptions = new CopyOnWriteArrayList<>();
+	}
 
-		clientsSelector.incomingRequests().map(this::clientPackToTransfer).subscribe(this::processTransfer);
-		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
+	public synchronized void start() throws IOException {
+		reset();
+
+		clientsSelector.run();
+
+		List<Subscription> subscriptionList = new ArrayList<>();
+
+		clientsSelector.incomingRequests()
+				.map(this::clientPackToTransfer)
+				.subscribe(Subscriber.<Transfer>builder().onSubscribe((Consumer<Subscription>) subscriptionList::add)
+						.onPublish(this::processTransfer)
+						.build());
+
+		protocols.forEach((protocolName, protocol) -> subscriptionList.add(listenProtocol(protocol)));
+
+		subscriptions.addAll(subscriptionList);
 	}
 
 	/**
@@ -86,7 +111,7 @@ public final class SonderServer implements Closeable {
 			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));
 		}
 
-		listenProtocol(protocol);
+		subscriptions.add(listenProtocol(protocol));
 
 		protocols.put(protocolName, protocol);
 	}
@@ -149,16 +174,25 @@ public final class SonderServer implements Closeable {
 	}
 
 	@Override
-	public void close()
-			throws IOException {
+	public void close() throws IOException {
 		clientsSelector.close();
 	}
 
-	private void listenProtocol(Protocol protocol) {
+	private void reset() {
+		subscriptions.forEach(Subscription::unsubscribe);
+		subscriptions.clear();
+	}
+
+	private Subscription listenProtocol(Protocol protocol) {
+		AtomicReference<Subscription> subscriptionHolder = new AtomicReference<>();
 		protocol.outgoingTransfers()
 				.map(transfer -> setProtocolHeader(transfer, protocol.getName()))
 				.map(this::transferToClientPack)
-				.subscribe(clientsSelector::send);
+				.subscribe(Subscriber.<ClientPack>builder().onSubscribe(subscriptionHolder::set)
+						.onPublish(clientsSelector::send)
+						.build());
+
+		return subscriptionHolder.get();
 	}
 
 	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {

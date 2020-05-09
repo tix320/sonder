@@ -469,10 +469,6 @@ public class RPCProtocol implements Protocol {
 
 			responsePublisher.publish(None.SELF);
 		}
-		else if (transfer.channel().getContentLength() == 0) {
-			throw new IllegalStateException(
-					String.format("Response content is empty, and it cannot be converted to type %s", returnJavaType));
-		}
 		else {
 			ContentType contentType = headers.getContentType();
 
@@ -482,6 +478,11 @@ public class RPCProtocol implements Protocol {
 					result = Try.supplyOrRethrow(transfer.channel()::readAll);
 					break;
 				case JSON:
+					if (transfer.channel().getContentLength() == 0) {
+						throw new IllegalStateException(
+								String.format("Response content is empty, and it cannot be converted to type %s",
+										returnJavaType));
+					}
 					result = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
 					break;
 				case TRANSFER:

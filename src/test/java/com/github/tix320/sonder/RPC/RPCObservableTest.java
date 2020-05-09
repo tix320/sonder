@@ -1,5 +1,6 @@
 package com.github.tix320.sonder.RPC;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,8 +23,7 @@ public class RPCObservableTest {
 	public static SonderClient sonderClient;
 
 	@Test
-	public void test()
-			throws InterruptedException {
+	public void test() throws InterruptedException, IOException {
 		sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT))
 				.withRPCProtocol(builder -> builder.scanClasses(ServerEndpoint.class))
 				.build();
@@ -31,6 +31,9 @@ public class RPCObservableTest {
 		sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT))
 				.withRPCProtocol(builder -> builder.scanClasses(ClientService.class))
 				.build();
+
+		sonderServer.start();
+		sonderClient.connect();
 
 		ClientService rpcService = sonderClient.getRPCService(ClientService.class);
 

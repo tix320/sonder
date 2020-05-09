@@ -21,6 +21,7 @@ import com.github.tix320.kiwi.api.function.CheckedRunnable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.IDGenerator;
+import com.github.tix320.kiwi.api.util.LoopThread;
 import com.github.tix320.kiwi.api.util.Threads;
 import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
 import com.github.tix320.sonder.api.server.event.NewClientConnectionEvent;
@@ -33,11 +34,9 @@ import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 public final class SocketClientsSelector implements ClientsSelector {
 
+	private final InetSocketAddress address;
+
 	private final ExecutorService workers;
-
-	private final Selector selector;
-
-	private final ServerSocketChannel serverChannel;
 
 	private final Publisher<ClientPack> incomingRequests;
 
@@ -49,9 +48,15 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final SonderEventDispatcher<SonderServerEvent> eventDispatcher;
 
+	private Selector selector;
+
+	private ServerSocketChannel serverChannel;
+
+	private boolean closed;
+
 	public SocketClientsSelector(InetSocketAddress address, LongFunction<Duration> contentTimeoutDurationFactory,
 								 int workersCoreCount, SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
-		this.selector = Try.supplyOrRethrow(Selector::open);
+		this.address = address;
 		this.incomingRequests = Publisher.simple();
 		this.clientsById = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1); // 1 is important aspect, do not touch!
@@ -59,18 +64,20 @@ public final class SocketClientsSelector implements ClientsSelector {
 		this.workers = new ThreadPoolExecutor(workersCoreCount, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
 				new SynchronousQueue<>(), Threads::daemon);
 		this.eventDispatcher = eventDispatcher;
+	}
 
-		try {
-			serverChannel = ServerSocketChannel.open();
-			serverChannel.bind(address);
-			serverChannel.configureBlocking(false);
-			serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+	public synchronized void run() throws IOException {
+		if (closed) {
+			throw new IllegalStateException();
 		}
-		catch (IOException e) {
-			throw new SocketConnectionException("Cannot open server socket channel", e);
-		}
+		reset();
+		selector = Try.supplyOrRethrow(Selector::open);
+		serverChannel = ServerSocketChannel.open();
+		serverChannel.bind(address);
+		serverChannel.configureBlocking(false);
+		serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
-		start();
+		runLoop();
 	}
 
 	@Override
@@ -96,70 +103,73 @@ public final class SocketClientsSelector implements ClientsSelector {
 	}
 
 	@Override
-	public void close() throws IOException {
+	public synchronized void close() throws IOException {
+		closed = true;
 		incomingRequests.complete();
-		selector.close();
+		if (selector != null) {
+			selector.close();
+		}
 	}
 
-	private void start() {
-		new Thread(() -> {
-			while (true) {
-				try {
-					selector.select();
-				}
-				catch (IOException e) {
-					throw new SocketConnectionException("The problem is occurred in selector work", e);
-				}
-				Set<SelectionKey> keys = selector.selectedKeys();
-				Iterator<SelectionKey> iterator = keys.iterator();
-				while (iterator.hasNext()) {
-					SelectionKey selectionKey = iterator.next();
-					iterator.remove();
+	private void runLoop() {
+		new LoopThread(() -> {
+			try {
+				selector.select();
+			}
+			catch (IOException e) {
+				new SocketConnectionException("The problem is occurred in selector work", e).printStackTrace();
+				return false;
+			}
+			Set<SelectionKey> keys = selector.selectedKeys();
+			Iterator<SelectionKey> iterator = keys.iterator();
+			while (iterator.hasNext()) {
+				SelectionKey selectionKey = iterator.next();
+				iterator.remove();
+				if (selectionKey.isAcceptable()) {
 					try {
-						if (selectionKey.isAcceptable()) {
-							accept();
-						}
-						else if (selectionKey.isReadable()) {
-							Client client = (Client) selectionKey.attachment();
-							Lock clientLock = client.lock;
-
-							runAsync(() -> {
-								if (clientLock.tryLock()) {
-									try {
-										read(client);
-									}
-									finally {
-										clientLock.unlock();
-									}
-								}
-							});
-						}
-
-						else if (selectionKey.isWritable()) {
-							Client client = (Client) selectionKey.attachment();
-							Lock clientLock = client.lock;
-							runAsync(() -> {
-								if (clientLock.tryLock()) {
-									try {
-										write(client);
-									}
-									finally {
-										clientLock.unlock();
-									}
-								}
-							});
-						}
-						else {
-							selectionKey.cancel();
-						}
+						accept();
 					}
-					catch (Exception e) {
+					catch (IOException e) {
 						e.printStackTrace();
 					}
 				}
+				else if (selectionKey.isReadable()) {
+					Client client = (Client) selectionKey.attachment();
+					Lock clientLock = client.lock;
 
+					runAsync(() -> {
+						if (clientLock.tryLock()) {
+							try {
+								read(client);
+							}
+							finally {
+								clientLock.unlock();
+							}
+						}
+					});
+				}
+
+				else if (selectionKey.isWritable()) {
+					Client client = (Client) selectionKey.attachment();
+					Lock clientLock = client.lock;
+					runAsync(() -> {
+						if (clientLock.tryLock()) {
+							try {
+								write(client);
+							}
+							finally {
+								clientLock.unlock();
+							}
+						}
+					});
+				}
+				else {
+					selectionKey.cancel();
+				}
 			}
-		}).start();
+
+			return true;
+		}, false).start();
 	}
 
 	private void accept() throws IOException {
@@ -235,6 +245,30 @@ public final class SocketClientsSelector implements ClientsSelector {
 			realException.printStackTrace();
 			return null;
 		});
+	}
+
+	private void reset() {
+		if (selector != null) {
+			try {
+				selector.close();
+			}
+			catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
+		if (serverChannel != null) {
+			try {
+				serverChannel.close();
+			}
+			catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
+		clientsById.clear();
+		selector = null;
+		serverChannel = null;
 	}
 
 	private static class Client {
