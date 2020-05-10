@@ -153,7 +153,7 @@ public class RPCProtocol implements Protocol {
 					throw new IllegalStateException();
 			}
 		}
-		catch (Exception e) {
+		finally {
 			CertainReadableByteChannel channel = transfer.channel();
 			channel.readRemainingInVain();
 			channel.close();
