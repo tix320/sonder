@@ -80,8 +80,9 @@ public class ServerTest {
 
 	public static void main(String[] args) {
 		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(8888))
-				.withRPCProtocol("com.github.tix320.sonder.readme.server")
-				.build();
+                                    				.withRPCProtocol(builder -> builder.scanClasses(MyEndpoint.class))
+                                    				.build();
+	    sonderServer.start();
 	}
 }
 ```
@@ -113,8 +114,10 @@ import com.github.tix320.sonder.api.client.Clonder;
 public class ClientTest {
 	public static void main(String[] args) {
 		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888))
-				.withRPCProtocol("com.github.tix320.sonder.readme.client")
-				.build();
+                                    				.withRPCProtocol(builder -> builder.scanClasses(MyService.class))
+                                    				.build();
+        sonderClient.connect();
+
 		MyService myService = sonderClient.getRPCService(MyService.class);
 		myService.getLengthOfString("my first rpc call").subscribe(System.out::println);
 	}
@@ -140,6 +143,7 @@ public class ServerTest {
 
 	public static void main(String[] args) {
 		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(8888)).withTopicProtocol().build();
+        sonderServer.start();
 	}
 }
 
@@ -147,15 +151,21 @@ class Client1Test {
 	public static void main(String[] args)
 			throws InterruptedException {
 		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
-		Topic<List<String>> topic = sonderClient.registerTopic("my-topic", new TypeReference<>() {});
-		topic.asObservable().subscribe(System.out::println);
-		topic.publish(List.of("a", "b", "c")).subscribe(none -> {
-			System.out.println("Data was sended to subscribers");
-		});
+        sonderClient.connect();
 
-       /*
+		Topic<Integer> topic = sonderClient1.registerTopic("my-topic", new TypeReference<>() {});
+
+        AtomicBoolean sent = new AtomicBoolean(false);
+
+		List.of(4, 5, 6).forEach(integer -> topic1.publish(integer).subscribe(none -> 	System.out.println("Data was sent to subscribers")));
+
+		topic.asObservable().subscribe(System.out::println);
+
+	  /*
        Output is (order not guaranteed)
-       [e, d, f]
+       1
+       2
+       3
        Data was sent to subscribers
         */
 	}
@@ -164,15 +174,21 @@ class Client1Test {
 class Client2Test {
 	public static void main(String[] args) {
 		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
-		Topic<List<String>> topic = sonderClient.registerTopic("my-topic", new TypeReference<>() {});
-		topic.asObservable().subscribe(System.out::println);
-		topic.publish(List.of("e", "d", "f")).subscribe(none -> {
-			System.out.println("Data was sended to subscribers");
-		});
+        sonderClient.connect();
 
-		 /*
+		Topic<Integer> topic = sonderClient1.registerTopic("my-topic", new TypeReference<>() {});
+
+        AtomicBoolean sent = new AtomicBoolean(false);
+
+		List.of(1, 2, 3).forEach(integer -> topic1.publish(integer).subscribe(none -> 	System.out.println("Data was sent to subscribers")));
+
+		topic.asObservable().subscribe(System.out::println);
+
+	  /*
        Output is (order not guaranteed)
-       [a, b, c]
+       4
+       5
+       6
        Data was sent to subscribers
         */
 	}
