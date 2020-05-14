@@ -163,7 +163,7 @@ class Client1Test {
 
 		Topic<Integer> topic = sonderClient1.registerTopic("my-topic", new TypeReference<>() {});
 
-		List.of(4, 5, 6).forEach(integer -> topic1.publish(integer).subscribe(none -> 	System.out.println("Data was sent to subscribers")));
+		List.of(4, 5, 6).forEach(integer -> topic.publish(integer).subscribe(none -> 	System.out.println("Data was sent to subscribers")));
 
 		topic.asObservable().subscribe(System.out::println);
 
@@ -188,7 +188,7 @@ class Client2Test {
 
 		Topic<Integer> topic = sonderClient1.registerTopic("my-topic", new TypeReference<>() {});
 
-		List.of(1, 2, 3).forEach(integer -> topic1.publish(integer).subscribe(none -> 	System.out.println("Data was sent to subscribers")));
+		List.of(1, 2, 3).forEach(integer -> topic.publish(integer).subscribe(none -> 	System.out.println("Data was sent to subscribers")));
 
 		topic.asObservable().subscribe(System.out::println);
 
