@@ -142,7 +142,11 @@ import com.github.tix320.sonder.api.server.Sonder;
 public class ServerTest {
 
 	public static void main(String[] args) {
-		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(8888)).withTopicProtocol().build();
+		SonderServer sonderServer = SonderServer
+        .forAddress(new InetSocketAddress(8888))
+        .withTopicProtocol()
+        .build();
+
         sonderServer.start();
 	}
 }
@@ -150,12 +154,14 @@ public class ServerTest {
 class Client1Test {
 	public static void main(String[] args)
 			throws InterruptedException {
-		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
+		SonderClient sonderClient = SonderClient
+            .forAddress(new InetSocketAddress("localhost", 8888))
+            .withTopicProtocol()
+            .build();
+
         sonderClient.connect();
 
 		Topic<Integer> topic = sonderClient1.registerTopic("my-topic", new TypeReference<>() {});
-
-        AtomicBoolean sent = new AtomicBoolean(false);
 
 		List.of(4, 5, 6).forEach(integer -> topic1.publish(integer).subscribe(none -> 	System.out.println("Data was sent to subscribers")));
 
@@ -173,12 +179,14 @@ class Client1Test {
 
 class Client2Test {
 	public static void main(String[] args) {
-		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888)).withTopicProtocol().build();
+		SonderClient sonderClient = SonderClient
+            .forAddress(new InetSocketAddress("localhost", 8888))
+            .withTopicProtocol()
+            .build();
+
         sonderClient.connect();
 
 		Topic<Integer> topic = sonderClient1.registerTopic("my-topic", new TypeReference<>() {});
-
-        AtomicBoolean sent = new AtomicBoolean(false);
 
 		List.of(1, 2, 3).forEach(integer -> topic1.publish(integer).subscribe(none -> 	System.out.println("Data was sent to subscribers")));
 
