@@ -2,15 +2,13 @@ package com.github.tix320.sonder.internal.server;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.function.Consumer;
 
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 
 public interface ClientsSelector extends Closeable {
 
-	void run() throws IOException;
-
-	Observable<ClientPack> incomingRequests();
+	void run(Consumer<ClientPack> packConsumer) throws IOException;
 
 	void send(ClientPack clientPack);
 

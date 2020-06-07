@@ -11,14 +11,24 @@ public class ServerEndpoint {
 
 	public static Publisher<Integer> publisher = Publisher.simple();
 
-	@Endpoint("")
-	public String getObject() {
-		return "lmfao";
-	}
-
-	@Endpoint("lol")
+	@Endpoint
 	@Subscription
 	public Observable<Integer> numbers() {
 		return publisher.asObservable();
+	}
+
+
+	@Endpoint
+	public int putByes(byte[] bytes) {
+		int sum = 0;
+		for (byte aByte : bytes) {
+			sum += aByte;
+		}
+		return sum;
+	}
+
+	@Endpoint
+	public Integer getStringLength(String s) {
+		return s.length();
 	}
 }

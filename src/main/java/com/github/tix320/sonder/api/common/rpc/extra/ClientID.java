@@ -5,8 +5,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParamQualifier;
-
 /**
  * @author Tigran.Sargsyan on 04-Jan-19
  */

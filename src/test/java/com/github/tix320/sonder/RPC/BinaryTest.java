@@ -2,19 +2,18 @@ package com.github.tix320.sonder.RPC;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
-import com.github.tix320.kiwi.api.reactive.observable.Subscription;
 import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.server.SonderServer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class RPCObservableTest {
+/**
+ * @author Tigran Sargsyan on 03-Jun-20.
+ */
+public class BinaryTest {
 
 	private static final String HOST = "localhost";
 	private static final int PORT = 33335;
@@ -37,22 +36,20 @@ public class RPCObservableTest {
 
 		ClientService rpcService = sonderClient.getRPCService(ClientService.class);
 
-		List<Integer> list = new ArrayList<>();
-		AtomicReference<Subscription> subscriptionHolder = new AtomicReference<>();
-		rpcService.numbers()
-				.subscribe(Subscriber.<Integer>builder().onSubscribe(subscriptionHolder::set).onPublish(list::add));
+		AtomicInteger responseHolder = new AtomicInteger();
 
+		rpcService.putByes(new byte[]{10, 20, 30}).subscribe(responseHolder::set);
 		Thread.sleep(300);
-		ServerEndpoint.publisher.publish(4);
+		assertEquals(60, responseHolder.get());
+
+		rpcService.putByes(new byte[]{50, 60, 70}).subscribe(responseHolder::set);
 		Thread.sleep(300);
-		assertEquals(List.of(4), list);
-		ServerEndpoint.publisher.publish(5);
+		assertEquals(180, responseHolder.get());
+
+		rpcService.putByes(new byte[]{23, 12, 32}).subscribe(responseHolder::set);
 		Thread.sleep(300);
-		assertEquals(List.of(4, 5), list);
-		subscriptionHolder.get().unsubscribe();
-		Thread.sleep(500);
-		ServerEndpoint.publisher.publish(6);
-		assertEquals(List.of(4, 5), list);
+		assertEquals(67, responseHolder.get());
+
 
 		sonderClient.close();
 		sonderServer.close();

@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
 import com.github.tix320.sonder.internal.common.rpc.StartupException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
-import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParamQualifier;
+import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamQualifier;
 
 import static java.util.stream.Collectors.*;
 

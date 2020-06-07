@@ -6,8 +6,7 @@ import java.util.stream.Collectors;
 
 public enum BuiltInProtocol {
 	RPC("sonder-RPC"),
-	TOPIC("sonder-topic"),
-	RO("sonder-RO");
+	TOPIC("sonder-topic");
 
 	public static final Set<String> NAMES = Arrays.stream(BuiltInProtocol.values())
 			.map(BuiltInProtocol::getName)

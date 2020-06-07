@@ -8,10 +8,13 @@ import com.github.tix320.sonder.api.common.rpc.Subscription;
 @Origin("foo")
 public interface ClientService {
 
-	@Origin("")
-	MonoObservable<String> getRemoteObjectId();
-
-	@Origin("lol")
+	@Origin
 	@Subscription
 	Observable<Integer> numbers();
+
+	@Origin
+	MonoObservable<Integer> putByes(byte[] bytes);
+
+	@Origin
+	MonoObservable<Integer> getStringLength(String s);
 }

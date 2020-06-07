@@ -74,11 +74,10 @@ public final class SonderClient implements Closeable {
 	public synchronized void connect() throws IOException {
 		state.compareAndSetValue(State.INITIAL, State.RUNNING);
 
-		connection.connect();
-		connection.incomingRequests()
-				.map(this::convertDataPackToTransfer)
-				.takeUntil(closed())
-				.subscribe(this::processTransfer);
+		connection.connect(pack -> {
+			Transfer transfer = convertDataPackToTransfer(pack);
+			processTransfer(transfer);
+		});
 		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
 	}
 

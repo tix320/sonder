@@ -2,13 +2,14 @@ package com.github.tix320.sonder.internal.client;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
 import java.time.Duration;
+import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.check.Try;
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.kiwi.api.util.LoopThread;
@@ -30,7 +31,7 @@ public class SocketServerConnection implements ServerConnection {
 
 	private final SonderEventDispatcher<SonderClientEvent> eventDispatcher;
 
-	private PackChannel channel;
+	private volatile PackChannel channel;
 
 	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
@@ -42,22 +43,15 @@ public class SocketServerConnection implements ServerConnection {
 	}
 
 	@Override
-	public synchronized void connect() throws IOException {
+	public void connect(Consumer<Pack> packConsumer) throws IOException {
 		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
 		if (!changed) {
-			throw new IllegalStateException("Already runned");
+			throw new IllegalStateException("Already running");
 		}
 
-		this.channel = new PackChannel(SocketChannel.open(address), contentTimeoutDurationFactory);
+		this.channel = new PackChannel(SocketChannel.open(address), contentTimeoutDurationFactory, packConsumer);
 		Threads.runAsync(() -> eventDispatcher.fire(new ConnectionEstablishedEvent()));
 		runLoop();
-	}
-
-	@Override
-	public Observable<Pack> incomingRequests() {
-		state.checkValue(State.RUNNING);
-
-		return channel.packs();
 	}
 
 	@Override
@@ -65,7 +59,10 @@ public class SocketServerConnection implements ServerConnection {
 		state.checkValue(State.RUNNING);
 
 		try {
-			channel.write(pack);
+			boolean success = channel.write(pack);
+			while (!success) {
+				success = channel.writeLastPack();
+			}
 		}
 		catch (ClosedChannelException e) {
 			Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));
@@ -85,13 +82,11 @@ public class SocketServerConnection implements ServerConnection {
 	}
 
 	@Override
-	public synchronized void close() throws IOException {
+	public void close() throws IOException {
 		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
 
 		if (changed) {
-			if (channel != null) {
-				channel.close();
-			}
+			channel.close();
 		}
 	}
 
@@ -99,6 +94,10 @@ public class SocketServerConnection implements ServerConnection {
 		new LoopThread(() -> {
 			try {
 				channel.read();
+			}
+			catch (AsynchronousCloseException e) {
+				Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));
+				return false;
 			}
 			catch (ClosedChannelException e) {
 				Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));

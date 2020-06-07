@@ -78,11 +78,10 @@ public final class SonderServer implements Closeable {
 			throw new IllegalStateException("Already started");
 		}
 
-		clientsSelector.run();
-		clientsSelector.incomingRequests()
-				.map(this::clientPackToTransfer)
-				.takeUntil(closed())
-				.subscribe(this::processTransfer);
+		clientsSelector.run(clientPack -> {
+			Transfer transfer = clientPackToTransfer(clientPack);
+			processTransfer(transfer);
+		});
 		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
 
 	}

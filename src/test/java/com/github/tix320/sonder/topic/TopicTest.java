@@ -50,20 +50,23 @@ public class TopicTest {
 		AtomicBoolean secondSent = new AtomicBoolean(false);
 
 		Topic<Integer> topic1 = sonderClient1.registerTopic("my-topic", new TypeReference<>() {});
-		topic1.asObservable().subscribe(actualFirstList::add);
-		firstPublishItems.forEach(integer -> topic1.publish(integer).subscribe(none -> firstSent.set(true)));
-
 		Topic<Integer> topic2 = sonderClient2.registerTopic("my-topic", new TypeReference<>() {});
+
+		topic1.asObservable().subscribe(actualFirstList::add);
 		topic2.asObservable().subscribe(actualSecondList::add);
+
+		firstPublishItems.forEach(integer -> topic1.publish(integer).subscribe(none -> firstSent.set(true)));
 		secondPublishItems.forEach(integer -> topic2.publish(integer).subscribe(none -> secondSent.set(true)));
 
 
-		Thread.sleep(1000);
+		Thread.sleep(3000);
 
 
 		assertEquals(3, actualFirstList.size());
 		assertEquals(3, actualSecondList.size());
 
+		assertTrue(firstSent.get());
+		assertTrue(secondSent.get());
 
 		for (int i = 1; i <= 3; i++) {
 			assertTrue(actualSecondList.contains(i));
@@ -72,5 +75,9 @@ public class TopicTest {
 		for (int i = 4; i <= 6; i++) {
 			assertTrue(actualFirstList.contains(i));
 		}
+
+		sonderClient1.close();
+		sonderClient2.close();
+		sonderServer.close();
 	}
 }
