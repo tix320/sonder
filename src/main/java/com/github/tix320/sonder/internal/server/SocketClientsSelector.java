@@ -12,17 +12,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.kiwi.api.util.IDGenerator;
-import com.github.tix320.kiwi.api.util.LoopThread;
+import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.kiwi.api.util.Threads;
+import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
 import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
 import com.github.tix320.sonder.api.server.event.NewClientConnectionEvent;
 import com.github.tix320.sonder.api.server.event.SonderServerEvent;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
+import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
 import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
@@ -78,7 +82,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	@Override
 	public void send(ClientPack clientPack) {
-		state.checkValue(State.RUNNING);
+		state.checkState(State.RUNNING);
 
 		long clientId = clientPack.getClientId();
 
@@ -132,7 +136,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private void runLoop(Consumer<ClientPack> packConsumer) {
 		Selector selector = this.selector;
-		new LoopThread(() -> {
+		Threads.createLoopThread(() -> {
 			try {
 				selector.select();
 
@@ -143,7 +147,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 					iterator.remove();
 					if (selectionKey.isAcceptable()) {
 						try {
-							accept(packConsumer);
+							accept();
 						}
 						catch (IOException e) {
 							e.printStackTrace();
@@ -151,7 +155,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 					}
 					else if (selectionKey.isReadable()) {
 						selectionKey.interestOpsAnd(~SelectionKey.OP_READ);
-						runAsync(() -> read(selectionKey));
+						runAsync(() -> read(selectionKey, packConsumer));
 					}
 
 					else if (selectionKey.isWritable()) {
@@ -167,25 +171,20 @@ public final class SocketClientsSelector implements ClientsSelector {
 				// bye key
 			}
 			catch (ClosedSelectorException e) {
-				return false;
+				throw new InterruptedException();
 			}
 			catch (IOException e) {
 				new SocketConnectionException("The problem is occurred in selector work", e).printStackTrace();
-				return false;
+				throw new InterruptedException();
 			}
-
-			return true;
-		}, false).start();
+		}).start();
 	}
 
-	private void accept(Consumer<ClientPack> packConsumer) throws IOException {
+	private void accept() throws IOException {
 		SocketChannel clientChannel = serverChannel.accept();
 		clientChannel.configureBlocking(false);
 		long clientId = clientIdGenerator.next();
-		PackChannel packChannel = new PackChannel(clientChannel, contentTimeoutDurationFactory, pack -> {
-			ClientPack clientPack = new ClientPack(clientId, pack);
-			packConsumer.accept(clientPack);
-		});
+		PackChannel packChannel = new PackChannel(clientChannel, contentTimeoutDurationFactory);
 
 		Client client = new Client(clientId, packChannel);
 
@@ -196,16 +195,14 @@ public final class SocketClientsSelector implements ClientsSelector {
 		runAsync(() -> eventDispatcher.fire(new NewClientConnectionEvent(clientId)));
 	}
 
-	private void read(SelectionKey selectionKey) throws InvalidPackException {
+	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
+	private void read(SelectionKey selectionKey, Consumer<ClientPack> packConsumer) throws InvalidPackException {
 		Client client = (Client) selectionKey.attachment();
 		PackChannel channel = client.channel;
+		Pack pack;
 		try {
-			channel.read();
-			selectionKey.interestOpsOr(SelectionKey.OP_READ);
-			selector.wakeup();
-		}
-		catch (CancelledKeyException e) {
-			// bye-bye key
+			pack = channel.read();
 		}
 		catch (IOException e) {
 			if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
@@ -214,6 +211,46 @@ public final class SocketClientsSelector implements ClientsSelector {
 			}
 
 			closeClientConnection(client);
+			return;
+		}
+
+		if (pack == null) {
+			try {
+				selectionKey.interestOpsOr(SelectionKey.OP_READ);
+				selector.wakeup();
+			}
+			catch (CancelledKeyException e) {
+				// bye key
+			}
+		}
+		else {
+			CertainReadableByteChannel contentChannel = pack.channel();
+			ClientPack clientPack = new ClientPack(client.id, pack);
+			runAsync(() -> packConsumer.accept(clientPack));
+			if (contentChannel instanceof LimitedReadableByteChannel) {
+
+				Duration timeoutDuration = contentTimeoutDurationFactory.apply(contentChannel.getContentLength());
+
+				LimitedReadableByteChannel limitedReadableByteChannel = (LimitedReadableByteChannel) contentChannel;
+				limitedReadableByteChannel.onFinish().getOnTimout(timeoutDuration, () -> None.SELF).subscribe(none -> {
+					try {
+						selectionKey.interestOpsOr(SelectionKey.OP_READ);
+						selector.wakeup();
+					}
+					catch (CancelledKeyException e) {
+						// bye key
+					}
+				});
+			}
+			else {
+				try {
+					selectionKey.interestOpsOr(SelectionKey.OP_READ);
+					selector.wakeup();
+				}
+				catch (CancelledKeyException e) {
+					// bye key
+				}
+			}
 		}
 	}
 
@@ -263,16 +300,18 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private void runAsync(Runnable runnable) {
 		try {
-			CompletableFuture.runAsync(runnable, workers).exceptionally(throwable -> {
-				Throwable realException = throwable.getCause();
-				realException.printStackTrace();
-				return null;
+			workers.submit(() -> {
+				try {
+					runnable.run();
+				}
+				catch (Throwable t) {
+					t.printStackTrace();
+				}
 			});
 		}
 		catch (RejectedExecutionException ignored) {
 			// already closed
 		}
-
 	}
 
 	private static class Client {

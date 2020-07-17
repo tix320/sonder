@@ -18,7 +18,6 @@ import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.topic.TopicAction;
-import com.github.tix320.sonder.internal.common.util.Threads;
 
 /**
  * Topic protocol implementation, which stores topics for clients communicating without using server directly.
@@ -56,8 +55,7 @@ public class ServerTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void handleIncomingTransfer(Transfer transfer)
-			throws IOException {
+	public void handleIncomingTransfer(Transfer transfer) throws IOException {
 		try {
 			Headers headers = transfer.getHeaders();
 
@@ -125,8 +123,7 @@ public class ServerTopicProtocol implements Protocol {
 		return new TopicImpl<>(topic);
 	}
 
-	private void handleForServer(Transfer transfer)
-			throws IOException {
+	private void handleForServer(Transfer transfer) throws IOException {
 		Headers headers = transfer.getHeaders();
 		byte[] content = transfer.channel().readAll();
 
@@ -139,16 +136,7 @@ public class ServerTopicProtocol implements Protocol {
 
 		TypeReference<?> dataType = dataTypesByTopic.get(topic);
 		Object contentObject = Try.supplyOrRethrow(() -> JSON_MAPPER.readValue(content, dataType));
-		Threads.runAsync(() -> {
-			try {
-				publisher.publish(contentObject);
-			}
-			catch (IllegalArgumentException e) {
-				throw new IllegalStateException(
-						String.format("Registered topic's (%s) data type (%s) is not compatible with received JSON %s",
-								topic, dataType.getType().getTypeName(), contentObject), e);
-			}
-		});
+		publisher.publish(contentObject);
 	}
 
 	private void publishToClients(String topic, Transfer transfer, Collection<Long> clients, long sourceClientId) {

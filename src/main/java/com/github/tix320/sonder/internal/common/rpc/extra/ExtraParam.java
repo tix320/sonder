@@ -19,15 +19,14 @@ public final class ExtraParam extends Param {
 		return annotation;
 	}
 
-	public <T extends Annotation> T getAnnotation(Class<T> type) {
-		return type.cast(annotation);
-	}
-
 	@Override
 	public boolean equals(Object o) {
-		if (this == o) return true;
-		if (o == null || getClass() != o.getClass()) return false;
-		if (!super.equals(o)) return false;
+		if (this == o)
+			return true;
+		if (o == null || getClass() != o.getClass())
+			return false;
+		if (!super.equals(o))
+			return false;
 		ExtraParam that = (ExtraParam) o;
 		return annotation.equals(that.annotation);
 	}

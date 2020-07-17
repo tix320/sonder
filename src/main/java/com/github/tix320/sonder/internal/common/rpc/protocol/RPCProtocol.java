@@ -28,6 +28,7 @@ import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
+import com.github.tix320.sonder.api.common.rpc.Response;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgExtractor;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
@@ -284,6 +285,7 @@ public class RPCProtocol implements Protocol {
 				Transfer transfer = transferToSend;
 				outgoingRequests.publish(transfer);
 				return null;
+			case ASYNC_VALUE:
 			case ASYNC_RESPONSE:
 				Headers headers = transferToSend.getHeaders().compose().header(Headers.NEED_RESPONSE, true).build();
 
@@ -369,19 +371,23 @@ public class RPCProtocol implements Protocol {
 
 		RequestMetadata requestMetadata = requestMetadataByResponseKey.remove(responseKey);
 		if (requestMetadata == null) {
-			RemoteSubscriptionPublisher remoteSubscriptionPublisher = remoteSubscriptionPublishers.get(responseKey);
-			if (remoteSubscriptionPublisher == null) {
-				throw new RPCProtocolException(
-						String.format("Request metadata or remote subscription not found for response key %s",
-								responseKey));
-			}
-			remoteSubscriptionPublisher.forcePublishError(exception);
+			throw new RPCProtocolException(
+					String.format("Request metadata or not found for response key %s", responseKey));
 		}
 		else {
-			Publisher<Object> responsePublisher = requestMetadata.getResponsePublisher();
+			MonoPublisher<Object> responsePublisher = requestMetadata.getResponsePublisher();
 
-			responsePublisher.publishError(exception);
-			responsePublisher.complete();
+			OriginMethod originMethod = requestMetadata.getOriginMethod();
+			ReturnType returnType = originMethod.getReturnType();
+
+			boolean isAsyncObject = returnType == ReturnType.ASYNC_RESPONSE;
+
+			if (isAsyncObject) {
+				responsePublisher.publish(new Response<>(exception, false));
+			}
+			else {
+				new UnhandledErrorResponseException(exception).printStackTrace();
+			}
 		}
 	}
 
@@ -415,7 +421,6 @@ public class RPCProtocol implements Protocol {
 				remoteSubscriptionPublisher.complete(orderId);
 				break;
 			case REGULAR_ITEM:
-			case REGULAR_ERROR:
 				remoteSubscriptionPublisher = remoteSubscriptionPublishers.get(responseKey);
 				if (remoteSubscriptionPublisher == null) {
 					// This may happen, when we are unsubscribe from observable locally, but unsubscription still not reached to other end and he send regular value.
@@ -433,17 +438,9 @@ public class RPCProtocol implements Protocol {
 
 				orderId = headers.getNonNullLong(Headers.SUBSCRIPTION_RESULT_ORDER_ID);
 
-				if (subscriptionActionType == SubscriptionActionType.REGULAR_ITEM) {
-					JavaType returnJavaType = originMethod.getReturnJavaType();
-					Object value = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
-					remoteSubscriptionPublisher.publish(orderId, true, value);
-				}
-				else {
-					byte[] content = Try.supplyOrRethrow(transfer.channel()::readAll);
-					String errors = new String(content);
-					Throwable error = new RPCRemoteException(errors);
-					remoteSubscriptionPublisher.publish(orderId, false, error);
-				}
+				JavaType returnJavaType = originMethod.getReturnJavaType();
+				Object value = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
+				remoteSubscriptionPublisher.publish(orderId, value);
 
 				break;
 			default:
@@ -462,13 +459,22 @@ public class RPCProtocol implements Protocol {
 		}
 
 		OriginMethod originMethod = requestMetadata.getOriginMethod();
+
+		ReturnType returnType = originMethod.getReturnType();
+		boolean isAsyncObject = returnType == ReturnType.ASYNC_RESPONSE;
+
 		Publisher<Object> responsePublisher = requestMetadata.getResponsePublisher();
 
 		JavaType returnJavaType = originMethod.getReturnJavaType();
 		if (returnJavaType.getRawClass() == None.class) {
 			Try.runOrRethrow(transfer.channel()::readRemainingInVain);
 
-			responsePublisher.publish(None.SELF);
+			if (isAsyncObject) {
+				responsePublisher.publish(new Response<>(None.SELF, true));
+			}
+			else {
+				responsePublisher.publish(None.SELF);
+			}
 		}
 		else {
 			ContentType contentType = headers.getContentType();
@@ -487,14 +493,19 @@ public class RPCProtocol implements Protocol {
 					result = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
 					break;
 				case TRANSFER:
-					result = transfer;
+					result = new StaticTransfer(headers, Try.supplyOrRethrow(transfer.channel()::readAll));
 					break;
 				default:
 					throw new UnsupportedContentTypeException(contentType);
 			}
 
 			try {
-				responsePublisher.publish(result);
+				if (isAsyncObject) {
+					responsePublisher.publish(new Response<>(result, true));
+				}
+				else {
+					responsePublisher.publish(result);
+				}
 			}
 			catch (ClassCastException e) {
 				throw IncompatibleTypeException.forMethodReturnType(originMethod.getRawMethod(), e);
@@ -833,11 +844,6 @@ public class RPCProtocol implements Protocol {
 				}
 
 				@Override
-				public boolean onError(Throwable throwable) {
-					return subscriber.onError(throwable);
-				}
-
-				@Override
 				public void onComplete(CompletionType completionType) {
 					remoteSubscriptionPublishers.remove(responseKey);
 					subscriber.onComplete(completionType);
@@ -886,24 +892,6 @@ public class RPCProtocol implements Protocol {
 					.build();
 
 			byte[] content = serializeObject(item);
-			Transfer transferToSend = new StaticTransfer(headers, content);
-
-			outgoingRequests.publish(transferToSend);
-
-			return true;
-		}
-
-		@Override
-		public synchronized boolean onError(Throwable throwable) {
-			Headers headers = Headers.builder()
-					.header(Headers.DESTINATION_ID, destinationId)
-					.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
-					.header(Headers.RESPONSE_KEY, responseKey)
-					.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.REGULAR_ERROR)
-					.header(Headers.SUBSCRIPTION_RESULT_ORDER_ID, orderIdGenerator.next())
-					.build();
-
-			byte[] content = exceptionMessagesToString(throwable).getBytes();
 			Transfer transferToSend = new StaticTransfer(headers, content);
 
 			outgoingRequests.publish(transferToSend);

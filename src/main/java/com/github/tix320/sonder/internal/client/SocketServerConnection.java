@@ -6,24 +6,29 @@ import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
 import java.time.Duration;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
-import com.github.tix320.kiwi.api.util.LoopThread;
+import com.github.tix320.kiwi.api.util.Threads;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
 import com.github.tix320.sonder.api.client.event.ConnectionEstablishedEvent;
 import com.github.tix320.sonder.api.client.event.SonderClientEvent;
+import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
-import com.github.tix320.sonder.internal.common.util.Threads;
 import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 public class SocketServerConnection implements ServerConnection {
+
+	private final ExecutorService workers = new ThreadPoolExecutor(1, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
+			new SynchronousQueue<>(), Threads::daemon);
 
 	private final InetSocketAddress address;
 
@@ -49,14 +54,14 @@ public class SocketServerConnection implements ServerConnection {
 			throw new IllegalStateException("Already running");
 		}
 
-		this.channel = new PackChannel(SocketChannel.open(address), contentTimeoutDurationFactory, packConsumer);
-		Threads.runAsync(() -> eventDispatcher.fire(new ConnectionEstablishedEvent()));
-		runLoop();
+		this.channel = new PackChannel(SocketChannel.open(address), contentTimeoutDurationFactory);
+		eventDispatcher.fire(new ConnectionEstablishedEvent());
+		runLoop(packConsumer);
 	}
 
 	@Override
 	public void send(Pack pack) {
-		state.checkValue(State.RUNNING);
+		state.checkState(State.RUNNING);
 
 		try {
 			boolean success = channel.write(pack);
@@ -65,11 +70,11 @@ public class SocketServerConnection implements ServerConnection {
 			}
 		}
 		catch (ClosedChannelException e) {
-			Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));
+			eventDispatcher.fire(new ConnectionClosedEvent());
 			throw new SocketConnectionException("Socket connection is closed", e);
 		}
 		catch (IOException e) {
-			Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));
+			eventDispatcher.fire(new ConnectionClosedEvent());
 			try {
 				channel.close();
 				throw new SocketConnectionException("The problem is occurred while sending data", e);
@@ -86,32 +91,61 @@ public class SocketServerConnection implements ServerConnection {
 		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
 
 		if (changed) {
+			workers.shutdown();
 			channel.close();
 		}
 	}
 
-	private void runLoop() {
-		new LoopThread(() -> {
+	private void runLoop(Consumer<Pack> packConsumer) {
+		Threads.createLoopThread(() -> {
 			try {
-				channel.read();
+				Pack pack = channel.read();
+
+				if (pack != null) {
+					CertainReadableByteChannel contentChannel = pack.channel();
+					runAsync(() -> packConsumer.accept(pack));
+					if (contentChannel instanceof LimitedReadableByteChannel) {
+
+						Duration timeoutDuration = contentTimeoutDurationFactory.apply(
+								contentChannel.getContentLength());
+
+						LimitedReadableByteChannel limitedReadableByteChannel = (LimitedReadableByteChannel) contentChannel;
+						limitedReadableByteChannel.onFinish().get(timeoutDuration);
+					}
+				}
+
 			}
 			catch (AsynchronousCloseException e) {
-				Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));
-				return false;
+				eventDispatcher.fire(new ConnectionClosedEvent());
+				throw new InterruptedException();
 			}
 			catch (ClosedChannelException e) {
-				Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));
+				eventDispatcher.fire(new ConnectionClosedEvent());
 				e.printStackTrace();
-				return false;
+				throw new InterruptedException();
 			}
 			catch (IOException e) {
-				Threads.runAsync(() -> eventDispatcher.fire(new ConnectionClosedEvent()));
+				eventDispatcher.fire(new ConnectionClosedEvent());
 				Try.run(() -> channel.close()).onFailure(Throwable::printStackTrace);
 				new SocketConnectionException("The problem is occurred while reading data", e).printStackTrace();
-				return false;
+				throw new InterruptedException();
 			}
+		}).start();
+	}
 
-			return true;
-		}, false).start();
+	private void runAsync(Runnable runnable) {
+		try {
+			workers.submit(() -> {
+				try {
+					runnable.run();
+				}
+				catch (Throwable t) {
+					t.printStackTrace();
+				}
+			});
+		}
+		catch (RejectedExecutionException ignored) {
+			// already closed
+		}
 	}
 }

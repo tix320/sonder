@@ -11,7 +11,6 @@ import java.util.Queue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,7 +18,6 @@ import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
-import com.github.tix320.sonder.internal.common.util.Threads;
 
 public final class PackChannel implements Channel {
 
@@ -42,8 +40,6 @@ public final class PackChannel implements Channel {
 
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private final Consumer<Pack> packConsumer;
-
 	private final AtomicReference<State> state;
 
 	private ByteBuffer headersBuffer;
@@ -63,8 +59,7 @@ public final class PackChannel implements Channel {
 	private final Lock readLock = new ReentrantLock();
 	private final Lock writeLock = new ReentrantLock();
 
-	public PackChannel(ByteChannel channel, LongFunction<Duration> contentTimeoutDurationFactory,
-					   Consumer<Pack> packConsumer) {
+	public PackChannel(ByteChannel channel, LongFunction<Duration> contentTimeoutDurationFactory) {
 		this.channel = channel;
 		this.protocolHeaderBuffer = ByteBuffer.allocateDirect(PROTOCOL_HEADER_BYTES.length);
 		this.headersLengthBuffer = ByteBuffer.allocateDirect(HEADERS_LENGTH_BYTES);
@@ -74,7 +69,6 @@ public final class PackChannel implements Channel {
 		this.lastReadContentLength = 0;
 		this.writeQueue = new LinkedList<>();
 		this.lastWriteMetaData = null;
-		this.packConsumer = packConsumer;
 		this.state = new AtomicReference<>(State.PROTOCOL_HEADER);
 	}
 
@@ -148,16 +142,18 @@ public final class PackChannel implements Channel {
 	 * @throws IOException          If any I/O error occurs
 	 * @throws InvalidPackException If invalid pack is consumed
 	 */
-	public void read() throws IOException, InvalidPackException {
+	public Pack read() throws IOException, InvalidPackException {
 		if (state.get() == State.last()) {
-			return;
+			return null;
 		}
 		readLock.lock();
 		try {
-			consume();
+			return consume();
 		}
 		catch (InvalidPackException e) {
+			resetRead();
 			e.printStackTrace();
+			return null;
 		}
 		catch (IOException e) {
 			close();
@@ -241,7 +237,7 @@ public final class PackChannel implements Channel {
 		this.lastWriteMetaData = writeMetaData;
 	}
 
-	private void consume() throws IOException, InvalidPackException {
+	private Pack consume() throws IOException, InvalidPackException {
 		cycle:
 		while (true) {
 			State state = this.state.get();
@@ -301,21 +297,21 @@ public final class PackChannel implements Channel {
 					byte[] headers = buffer.array();
 
 					this.state.updateAndGet(State::next);
-					constructPack(headers, this.lastReadContentLength);
-					break cycle;
+					return constructPack(headers, this.lastReadContentLength);
 				default:
 					throw new IllegalStateException(state.name());
 			}
 		}
+
+		return null;
 	}
 
-	private void constructPack(byte[] headers, long contentLength) {
+	private Pack constructPack(byte[] headers, long contentLength) {
 		if (contentLength == 0) {
 			resetRead();
 
 			CertainReadableByteChannel channel = EmptyReadableByteChannel.SELF;
-			Pack pack = new Pack(headers, channel);
-			Threads.runAsync(() -> packConsumer.accept(pack));
+			return new Pack(headers, channel);
 		}
 		else {
 			LimitedReadableByteChannel limitedChannel = new LimitedReadableByteChannel(this.channel, contentLength);
@@ -323,27 +319,31 @@ public final class PackChannel implements Channel {
 			Duration timeoutDuration = contentTimeoutDurationFactory.apply(contentLength);
 
 			Pack pack = new Pack(headers, limitedChannel);
-			Threads.runAsync(() -> packConsumer.accept(pack));
 
-			try {
-				limitedChannel.onFinish().get(timeoutDuration);
-				resetRead();
-			}
-			catch (InterruptedException e) {
-				throw new IllegalStateException(e);
-			}
-			catch (com.github.tix320.kiwi.api.reactive.observable.TimeoutException e) {
-				limitedChannel.close();
-				resetRead();
-				long remaining = limitedChannel.getRemaining();
-				if (remaining != 0) {
-					String headersString = Try.supply(() -> JSON_MAPPER.readValue(headers, Headers.class).toString())
-							.getOrElse("Unknown headers");
-					new TimeoutException(String.format(
-							"The provided channel is not was fully read long time: %sms. Content length is %s, left to read %s bytes.\nHeaders: %s",
-							timeoutDuration.toMillis(), contentLength, remaining, headersString)).printStackTrace();
+			limitedChannel.onFinish().map(none -> true).getOnTimout(timeoutDuration, () -> false).subscribe(success -> {
+				readLock.lock();
+				try {
+					if (!success) {
+						limitedChannel.close();
+						long remaining = limitedChannel.getRemaining();
+						if (remaining != 0) {
+							String headersString = Try.supply(
+									() -> JSON_MAPPER.readValue(headers, Headers.class).toString())
+									.getOrElse("Unknown headers");
+							new TimeoutException(String.format(
+									"The provided channel is not was fully read long time: %sms. Content length is %s, left to read %s bytes.\nHeaders: %s",
+									timeoutDuration.toMillis(), contentLength, remaining,
+									headersString)).printStackTrace();
+						}
+					}
+					resetRead();
 				}
-			}
+				finally {
+					readLock.unlock();
+				}
+			});
+
+			return pack;
 		}
 	}
 

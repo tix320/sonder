@@ -1,7 +1,7 @@
 package com.github.tix320.sonder.internal.common.rpc.protocol;
 
 
-import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
+import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
 
 /**
@@ -9,16 +9,16 @@ import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
  */
 public final class RequestMetadata {
 
-	private final Publisher<Object> responsePublisher;
+	private final MonoPublisher<Object> responsePublisher;
 
 	private final OriginMethod originMethod;
 
-	public RequestMetadata(Publisher<Object> responsePublisher, OriginMethod originMethod) {
+	public RequestMetadata(MonoPublisher<Object> responsePublisher, OriginMethod originMethod) {
 		this.responsePublisher = responsePublisher;
 		this.originMethod = originMethod;
 	}
 
-	public Publisher<Object> getResponsePublisher() {
+	public MonoPublisher<Object> getResponsePublisher() {
 		return responsePublisher;
 	}
 

@@ -3,6 +3,7 @@ package com.github.tix320.sonder.RPC;
 
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
+import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Subscription;
 
@@ -30,5 +31,20 @@ public class ServerEndpoint {
 	@Endpoint
 	public Integer getStringLength(String s) {
 		return s.length();
+	}
+
+	@Endpoint
+	public None throwAnyException() {
+		throw new RuntimeException();
+	}
+
+	@Endpoint
+	public None throwAnyExceptionWithoutHandle() {
+		throw new RuntimeException();
+	}
+
+	@Endpoint
+	public Integer getAnyValue() {
+		return 5;
 	}
 }

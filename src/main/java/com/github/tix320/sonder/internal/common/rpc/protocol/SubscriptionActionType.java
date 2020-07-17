@@ -5,7 +5,6 @@ package com.github.tix320.sonder.internal.common.rpc.protocol;
  */
 public enum SubscriptionActionType {
 	REGULAR_ITEM,
-	REGULAR_ERROR,
 	UNSUBSCRIBE,
 	SUBSCRIPTION_COMPLETED
 }

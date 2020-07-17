@@ -13,6 +13,7 @@ import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Origin;
+import com.github.tix320.sonder.api.common.rpc.Response;
 import com.github.tix320.sonder.api.common.rpc.Subscription;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
 import com.github.tix320.sonder.internal.common.rpc.StartupException;
@@ -94,6 +95,29 @@ public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMetho
 			return ReturnType.VOID;
 		}
 		else if (returnType == MonoObservable.class) {
+			Type genericReturnType = method.getGenericReturnType();
+
+			if (genericReturnType instanceof Class) { // Observable
+				return ReturnType.ASYNC_VALUE;
+			}
+			else if (genericReturnType instanceof ParameterizedType) { // Observable<...>
+				Type argument = ((ParameterizedType) genericReturnType).getActualTypeArguments()[0]; // <...>
+				if (argument instanceof Class) {
+					Class<?> classType = (Class<?>) argument;
+					if (classType == Response.class) {
+						return ReturnType.ASYNC_RESPONSE;
+					}
+				}
+				else if (argument instanceof ParameterizedType) {
+					Type rawType = ((ParameterizedType) argument).getRawType();
+					if (rawType == Response.class) {
+						return ReturnType.ASYNC_RESPONSE;
+					}
+				}
+
+				return ReturnType.ASYNC_VALUE;
+			}
+
 			return ReturnType.ASYNC_RESPONSE;
 		}
 		else if (method.isAnnotationPresent(Subscription.class)) {
@@ -112,6 +136,22 @@ public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMetho
 		}
 		else if (returnType instanceof ParameterizedType) { // Observable<...>
 			Type argument = ((ParameterizedType) returnType).getActualTypeArguments()[0]; // <...>
+
+			if (argument instanceof Class) {
+				Class<?> classType = (Class<?>) argument;
+				if (classType == Response.class) {
+					return typeFactory.constructType(Object.class);
+				}
+			}
+			else if (argument instanceof ParameterizedType) {
+				ParameterizedType parameterizedType = (ParameterizedType) argument;
+				Type rawType = parameterizedType.getRawType();
+				if (rawType == Response.class) {
+					Type realArgument = parameterizedType.getActualTypeArguments()[0];
+					return typeFactory.constructType(realArgument);
+				}
+			}
+
 			return typeFactory.constructType(argument);
 		}
 		else {

@@ -37,7 +37,7 @@ import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
  *
  * Create client builder by calling method {@link #forAddress}.
  *
- * @author tix32 on 20-Dec-18
+ * @author tix320 on 20-Dec-18
  * @see Protocol
  * @see Transfer
  */
@@ -91,7 +91,7 @@ public final class SonderClient implements Closeable {
 	 * @see Protocol
 	 */
 	public void registerProtocol(Protocol protocol) {
-		state.checkValue(State.INITIAL, State.RUNNING);
+		state.checkState(State.INITIAL, State.RUNNING);
 
 		String protocolName = protocol.getName();
 		if (BuiltInProtocol.NAMES.contains(protocolName)) {
@@ -118,7 +118,7 @@ public final class SonderClient implements Closeable {
 	 * @see RPCProtocol
 	 */
 	public <T> T getRPCService(Class<T> clazz) {
-		state.checkValue(State.INITIAL, State.RUNNING);
+		state.checkState(State.INITIAL, State.RUNNING);
 
 		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
 		if (protocol == null) {
@@ -140,7 +140,7 @@ public final class SonderClient implements Closeable {
 	 * @throws IllegalStateException if {@link ClientTopicProtocol} not registered
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
-		state.checkValue(State.INITIAL, State.RUNNING);
+		state.checkState(State.INITIAL, State.RUNNING);
 
 		Protocol protocol = protocols.get(BuiltInProtocol.TOPIC.getName());
 		if (protocol == null) {
@@ -160,13 +160,13 @@ public final class SonderClient implements Closeable {
 	 * @return topic {@link Topic}
 	 */
 	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
-		state.checkValue(State.INITIAL, State.RUNNING);
+		state.checkState(State.INITIAL, State.RUNNING);
 
 		return registerTopic(topic, dataType, 0);
 	}
 
 	public <T extends SonderClientEvent> Observable<T> onEvent(Class<T> eventClass) {
-		state.checkValue(State.INITIAL, State.RUNNING);
+		state.checkState(State.INITIAL, State.RUNNING);
 
 		return eventDispatcher.on(eventClass);
 	}
