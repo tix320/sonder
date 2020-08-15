@@ -28,4 +28,7 @@ public interface ClientService {
 
 	@Origin
 	MonoObservable<Response<Integer>> getAnyValue();
+
+	@Origin
+	MonoObservable<Integer> testFactory();
 }

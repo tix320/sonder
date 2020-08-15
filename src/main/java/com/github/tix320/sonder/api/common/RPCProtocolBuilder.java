@@ -9,6 +9,7 @@ import com.github.tix320.sonder.api.common.rpc.Origin;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgExtractor;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.internal.common.ProtocolOrientation;
+import com.github.tix320.sonder.internal.common.rpc.protocol.EndpointFactory;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.common.util.ClassFinder;
 import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
@@ -29,6 +30,8 @@ public final class RPCProtocolBuilder {
 	private final List<EndpointExtraArgExtractor<?, ?>> endpointExtraArgExtractors;
 
 	private final SonderEventDispatcher<?> sonderEventDispatcher;
+
+	private EndpointFactory<?> endpointFactory;
 
 	public RPCProtocolBuilder(ProtocolOrientation orientation, SonderEventDispatcher<?> sonderEventDispatcher) {
 		this.orientation = orientation;
@@ -88,6 +91,11 @@ public final class RPCProtocolBuilder {
 		return this;
 	}
 
+	public RPCProtocolBuilder endpointFactory(EndpointFactory<?> endpointFactory) {
+		this.endpointFactory = endpointFactory;
+		return this;
+	}
+
 	private List<Class<?>> resolveClasses() {
 		List<Class<?>> packageClasses = ClassFinder.getPackageClasses(packagesToScan);
 		List<Class<?>> classes = this.classes;
@@ -100,6 +108,6 @@ public final class RPCProtocolBuilder {
 	public RPCProtocol build() {
 		List<Class<?>> classes = resolveClasses();
 		return new RPCProtocol(orientation, sonderEventDispatcher, classes, originExtraArgExtractors,
-				endpointExtraArgExtractors);
+				endpointExtraArgExtractors, endpointFactory);
 	}
 }

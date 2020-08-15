@@ -69,6 +69,7 @@ public final class SonderClient implements Closeable {
 		this.connection = connection;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 		this.eventDispatcher = eventDispatcher;
+		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
 	}
 
 	public synchronized void connect() throws IOException {
@@ -78,7 +79,6 @@ public final class SonderClient implements Closeable {
 			Transfer transfer = convertDataPackToTransfer(pack);
 			processTransfer(transfer);
 		});
-		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
 	}
 
 	/**
@@ -187,6 +187,9 @@ public final class SonderClient implements Closeable {
 
 	private void listenProtocol(Protocol protocol) {
 		protocol.outgoingTransfers()
+				.peek(transfer -> {
+					state.checkState("Sonder Client does not connected or already closed", State.RUNNING);
+				})
 				.map(transfer -> setProtocolHeader(transfer, protocol.getName()))
 				.map(this::transferToDataPack)
 				.takeUntil(closed())

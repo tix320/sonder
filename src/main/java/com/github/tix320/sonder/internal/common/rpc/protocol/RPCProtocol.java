@@ -8,6 +8,7 @@ import java.lang.reflect.Proxy;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -83,7 +84,8 @@ public class RPCProtocol implements Protocol {
 
 	public RPCProtocol(ProtocolOrientation orientation, SonderEventDispatcher<?> sonderEventDispatcher,
 					   List<Class<?>> classes, List<OriginExtraArgExtractor<?>> originExtraArgExtractors,
-					   List<EndpointExtraArgExtractor<?, ?>> endpointExtraArgExtractors) {
+					   List<EndpointExtraArgExtractor<?, ?>> endpointExtraArgExtractors,
+					   EndpointFactory<?> endpointFactory) {
 		this.orientation = orientation;
 		this.sonderEventDispatcher = sonderEventDispatcher;
 
@@ -115,11 +117,15 @@ public class RPCProtocol implements Protocol {
 				.distinct()
 				.collect(toUnmodifiableMap(clazz -> clazz, this::createOriginInstance));
 
+		@SuppressWarnings("all")
+		EndpointFactory finalEndpointFactory = Objects.requireNonNullElse(endpointFactory,
+				clazz -> Try.supplyOrRethrow(() -> clazz.getConstructor().newInstance()));
+
 		this.endpointServices = endpointServiceMethods.get()
 				.stream()
 				.map(ServiceMethod::getRawClass)
 				.distinct()
-				.collect(toUnmodifiableMap(clazz -> clazz, this::creatEndpointInstance));
+				.collect(toUnmodifiableMap(clazz -> clazz, (Function<Class<?>, ?>) finalEndpointFactory::create));
 
 		this.requestMetadataByResponseKey = new ConcurrentHashMap<>();
 		this.remoteSubscriptionPublishers = new ConcurrentHashMap<>();
@@ -189,10 +195,6 @@ public class RPCProtocol implements Protocol {
 
 	private Object createOriginInstance(Class<?> clazz) {
 		return Proxy.newProxyInstance(clazz.getClassLoader(), new Class[]{clazz}, new OriginInvocationHandler());
-	}
-
-	private Object creatEndpointInstance(Class<?> clazz) {
-		return Try.supplyOrRethrow(() -> clazz.getConstructor().newInstance());
 	}
 
 	private List<OriginExtraArgExtractor<?>> appendBuiltInOriginExtraArgExtractors(
@@ -425,7 +427,7 @@ public class RPCProtocol implements Protocol {
 				if (remoteSubscriptionPublisher == null) {
 					// This may happen, when we are unsubscribe from observable locally, but unsubscription still not reached to other end and he send regular value.
 					// So we are ignoring this case, just log it
-					System.err.println(String.format("Subscription not found for key %s", responseKey));
+					System.err.printf("Subscription not found for key %s%n", responseKey);
 					return;
 				}
 

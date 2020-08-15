@@ -12,6 +12,8 @@ public class ServerEndpoint {
 
 	public static Publisher<Integer> publisher = Publisher.simple();
 
+	public int forTest;
+
 	@Endpoint
 	@Subscription
 	public Observable<Integer> numbers() {
@@ -46,5 +48,10 @@ public class ServerEndpoint {
 	@Endpoint
 	public Integer getAnyValue() {
 		return 5;
+	}
+
+	@Endpoint
+	public int testFactory() {
+		return forTest;
 	}
 }
