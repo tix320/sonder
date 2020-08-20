@@ -2,6 +2,7 @@ package com.github.tix320.sonder.internal.server;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketException;
 import java.nio.channels.*;
 import java.time.Duration;
 import java.util.Iterator;
@@ -101,6 +102,14 @@ public final class SocketClientsSelector implements ClientsSelector {
 					selectionKey.interestOpsOr(SelectionKey.OP_WRITE);
 					selector.wakeup();
 				}
+			}
+			catch (SocketException e) {
+				if (!e.getMessage().contains("Connection reset")) {
+					new SocketConnectionException(String.format("An error occurs while write to client %s", client.id),
+							e).printStackTrace();
+				}
+
+				closeClientConnection(client);
 			}
 			catch (IOException e) {
 				if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
