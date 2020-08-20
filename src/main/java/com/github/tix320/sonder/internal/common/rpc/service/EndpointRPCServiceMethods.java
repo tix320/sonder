@@ -4,7 +4,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
 
-import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
@@ -34,10 +33,7 @@ public final class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointM
 						"Must be a concrete class"), StartupException.throwWhen(
 						aClass -> (aClass.isMemberClass() && !Modifier.isStatic(aClass.getModifiers())),
 						"Must be static, when is a member class"),
-				StartupException.throwWhen(aClass -> !Modifier.isPublic(aClass.getModifiers()), "Must be public"),
-				StartupException.throwWhen(aClass -> Try.supply(aClass::getConstructor)
-						.filter(constructor -> Modifier.isPublic(constructor.getModifiers()))
-						.isUseless(), "Must have public no-args constructor"));
+				StartupException.throwWhen(aClass -> !Modifier.isPublic(aClass.getModifiers()), "Must be public"));
 	}
 
 	@Override
