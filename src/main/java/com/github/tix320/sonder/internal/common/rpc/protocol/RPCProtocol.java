@@ -35,7 +35,6 @@ import com.github.tix320.sonder.api.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.api.server.communication.ServerSideProtocol;
 import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocolBuilder;
-import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
 import com.github.tix320.sonder.internal.common.rpc.exception.IncompatibleTypeException;
 import com.github.tix320.sonder.internal.common.rpc.exception.PathNotFoundException;
@@ -167,7 +166,7 @@ public abstract class RPCProtocol implements Protocol {
 
 	@Override
 	public String getName() {
-		return BuiltInProtocol.RPC.getName();
+		return "sonder-RPC";
 	}
 
 	@Override

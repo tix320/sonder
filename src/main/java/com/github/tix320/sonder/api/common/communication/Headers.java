@@ -192,10 +192,6 @@ public final class Headers implements Serializable {
 	public static final String SUBSCRIPTION_ACTION_TYPE = "subscription-action-type";
 	public static final String SUBSCRIPTION_RESULT_ORDER_ID = "subscription_result_order_id";
 
-	//	-------------------- Topic protocol headers
-	public static final String TOPIC = "topic";
-	public static final String TOPIC_ACTION = "topic-action";
-
 	public static class HeadersSerializer extends StdSerializer<Headers> {
 
 		public HeadersSerializer() {

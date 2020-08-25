@@ -22,7 +22,6 @@ import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
 import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
 import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
-import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
 
 /**
  * Entry point class for your socket server.
@@ -32,7 +31,7 @@ import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
  * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
  *
  * You can register any protocol by calling method {@link SonderServerBuilder#registerProtocol(ServerSideProtocol)}.
- * There are some built-in protocols, such as RPC protocol {@link ServerRPCProtocol} and Topic protocol {@link ServerTopicProtocol}.
+ * There are some built-in protocols, such as RPC protocol {@link ServerRPCProtocol}.
  *
  * Create client builder by calling method {@link #forAddress}.
  *

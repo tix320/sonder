@@ -19,7 +19,6 @@ import com.github.tix320.sonder.api.common.event.SonderEvent;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.internal.client.ServerConnection;
 import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
-import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 
@@ -31,7 +30,7 @@ import com.github.tix320.sonder.internal.common.communication.Pack;
  * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
  *
  * You can register any protocol by calling method {@link SonderClientBuilder#registerProtocol(ClientSideProtocol)}.
- * There are some built-in protocols, such as RPC protocol {@link ClientRPCProtocol} and Topic protocol {@link ClientTopicProtocol}.
+ * There are some built-in protocols, such as RPC protocol {@link ClientRPCProtocol}.
  *
  * Create client builder by calling method {@link #forAddress}.
  *
