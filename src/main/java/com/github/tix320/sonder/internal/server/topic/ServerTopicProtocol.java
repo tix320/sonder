@@ -15,6 +15,7 @@ import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
+import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.topic.TopicAction;
@@ -52,6 +53,11 @@ public class ServerTopicProtocol implements Protocol {
 		this.topicPublishers = new ConcurrentHashMap<>();
 		this.dataTypesByTopic = new ConcurrentHashMap<>();
 		this.outgoingRequests = Publisher.simple();
+	}
+
+	@Override
+	public void init(SonderEventDispatcher sonderEventDispatcher) {
+
 	}
 
 	@Override
@@ -101,7 +107,7 @@ public class ServerTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void close() {
+	public void destroy() {
 		outgoingRequests.complete();
 	}
 

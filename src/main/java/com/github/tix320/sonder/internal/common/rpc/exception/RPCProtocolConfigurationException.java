@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.common.rpc;
+package com.github.tix320.sonder.internal.common.rpc.exception;
 
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -8,10 +8,10 @@ import java.util.stream.IntStream;
 /**
  * @author Tigran.Sargsyan on 18-Dec-18
  */
-public final class StartupException extends RuntimeException {
+public final class RPCProtocolConfigurationException extends RuntimeException {
 	private static final long serialVersionUID = -4222792746745482561L;
 
-	public StartupException(String message) {
+	public RPCProtocolConfigurationException(String message) {
 		super(message);
 	}
 
@@ -27,14 +27,13 @@ public final class StartupException extends RuntimeException {
 
 		String message = (rootMessage.apply(value) + '\n' + checksMessage);
 
-		throw new StartupException(message);
+		throw new RPCProtocolConfigurationException(message);
 	}
 
 	public static <T> Check<T> throwWhen(Predicate<T> predicate, String errorMessage) {
 		return new Check<>(predicate, errorMessage);
 	}
 
-	@SuppressWarnings("WeakerAccess")
 	public static final class Check<T> {
 
 		private final Predicate<T> predicate;

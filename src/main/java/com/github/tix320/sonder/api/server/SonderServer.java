@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
@@ -15,15 +14,14 @@ import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
-import com.github.tix320.sonder.api.common.topic.Topic;
-import com.github.tix320.sonder.api.server.event.SonderServerEvent;
-import com.github.tix320.sonder.internal.common.BuiltInProtocol;
+import com.github.tix320.sonder.api.common.event.SonderEvent;
+import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
+import com.github.tix320.sonder.api.server.communication.ServerSideProtocol;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
-import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
 import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
+import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
 import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
 
 /**
@@ -33,8 +31,8 @@ import com.github.tix320.sonder.internal.server.topic.ServerTopicProtocol;
  * Communication is performed by sending and receiving transfer objects {@link Transfer}.
  * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
  *
- * You can register any protocol by calling method {@link #registerProtocol(Protocol)}.
- * There are some built-in protocols {@link BuiltInProtocol}, which names is reserved and cannot be used.
+ * You can register any protocol by calling method {@link SonderServerBuilder#registerProtocol(ServerSideProtocol)}.
+ * There are some built-in protocols, such as RPC protocol {@link ServerRPCProtocol} and Topic protocol {@link ServerTopicProtocol}.
  *
  * Create client builder by calling method {@link #forAddress}.
  *
@@ -50,7 +48,7 @@ public final class SonderServer implements Closeable {
 
 	private final ClientsSelector clientsSelector;
 
-	private final SonderEventDispatcher<SonderServerEvent> eventDispatcher;
+	private final SonderEventDispatcher eventDispatcher;
 
 	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
@@ -66,14 +64,14 @@ public final class SonderServer implements Closeable {
 	}
 
 	SonderServer(ClientsSelector clientsSelector, Map<String, Protocol> protocols,
-				 SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
+				 SonderEventDispatcher eventDispatcher) {
 		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 		this.eventDispatcher = eventDispatcher;
 		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
 	}
 
-	public synchronized void start() throws IOException {
+	public void start() throws IOException {
 		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
 		if (!changed) {
 			throw new IllegalStateException("Already started");
@@ -85,91 +83,7 @@ public final class SonderServer implements Closeable {
 		});
 	}
 
-	/**
-	 * Register protocol for this server.
-	 *
-	 * @param protocol to register
-	 *
-	 * @throws IllegalArgumentException if reserved protocol name is used
-	 * @throws IllegalStateException    if there are already registered protocol with same name
-	 * @see Protocol
-	 */
-	public void registerProtocol(Protocol protocol) {
-		state.checkState(State.INITIAL, State.RUNNING);
-
-		String protocolName = protocol.getName();
-		if (BuiltInProtocol.NAMES.contains(protocolName)) {
-			throw new IllegalArgumentException(String.format("Protocol name %s is reserved", protocolName));
-		}
-		if (protocols.containsKey(protocolName)) {
-			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));
-		}
-
-		listenProtocol(protocol);
-
-		protocols.put(protocolName, protocol);
-	}
-
-	/**
-	 * Get service from protocol {@link RPCProtocol}
-	 *
-	 * @param clazz class of service
-	 * @param <T>   of class
-	 *
-	 * @return service
-	 *
-	 * @throws IllegalStateException if {@link RPCProtocol} not registered
-	 * @see RPCProtocol
-	 */
-	public <T> T getRPCService(Class<T> clazz) {
-		state.checkState(State.INITIAL, State.RUNNING);
-
-		Protocol protocol = protocols.get(BuiltInProtocol.RPC.getName());
-		if (protocol == null) {
-			throw new IllegalStateException("RPC protocol not registered");
-		}
-		return ((RPCProtocol) protocol).getService(clazz);
-	}
-
-	/**
-	 * Register topic for protocol {@link ServerTopicProtocol}
-	 *
-	 * @param topic      name
-	 * @param dataType   which will be used while transferring data in topic
-	 * @param bufferSize for buffering last received data
-	 * @param <T>        type of topic data
-	 *
-	 * @return topic
-	 *
-	 * @throws IllegalStateException if {@link ServerTopicProtocol} not registered
-	 */
-	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType, int bufferSize) {
-		state.checkState(State.INITIAL, State.RUNNING);
-
-		Protocol protocol = protocols.get(BuiltInProtocol.TOPIC.getName());
-		if (protocol == null) {
-			throw new IllegalStateException("Topic protocol not registered");
-		}
-		return ((ServerTopicProtocol) protocol).registerTopic(topic, dataType, bufferSize);
-	}
-
-	/**
-	 * * Register topic for protocol {@link ServerTopicProtocol}
-	 * Invokes {@link #registerTopic(String, TypeReference, int)} with '0' value buffer size
-	 *
-	 * @param <T>      type of topic data
-	 * @param topic    name
-	 * @param dataType which will be used while transferring data in topic
-	 *
-	 * @return topic {@link Topic}
-	 */
-	public <T> Topic<T> registerTopic(String topic, TypeReference<T> dataType) {
-		state.checkState(State.INITIAL, State.RUNNING);
-
-		return registerTopic(topic, dataType, 0);
-	}
-
-	public <T extends SonderServerEvent> Observable<T> onEvent(Class<T> eventClass) {
+	public <T extends SonderEvent> Observable<T> onEvent(Class<T> eventClass) {
 		state.checkState(State.INITIAL, State.RUNNING);
 
 		return eventDispatcher.on(eventClass);

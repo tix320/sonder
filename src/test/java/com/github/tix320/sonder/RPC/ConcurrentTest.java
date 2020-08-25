@@ -2,7 +2,6 @@ package com.github.tix320.sonder.RPC;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -11,7 +10,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.IntStream;
 
 import com.github.tix320.sonder.api.client.SonderClient;
+import com.github.tix320.sonder.api.client.communication.ClientSideProtocol;
+import com.github.tix320.sonder.api.common.RPCProtocolBuilder.BuildResult;
+import com.github.tix320.sonder.api.common.rpc.build.OriginInstanceResolver;
 import com.github.tix320.sonder.api.server.SonderServer;
+import com.github.tix320.sonder.api.server.communication.ServerSideProtocol;
+import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import org.junit.jupiter.api.Test;
 
 import static java.util.stream.Collectors.toSet;
@@ -27,9 +31,15 @@ public class ConcurrentTest {
 
 	@Test
 	public void test() throws IOException, InterruptedException {
+		ServerSideProtocol rpcProtocol = RPCProtocol.forServer()
+				.registerEndpointClasses(ServerEndpoint.class)
+				.build()
+				.getProtocol();
+
 		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT))
-				.withRPCProtocol(builder -> builder.scanClasses(ServerEndpoint.class))
+				.registerProtocol(rpcProtocol)
 				.build();
+
 		sonderServer.start();
 
 		int usersCount = 20;
@@ -39,16 +49,22 @@ public class ConcurrentTest {
 		List<SonderClient> clients = new ArrayList<>();
 
 		for (int i = 1; i <= usersCount; i++) {
+			BuildResult<ClientSideProtocol> buildResult = RPCProtocol.forClient()
+					.registerOriginInterfaces(ClientService.class)
+					.build();
+
+			ClientSideProtocol protocol = buildResult.getProtocol();
+			OriginInstanceResolver originInstanceResolver = buildResult.getOriginInstanceResolver();
+
 			SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT))
-					.withRPCProtocol(builder -> builder.scanClasses(ClientService.class))
-					.contentTimeoutDurationFactory(contentLength -> Duration.ofSeconds(100))
+					.registerProtocol(protocol)
 					.build();
 
 			sonderClient.connect();
 
 			clients.add(sonderClient);
 
-			sonderClient.getRPCService(ClientService.class).getStringLength("f".repeat(i)).subscribe(responses::add);
+			originInstanceResolver.get(ClientService.class).getStringLength("f".repeat(i)).subscribe(responses::add);
 		}
 
 		Thread.sleep(2000);

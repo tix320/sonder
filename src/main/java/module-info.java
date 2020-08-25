@@ -4,13 +4,15 @@ module sonder {
 	requires transitive com.fasterxml.jackson.databind;
 	requires transitive com.fasterxml.jackson.annotation;
 
-	exports com.github.tix320.sonder.api.client;
-	exports com.github.tix320.sonder.api.server;
-	exports com.github.tix320.sonder.api.common;
 	exports com.github.tix320.sonder.api.common.communication;
+	exports com.github.tix320.sonder.api.common.event;
 	exports com.github.tix320.sonder.api.common.rpc;
 	exports com.github.tix320.sonder.api.common.rpc.extra;
 	exports com.github.tix320.sonder.api.common.topic;
-	exports com.github.tix320.sonder.api.server.event;
+	exports com.github.tix320.sonder.api.client;
 	exports com.github.tix320.sonder.api.client.event;
+	exports com.github.tix320.sonder.api.client.communication;
+	exports com.github.tix320.sonder.api.server;
+	exports com.github.tix320.sonder.api.server.event;
+	exports com.github.tix320.sonder.api.server.communication;
 }

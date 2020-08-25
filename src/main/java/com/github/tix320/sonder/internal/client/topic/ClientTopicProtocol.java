@@ -17,6 +17,7 @@ import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.StaticTransfer;
 import com.github.tix320.sonder.api.common.communication.Transfer;
+import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.api.common.topic.Topic;
 import com.github.tix320.sonder.internal.common.BuiltInProtocol;
 import com.github.tix320.sonder.internal.common.topic.TopicAction;
@@ -58,6 +59,11 @@ public class ClientTopicProtocol implements Protocol {
 		this.responsePublishers = new ConcurrentHashMap<>();
 		this.subscriptions = new ConcurrentHashMap<>();
 		this.outgoingTransfers = Publisher.simple();
+	}
+
+	@Override
+	public void init(SonderEventDispatcher sonderEventDispatcher) {
+
 	}
 
 	@Override
@@ -117,7 +123,7 @@ public class ClientTopicProtocol implements Protocol {
 	}
 
 	@Override
-	public void close() {
+	public void destroy() {
 		outgoingTransfers.complete();
 		topicPublishers.values().forEach(Publisher::complete);
 		responsePublishers.values().forEach(Publisher::complete);

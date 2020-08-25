@@ -8,7 +8,7 @@ import java.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
-import com.github.tix320.sonder.internal.common.rpc.StartupException;
+import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolConfigurationException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamQualifier;
 
@@ -23,7 +23,7 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 
 	private final List<ExtraParamDefinition<?, ?>> extraParamDefinitions;
 
-	public RPCServiceMethods(List<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
+	public RPCServiceMethods(Set<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
 		this.extraParamDefinitions = validateExtraParamDefinitions(extraParamDefinitions);
 		this.serviceMethods = createServiceMethods(classes);
 	}
@@ -34,7 +34,6 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 
 	private List<T> createServiceMethods(Collection<Class<?>> services) {
 		return services.stream()
-				.filter(this::isService)
 				.peek(this::checkService)
 				.flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
 				.filter(this::isServiceMethod)
@@ -46,8 +45,6 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 					return methods;
 				}));
 	}
-
-	protected abstract boolean isService(Class<?> clazz);
 
 	protected abstract void checkService(Class<?> clazz);
 
@@ -81,12 +78,12 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 			for (Annotation annotation : parameter.getAnnotations()) {
 				if (annotation.annotationType().isAnnotationPresent(ExtraParamQualifier.class)) {
 					if (!extraParamDefinitions.containsKey(annotation.annotationType())) {
-						throw new StartupException(String.format("Extra param @%s is not allowed in method %s(%s)",
+						throw new RPCProtocolConfigurationException(String.format("Extra param @%s is not allowed in method %s(%s)",
 								annotation.annotationType().getSimpleName(), method.getName(),
 								method.getDeclaringClass()));
 					}
 					if (extraParamAnnotationExists) {
-						throw new StartupException(String.format(
+						throw new RPCProtocolConfigurationException(String.format(
 								"Parameter(index:%s) in method %s(%s) must have only one extra param annotation", i,
 								method.getName(), method.getDeclaringClass()));
 					}
@@ -94,7 +91,7 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 					extraParamAnnotationExists = true;
 					ExtraParamDefinition<?, ?> definition = extraParamDefinitions.get(annotation.annotationType());
 					if (parameter.getType() != definition.getParamType()) {
-						throw new StartupException(String.format("Extra param @%s must have type %s in method %s(%s)",
+						throw new RPCProtocolConfigurationException(String.format("Extra param @%s must have type %s in method %s(%s)",
 								annotation.annotationType().getSimpleName(), definition.getParamType().getName(),
 								method.getName(), method.getDeclaringClass()));
 					}
@@ -117,7 +114,7 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 				.collect(joining(",", "[", "]"));
 
 		if (nonExistingRequiredExtraParams.length() > 2) { // is not empty
-			throw new StartupException(
+			throw new RPCProtocolConfigurationException(
 					String.format("Extra params %s are required in method %s(%s)", nonExistingRequiredExtraParams,
 							method.getName(), method.getDeclaringClass()));
 		}
@@ -132,7 +129,7 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 
 	private void checkPath(ServiceMethod method) {
 		if (method.getPath().startsWith(":")) {
-			throw new StartupException(String.format("path value must be non empty in %s", method.getPath()));
+			throw new RPCProtocolConfigurationException(String.format("path value must be non empty in %s", method));
 		}
 	}
 
@@ -156,7 +153,7 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 		for (ExtraParamDefinition<?, ?> extraParamDefinition : extraParamDefinitions) {
 			Class<?> annotationType = extraParamDefinition.getAnnotationType();
 			if (!annotationType.isAnnotationPresent(ExtraParamQualifier.class)) {
-				throw new StartupException(
+				throw new RPCProtocolConfigurationException(
 						String.format("To use annotation @%s as extra param qualifier, please annotate it with @%s",
 								annotationType.getSimpleName(), ExtraParamQualifier.class.getSimpleName()));
 			}

@@ -2,13 +2,13 @@ package com.github.tix320.sonder.api.common.rpc.extra;
 
 import java.lang.annotation.Annotation;
 
-public final class ExtraArg<A extends Annotation> {
+public final class ExtraArg {
 
 	private final Object value;
 
-	private final A annotation;
+	private final Annotation annotation;
 
-	public ExtraArg(Object value, A annotation) {
+	public ExtraArg(Object value, Annotation annotation) {
 		this.value = value;
 		this.annotation = annotation;
 	}
@@ -17,7 +17,7 @@ public final class ExtraArg<A extends Annotation> {
 		return value;
 	}
 
-	public A getAnnotation() {
+	public Annotation getAnnotation() {
 		return annotation;
 	}
 }

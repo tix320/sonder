@@ -16,14 +16,13 @@ import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.kiwi.api.util.Threads;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
 import com.github.tix320.sonder.api.client.event.ConnectionEstablishedEvent;
-import com.github.tix320.sonder.api.client.event.SonderClientEvent;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
+import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
-import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 public class SocketServerConnection implements ServerConnection {
 
@@ -34,21 +33,21 @@ public class SocketServerConnection implements ServerConnection {
 
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private final SonderEventDispatcher<SonderClientEvent> eventDispatcher;
+	private final SonderEventDispatcher eventDispatcher;
 
 	private volatile PackChannel channel;
 
 	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
 	public SocketServerConnection(InetSocketAddress address, LongFunction<Duration> contentTimeoutDurationFactory,
-								  SonderEventDispatcher<SonderClientEvent> eventDispatcher) {
+								  SonderEventDispatcher eventDispatcher) {
 		this.address = address;
 		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 		this.eventDispatcher = eventDispatcher;
 	}
 
 	@Override
-	public void connect(Consumer<Pack> packConsumer) throws IOException {
+	public synchronized void connect(Consumer<Pack> packConsumer) throws IOException {
 		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
 		if (!changed) {
 			throw new IllegalStateException("Already running");

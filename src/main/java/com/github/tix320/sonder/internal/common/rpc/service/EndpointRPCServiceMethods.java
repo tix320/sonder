@@ -3,37 +3,33 @@ package com.github.tix320.sonder.internal.common.rpc.service;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.List;
+import java.util.Set;
 
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Subscription;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
-import com.github.tix320.sonder.internal.common.rpc.StartupException;
+import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolConfigurationException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod.ResultType;
 
 public final class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointMethod> {
 
-	public EndpointRPCServiceMethods(List<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
+	public EndpointRPCServiceMethods(Set<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
 		super(classes, extraParamDefinitions);
 	}
 
 	@Override
-	protected final boolean isService(Class<?> clazz) {
-		return clazz.isAnnotationPresent(Endpoint.class);
-	}
-
-	@Override
 	protected final void checkService(Class<?> clazz) {
-		StartupException.checkAndThrow(clazz,
+		RPCProtocolConfigurationException.checkAndThrow(clazz,
 				aClass -> String.format("Failed to resolve endpoint service(%s), there are the following errors.",
 						aClass),
-				StartupException.throwWhen(aClass -> Modifier.isAbstract(aClass.getModifiers()) || aClass.isEnum(),
-						"Must be a concrete class"), StartupException.throwWhen(
+				RPCProtocolConfigurationException.throwWhen(aClass -> Modifier.isAbstract(aClass.getModifiers()) || aClass.isEnum(),
+						"Must be a concrete class"), RPCProtocolConfigurationException.throwWhen(
 						aClass -> (aClass.isMemberClass() && !Modifier.isStatic(aClass.getModifiers())),
 						"Must be static, when is a member class"),
-				StartupException.throwWhen(aClass -> !Modifier.isPublic(aClass.getModifiers()), "Must be public"));
+				RPCProtocolConfigurationException.throwWhen(aClass -> !Modifier.isPublic(aClass.getModifiers()), "Must be public"));
 	}
 
 	@Override
@@ -43,11 +39,11 @@ public final class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointM
 
 	@Override
 	protected final void checkMethod(Method method) {
-		StartupException.checkAndThrow(method,
+		RPCProtocolConfigurationException.checkAndThrow(method,
 				m -> String.format("Failed to resolve endpoint method '%s'(%s), there are the following errors.",
 						m.getName(), m.getDeclaringClass()),
-				StartupException.throwWhen(m -> !Modifier.isPublic(m.getModifiers()), "Must be public"),
-				StartupException.throwWhen(
+				RPCProtocolConfigurationException.throwWhen(m -> !Modifier.isPublic(m.getModifiers()), "Must be public"),
+				RPCProtocolConfigurationException.throwWhen(
 						m -> m.isAnnotationPresent(Subscription.class) && m.getReturnType() != Observable.class,
 						String.format("Return type must be `%s` when `@%s` annotation is present",
 								Observable.class.getSimpleName(), Subscription.class.getSimpleName())));
@@ -62,7 +58,7 @@ public final class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointM
 		String classPath = classAnnotation.value();
 
 		if (classPath.isBlank()) {
-			throw new StartupException(
+			throw new RPCProtocolConfigurationException(
 					String.format("@%s value on class must be non empty. (%s)", Endpoint.class.getSimpleName(),
 							declaringClass));
 		}

@@ -4,19 +4,14 @@ import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
-import com.github.tix320.sonder.api.client.event.SonderClientEvent;
-import com.github.tix320.sonder.api.common.RPCProtocolBuilder;
+import com.github.tix320.sonder.api.client.communication.ClientSideProtocol;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
+import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.internal.client.SocketServerConnection;
-import com.github.tix320.sonder.internal.client.topic.ClientTopicProtocol;
-import com.github.tix320.sonder.internal.common.ProtocolOrientation;
-import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
-import com.github.tix320.sonder.internal.event.SimpleEventDispatcher;
-import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
+import com.github.tix320.sonder.internal.common.event.SimpleEventDispatcher;
 
 /**
  * Builder for socket client {@link SonderClient}.
@@ -29,7 +24,7 @@ public final class SonderClientBuilder {
 
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private final SonderEventDispatcher<SonderClientEvent> sonderEventDispatcher = new SimpleEventDispatcher<>();
+	private final SonderEventDispatcher sonderEventDispatcher = new SimpleEventDispatcher();
 
 	SonderClientBuilder(InetSocketAddress inetSocketAddress) {
 		if (inetSocketAddress.getAddress().isAnyLocalAddress()) {
@@ -44,29 +39,19 @@ public final class SonderClientBuilder {
 	}
 
 	/**
-	 * Register RPC protocol {@link RPCProtocol} to server.
+	 * Register protocol {@link Protocol}.
 	 *
-	 * @param protocolBuilder function for configuring protocol {@link RPCProtocolBuilder}.
+	 * @param protocol to register.
 	 *
 	 * @return self
 	 */
-	public SonderClientBuilder withRPCProtocol(Consumer<RPCProtocolBuilder> protocolBuilder) {
-		RPCProtocolBuilder rpcProtocolBuilder = new RPCProtocolBuilder(ProtocolOrientation.CLIENT,
-				sonderEventDispatcher);
-		protocolBuilder.accept(rpcProtocolBuilder);
-		RPCProtocol protocol = rpcProtocolBuilder.build();
-		protocols.put(protocol.getName(), protocol);
-		return this;
-	}
+	public SonderClientBuilder registerProtocol(ClientSideProtocol protocol) {
+		String protocolName = protocol.getName();
+		if (protocols.containsKey(protocolName)) {
+			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));
+		}
+		protocols.put(protocolName, protocol);
 
-	/**
-	 * Register topic protocol {@link ClientTopicProtocol} to client.
-	 *
-	 * @return self
-	 */
-	public SonderClientBuilder withTopicProtocol() {
-		ClientTopicProtocol protocol = new ClientTopicProtocol();
-		protocols.put(protocol.getName(), protocol);
 		return this;
 	}
 

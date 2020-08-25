@@ -1,12 +1,12 @@
 package com.github.tix320.sonder.api.common.communication;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.client.SonderClientBuilder;
+import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.api.server.SonderServer;
 import com.github.tix320.sonder.api.server.SonderServerBuilder;
 
@@ -18,7 +18,14 @@ import com.github.tix320.sonder.api.server.SonderServerBuilder;
  * @see SonderServer
  * @see SonderClient
  */
-public interface Protocol extends Closeable {
+public interface Protocol {
+
+	/**
+	 * This method will be called once on server/client start for some protocol initialization.
+	 *
+	 * @param sonderEventDispatcher for emitting and listening some events.
+	 */
+	void init(SonderEventDispatcher sonderEventDispatcher);
 
 	/**
 	 * This method will be called if any transfer received for this protocol.
@@ -32,8 +39,7 @@ public interface Protocol extends Closeable {
 	 * @see SonderServerBuilder#contentTimeoutDurationFactory(LongFunction)
 	 * @see SonderClientBuilder#contentTimeoutDurationFactory(LongFunction)
 	 */
-	void handleIncomingTransfer(Transfer transfer)
-			throws IOException;
+	void handleIncomingTransfer(Transfer transfer) throws IOException;
 
 	/**
 	 * This method will be called only once, and then returned observable will be subscribed
@@ -42,6 +48,11 @@ public interface Protocol extends Closeable {
 	 * @return observable of outgoing transfers.
 	 */
 	Observable<Transfer> outgoingTransfers();
+
+	/**
+	 * This method will be called once on server/client close for some protocol destruction.
+	 */
+	void destroy();
 
 	/**
 	 * Return name of protocol.

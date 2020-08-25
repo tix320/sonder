@@ -22,15 +22,14 @@ import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.kiwi.api.util.Threads;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
+import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
 import com.github.tix320.sonder.api.server.event.NewClientConnectionEvent;
-import com.github.tix320.sonder.api.server.event.SonderServerEvent;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
-import com.github.tix320.sonder.internal.event.SonderEventDispatcher;
 
 public final class SocketClientsSelector implements ClientsSelector {
 
@@ -44,7 +43,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private final SonderEventDispatcher<SonderServerEvent> eventDispatcher;
+	private final SonderEventDispatcher eventDispatcher;
 
 	private volatile Selector selector;
 
@@ -53,7 +52,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
 	public SocketClientsSelector(InetSocketAddress address, LongFunction<Duration> contentTimeoutDurationFactory,
-								 int workersCoreCount, SonderEventDispatcher<SonderServerEvent> eventDispatcher) {
+								 int workersCoreCount, SonderEventDispatcher eventDispatcher) {
 		this.address = address;
 		this.selectionKeysById = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1); // 1 is important aspect, do not touch!
@@ -63,7 +62,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 		this.eventDispatcher = eventDispatcher;
 	}
 
-	public void run(Consumer<ClientPack> packConsumer) throws IOException {
+	public synchronized void run(Consumer<ClientPack> packConsumer) throws IOException {
 		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
 		if (!changed) {
 			throw new IllegalStateException("Already running");

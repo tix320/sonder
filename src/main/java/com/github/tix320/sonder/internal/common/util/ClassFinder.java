@@ -22,8 +22,8 @@ public final class ClassFinder {
 	private static final Pattern packagePattern = Pattern.compile(
 			"^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)*[0-9a-zA-Z_]$");
 
-	public static List<Class<?>> getPackageClasses(List<String> packageNames) {
-		return packageNames.stream()
+	public static List<Class<?>> getPackageClasses(String... packageNames) {
+		return Arrays.stream(packageNames)
 				.flatMap(packageName -> getPackageClasses(packageName).stream())
 				.collect(Collectors.toList());
 	}

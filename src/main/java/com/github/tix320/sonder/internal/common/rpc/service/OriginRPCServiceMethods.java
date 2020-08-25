@@ -5,6 +5,7 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.List;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,7 +17,7 @@ import com.github.tix320.sonder.api.common.rpc.Origin;
 import com.github.tix320.sonder.api.common.rpc.Response;
 import com.github.tix320.sonder.api.common.rpc.Subscription;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
-import com.github.tix320.sonder.internal.common.rpc.StartupException;
+import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolConfigurationException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.RequestDataType;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
@@ -25,21 +26,18 @@ import static java.util.function.Predicate.not;
 
 public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
 
-	public OriginRPCServiceMethods(List<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
+	public OriginRPCServiceMethods(Set<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
 		super(classes, extraParamDefinitions);
 	}
 
 	@Override
-	protected final boolean isService(Class<?> clazz) {
-		return clazz.isAnnotationPresent(Origin.class);
-	}
-
-	@Override
 	protected final void checkService(Class<?> clazz) {
-		StartupException.checkAndThrow(clazz,
+		RPCProtocolConfigurationException.checkAndThrow(clazz,
 				aClass -> String.format("Failed to resolve origin service(%s), there are the following errors.",
-						aClass), StartupException.throwWhen(not(Class::isInterface), "Must be interface"),
-				StartupException.throwWhen(not(aClass -> Modifier.isPublic(aClass.getModifiers())), "Must be public"));
+						aClass),
+				RPCProtocolConfigurationException.throwWhen(not(Class::isInterface), "Must be interface"),
+				RPCProtocolConfigurationException.throwWhen(not(aClass -> Modifier.isPublic(aClass.getModifiers())),
+						"Must be public"));
 	}
 
 	@Override
@@ -49,9 +47,9 @@ public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMetho
 
 	@Override
 	protected final void checkMethod(Method method) {
-		StartupException.checkAndThrow(method,
+		RPCProtocolConfigurationException.checkAndThrow(method,
 				m -> String.format("Failed to resolve origin method '%s'(%s), there are the following errors. ",
-						m.getName(), m.getDeclaringClass()), StartupException.throwWhen(m -> {
+						m.getName(), m.getDeclaringClass()), RPCProtocolConfigurationException.throwWhen(m -> {
 					if (m.isAnnotationPresent(Subscription.class)) {
 						return m.getReturnType() != Observable.class;
 					}
@@ -61,7 +59,8 @@ public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMetho
 						"Return type must be `%s` when `@%s` annotation is present, otherwise must be be `void` or `%s`",
 						Observable.class.getSimpleName(), Subscription.class.getSimpleName(),
 						MonoObservable.class.getSimpleName())),
-				StartupException.throwWhen(not(m -> Modifier.isPublic(m.getModifiers())), "Must be public"));
+				RPCProtocolConfigurationException.throwWhen(not(m -> Modifier.isPublic(m.getModifiers())),
+						"Must be public"));
 	}
 
 	@Override
@@ -73,7 +72,7 @@ public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMetho
 		String classPath = classAnnotation.value();
 
 		if (classPath.isBlank()) {
-			throw new StartupException(
+			throw new RPCProtocolConfigurationException(
 					String.format("@%s value on class must be non empty. (%s)", Origin.class.getSimpleName(),
 							declaringClass));
 		}

@@ -1,41 +1,28 @@
 package com.github.tix320.sonder.RPC;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
 import com.github.tix320.kiwi.api.reactive.observable.Subscription;
-import com.github.tix320.sonder.api.client.SonderClient;
-import com.github.tix320.sonder.api.server.SonderServer;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class RPCObservableTest {
+public class RPCObservableTest extends BaseTest {
 
-	private static final String HOST = "localhost";
-	private static final int PORT = 33335;
-
-	public static SonderServer sonderServer;
-	public static SonderClient sonderClient;
+	@Override
+	@BeforeEach
+	public void setUp() throws IOException {
+		super.setUp();
+	}
 
 	@Test
 	public void test() throws InterruptedException, IOException {
-		sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT))
-				.withRPCProtocol(builder -> builder.scanClasses(ServerEndpoint.class))
-				.build();
-
-		sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT))
-				.withRPCProtocol(builder -> builder.scanClasses(ClientService.class))
-				.build();
-
-		sonderServer.start();
-		sonderClient.connect();
-
-		ClientService rpcService = sonderClient.getRPCService(ClientService.class);
+		ClientService rpcService = originInstanceResolver.get(ClientService.class);
 
 		List<Integer> list = new ArrayList<>();
 		AtomicReference<Subscription> subscriptionHolder = new AtomicReference<>();
@@ -53,8 +40,5 @@ public class RPCObservableTest {
 		Thread.sleep(500);
 		ServerEndpoint.publisher.publish(6);
 		assertEquals(List.of(4, 5), list);
-
-		sonderClient.close();
-		sonderServer.close();
 	}
 }

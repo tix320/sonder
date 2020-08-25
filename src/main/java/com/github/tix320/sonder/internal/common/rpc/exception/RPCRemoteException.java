@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.common.rpc;
+package com.github.tix320.sonder.internal.common.rpc.exception;
 
 public class RPCRemoteException extends RuntimeException {
 

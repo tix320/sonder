@@ -8,9 +8,9 @@ import com.github.tix320.sonder.api.common.communication.Headers;
 /**
  * @author Tigran Sargsyan on 23-Mar-20.
  */
-public interface OriginExtraArgExtractor<A extends Annotation> {
+public interface OriginExtraArgExtractor<A extends Annotation, T> {
 
 	ExtraParamDefinition<A, ?> getParamDefinition();
 
-	Headers extract(ExtraArg<A> extraArg, Method method);
+	Headers extract(Method method, A annotation, T value);
 }
