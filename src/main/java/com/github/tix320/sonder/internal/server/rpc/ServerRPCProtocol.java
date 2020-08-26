@@ -8,7 +8,6 @@ import com.github.tix320.kiwi.api.reactive.observable.Subscription;
 import com.github.tix320.kiwi.api.util.CantorPair;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
-import com.github.tix320.sonder.api.server.communication.ServerSideProtocol;
 import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
 import com.github.tix320.sonder.internal.common.rpc.protocol.ProtocolConfig;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
@@ -18,7 +17,7 @@ import com.github.tix320.sonder.internal.server.rpc.extra.ServerOriginMethodClie
 /**
  * @author Tigran Sargsyan on 25-Aug-20
  */
-public final class ServerRPCProtocol extends RPCProtocol implements ServerSideProtocol {
+public final class ServerRPCProtocol extends RPCProtocol {
 
 	public ServerRPCProtocol(ProtocolConfig protocolConfig) {
 		super(protocolConfig);

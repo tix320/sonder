@@ -22,7 +22,7 @@ public class RPCObservableTest extends BaseTest {
 
 	@Test
 	public void test() throws InterruptedException, IOException {
-		ClientService rpcService = originInstanceResolver.get(ClientService.class);
+		ClientService rpcService = rpcProtocol.getOrigin(ClientService.class);
 
 		List<Integer> list = new ArrayList<>();
 		AtomicReference<Subscription> subscriptionHolder = new AtomicReference<>();

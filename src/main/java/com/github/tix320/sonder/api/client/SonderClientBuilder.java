@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.LongFunction;
 
-import com.github.tix320.sonder.api.client.communication.ClientSideProtocol;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
@@ -45,7 +44,7 @@ public final class SonderClientBuilder {
 	 *
 	 * @return self
 	 */
-	public SonderClientBuilder registerProtocol(ClientSideProtocol protocol) {
+	public SonderClientBuilder registerProtocol(Protocol protocol) {
 		String protocolName = protocol.getName();
 		if (protocols.containsKey(protocolName)) {
 			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));

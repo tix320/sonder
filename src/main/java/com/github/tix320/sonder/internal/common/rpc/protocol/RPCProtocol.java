@@ -24,16 +24,14 @@ import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
 import com.github.tix320.kiwi.api.util.CantorPair;
 import com.github.tix320.kiwi.api.util.IDGenerator;
 import com.github.tix320.kiwi.api.util.None;
-import com.github.tix320.sonder.api.client.communication.ClientSideProtocol;
-import com.github.tix320.sonder.api.common.RPCProtocolBuilder;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.api.common.rpc.Response;
+import com.github.tix320.sonder.api.common.rpc.build.RPCProtocolBuilder;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
-import com.github.tix320.sonder.api.server.communication.ServerSideProtocol;
 import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocolBuilder;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
 import com.github.tix320.sonder.internal.common.rpc.exception.IncompatibleTypeException;
@@ -55,6 +53,8 @@ public abstract class RPCProtocol implements Protocol {
 
 	protected SonderEventDispatcher sonderEventDispatcher;
 
+	private final Map<Class<?>, ?> originInstances;
+
 	private final Map<Class<?>, ?> endpointInstances;
 
 	private final Map<Method, OriginMethod> originsByMethod;
@@ -62,7 +62,7 @@ public abstract class RPCProtocol implements Protocol {
 	private final Map<String, EndpointMethod> endpointsByPath;
 
 	private final Map<Class<? extends Annotation>, OriginExtraArgExtractor<?, ?>> originExtraArgExtractors;
-	private final Map<Class<? extends Annotation>, EndpointExtraArgInjector<?, ?>> endpointExtraArgExtractors;
+	private final Map<Class<? extends Annotation>, EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors;
 
 	private final Map<Long, RequestMetadata> requestMetadataByResponseKey;
 
@@ -77,21 +77,24 @@ public abstract class RPCProtocol implements Protocol {
 	public RPCProtocol(ProtocolConfig protocolConfig) {
 		List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors = protocolConfig.getOriginExtraArgExtractors();
 		this.originExtraArgExtractors = appendBuiltInOriginExtraArgExtractors(originExtraArgExtractors);
-		List<EndpointExtraArgInjector<?, ?>> endpointExtraArgExtractors = protocolConfig.getEndpointExtraArgExtractors();
-		this.endpointExtraArgExtractors = appendBuiltInEndpointExtraArgExtractors(endpointExtraArgExtractors);
+		List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors = protocolConfig.getEndpointExtraArgInjectors();
+		this.endpointExtraArgInjectors = appendBuiltInEndpointExtraArgInjectors(endpointExtraArgInjectors);
 
 		Map<Class<?>, Object> originInstances = protocolConfig.getOriginInstances();
 		Map<Class<?>, Object> endpointInstances = protocolConfig.getEndpointInstances();
 
+		this.originInstances = originInstances;
 		this.endpointInstances = endpointInstances;
 
 		OriginRPCServiceMethods originServiceMethods = new OriginRPCServiceMethods(originInstances.keySet(),
-				originExtraArgExtractors.stream()
+				this.originExtraArgExtractors.values()
+						.stream()
 						.map(OriginExtraArgExtractor::getParamDefinition)
 						.collect(Collectors.toList()));
 
 		EndpointRPCServiceMethods endpointServiceMethods = new EndpointRPCServiceMethods(endpointInstances.keySet(),
-				endpointExtraArgExtractors.stream()
+				this.endpointExtraArgInjectors.values()
+						.stream()
 						.map(EndpointExtraArgInjector::getParamDefinition)
 						.collect(Collectors.toList()));
 
@@ -110,11 +113,11 @@ public abstract class RPCProtocol implements Protocol {
 		this.outgoingRequests = Publisher.simple();
 	}
 
-	public static RPCProtocolBuilder<ServerSideProtocol> forServer() {
+	public static RPCProtocolBuilder forServer() {
 		return new ServerRPCProtocolBuilder();
 	}
 
-	public static RPCProtocolBuilder<ClientSideProtocol> forClient() {
+	public static RPCProtocolBuilder forClient() {
 		return new ClientRPCProtocolBuilder();
 	}
 
@@ -176,6 +179,15 @@ public abstract class RPCProtocol implements Protocol {
 				.forEach(requestMetadata -> requestMetadata.getResponsePublisher().complete());
 	}
 
+	@SuppressWarnings("unchecked")
+	public <T> T getOrigin(Class<T> clazz) {
+		T service = (T) originInstances.get(clazz);
+		if (service == null) {
+			throw new IllegalArgumentException("Service of " + clazz + " not found");
+		}
+		return service;
+	}
+
 	protected abstract List<OriginExtraArgExtractor<?, ?>> getBuiltInExtractors();
 
 	protected abstract List<EndpointExtraArgInjector<?, ?>> getBuiltInInjectors();
@@ -195,7 +207,7 @@ public abstract class RPCProtocol implements Protocol {
 		return extraArgExtractorsMap;
 	}
 
-	private Map<Class<? extends Annotation>, EndpointExtraArgInjector<?, ?>> appendBuiltInEndpointExtraArgExtractors(
+	private Map<Class<? extends Annotation>, EndpointExtraArgInjector<?, ?>> appendBuiltInEndpointExtraArgInjectors(
 			List<EndpointExtraArgInjector<?, ?>> extraArgInjectors) {
 
 		Map<Class<? extends Annotation>, EndpointExtraArgInjector<?, ?>> extraArgInjectorsMap = new HashMap<>();
@@ -596,7 +608,7 @@ public abstract class RPCProtocol implements Protocol {
 			Class<? extends Annotation> annotationClass = annotation.annotationType();
 
 			@SuppressWarnings("unchecked")
-			EndpointExtraArgInjector<Annotation, ?> extraArgExtractor = (EndpointExtraArgInjector<Annotation, ?>) endpointExtraArgExtractors
+			EndpointExtraArgInjector<Annotation, ?> extraArgExtractor = (EndpointExtraArgInjector<Annotation, ?>) endpointExtraArgInjectors
 					.get(annotationClass);
 			try {
 				Object extraArg = extraArgExtractor.extract(method, annotation, headers);

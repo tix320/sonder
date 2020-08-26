@@ -21,7 +21,7 @@ public class BinaryTest extends BaseTest {
 
 	@Test
 	public void test() throws InterruptedException, IOException {
-		ClientService rpcService = originInstanceResolver.get(ClientService.class);
+		ClientService rpcService = rpcProtocol.getOrigin(ClientService.class);
 
 		AtomicInteger responseHolder = new AtomicInteger();
 

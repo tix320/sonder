@@ -10,11 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.IntStream;
 
 import com.github.tix320.sonder.api.client.SonderClient;
-import com.github.tix320.sonder.api.client.communication.ClientSideProtocol;
-import com.github.tix320.sonder.api.common.RPCProtocolBuilder.BuildResult;
-import com.github.tix320.sonder.api.common.rpc.build.OriginInstanceResolver;
 import com.github.tix320.sonder.api.server.SonderServer;
-import com.github.tix320.sonder.api.server.communication.ServerSideProtocol;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import org.junit.jupiter.api.Test;
 
@@ -31,10 +27,7 @@ public class ConcurrentTest {
 
 	@Test
 	public void test() throws IOException, InterruptedException {
-		ServerSideProtocol rpcProtocol = RPCProtocol.forServer()
-				.registerEndpointClasses(ServerEndpoint.class)
-				.build()
-				.getProtocol();
+		RPCProtocol rpcProtocol = RPCProtocol.forServer().registerEndpointClasses(ServerEndpoint.class).build();
 
 		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT))
 				.registerProtocol(rpcProtocol)
@@ -49,12 +42,7 @@ public class ConcurrentTest {
 		List<SonderClient> clients = new ArrayList<>();
 
 		for (int i = 1; i <= usersCount; i++) {
-			BuildResult<ClientSideProtocol> buildResult = RPCProtocol.forClient()
-					.registerOriginInterfaces(ClientService.class)
-					.build();
-
-			ClientSideProtocol protocol = buildResult.getProtocol();
-			OriginInstanceResolver originInstanceResolver = buildResult.getOriginInstanceResolver();
+			RPCProtocol protocol = RPCProtocol.forClient().registerOriginInterfaces(ClientService.class).build();
 
 			SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT))
 					.registerProtocol(protocol)
@@ -64,7 +52,7 @@ public class ConcurrentTest {
 
 			clients.add(sonderClient);
 
-			originInstanceResolver.get(ClientService.class).getStringLength("f".repeat(i)).subscribe(responses::add);
+			protocol.getOrigin(ClientService.class).getStringLength("f".repeat(i)).subscribe(responses::add);
 		}
 
 		Thread.sleep(2000);

@@ -9,7 +9,6 @@ import java.util.function.LongFunction;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
-import com.github.tix320.sonder.api.server.communication.ServerSideProtocol;
 import com.github.tix320.sonder.internal.common.event.SimpleEventDispatcher;
 import com.github.tix320.sonder.internal.server.SocketClientsSelector;
 
@@ -43,7 +42,7 @@ public final class SonderServerBuilder {
 	 *
 	 * @param protocol to register.
 	 */
-	public SonderServerBuilder registerProtocol(ServerSideProtocol protocol) {
+	public SonderServerBuilder registerProtocol(Protocol protocol) {
 		String protocolName = protocol.getName();
 		if (protocols.containsKey(protocolName)) {
 			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));

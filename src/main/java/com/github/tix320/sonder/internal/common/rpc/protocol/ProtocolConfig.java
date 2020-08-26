@@ -17,15 +17,15 @@ public final class ProtocolConfig {
 
 	private final List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors;
 
-	private final List<EndpointExtraArgInjector<?, ?>> endpointExtraArgExtractors;
+	private final List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors;
 
 	public ProtocolConfig(Map<Class<?>, Object> originInstances, Map<Class<?>, Object> endpointInstances,
 						  List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors,
-						  List<EndpointExtraArgInjector<?, ?>> endpointExtraArgExtractors) {
-		this.originInstances = originInstances;
-		this.endpointInstances = endpointInstances;
-		this.originExtraArgExtractors = originExtraArgExtractors;
-		this.endpointExtraArgExtractors = endpointExtraArgExtractors;
+						  List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors) {
+		this.originInstances = Map.copyOf(originInstances);
+		this.endpointInstances = Map.copyOf(endpointInstances);
+		this.originExtraArgExtractors = List.copyOf(originExtraArgExtractors);
+		this.endpointExtraArgInjectors = List.copyOf(endpointExtraArgInjectors);
 	}
 
 	public Map<Class<?>, Object> getOriginInstances() {
@@ -40,7 +40,7 @@ public final class ProtocolConfig {
 		return originExtraArgExtractors;
 	}
 
-	public List<EndpointExtraArgInjector<?, ?>> getEndpointExtraArgExtractors() {
-		return endpointExtraArgExtractors;
+	public List<EndpointExtraArgInjector<?, ?>> getEndpointExtraArgInjectors() {
+		return endpointExtraArgInjectors;
 	}
 }

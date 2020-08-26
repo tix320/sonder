@@ -16,7 +16,6 @@ import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.event.SonderEvent;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
-import com.github.tix320.sonder.api.server.communication.ServerSideProtocol;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
@@ -30,7 +29,7 @@ import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
  * Communication is performed by sending and receiving transfer objects {@link Transfer}.
  * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
  *
- * You can register any protocol by calling method {@link SonderServerBuilder#registerProtocol(ServerSideProtocol)}.
+ * You can register any protocol by calling method {@link SonderServerBuilder#registerProtocol(Protocol)}.
  * There are some built-in protocols, such as RPC protocol {@link ServerRPCProtocol}.
  *
  * Create client builder by calling method {@link #forAddress}.

@@ -1,15 +1,14 @@
-package com.github.tix320.sonder.api.common;
+package com.github.tix320.sonder.api.common.rpc.build;
 
 import java.lang.reflect.Proxy;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.github.tix320.kiwi.api.check.Try;
-import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Origin;
-import com.github.tix320.sonder.api.common.rpc.build.OriginInstanceResolver;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolConfigurationException;
@@ -21,7 +20,7 @@ import com.github.tix320.sonder.internal.common.util.ClassFinder;
 /**
  * Builder for RPC protocol {@link RPCProtocol}.
  */
-public abstract class RPCProtocolBuilder<T extends Protocol> {
+public abstract class RPCProtocolBuilder {
 
 	private final Map<Class<?>, Object> originInstances;
 
@@ -49,7 +48,7 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 	 *
 	 * @return self
 	 */
-	public final RPCProtocolBuilder<T> scanOriginPackages(String... packagesToScan) {
+	public final RPCProtocolBuilder scanOriginPackages(String... packagesToScan) {
 		Class<?>[] originClasses = ClassFinder.getPackageClasses(packagesToScan)
 				.stream()
 				.filter(aClass -> aClass.isAnnotationPresent(Origin.class))
@@ -65,7 +64,7 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 	 *
 	 * @return self
 	 */
-	public final RPCProtocolBuilder<T> scanEndpointPackages(String... packagesToScan) {
+	public final RPCProtocolBuilder scanEndpointPackages(String... packagesToScan) {
 		Class<?>[] endpointClasses = ClassFinder.getPackageClasses(packagesToScan)
 				.stream()
 				.filter(aClass -> aClass.isAnnotationPresent(Endpoint.class))
@@ -76,14 +75,14 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 	/**
 	 * Set packages to find endpoint classes {@link Endpoint}
 	 *
-	 * @param factory        to create founded class instances.
 	 * @param packagesToScan packages to scan.
+	 * @param factory        to create founded class instances.
 	 *
 	 * @return self
 	 */
-	public final RPCProtocolBuilder<T> scanEndpointPackages(Function<Class<?>, Object> factory,
-															String... packagesToScan) {
-		List<Object> instances = ClassFinder.getPackageClasses(packagesToScan)
+	public final RPCProtocolBuilder scanEndpointPackages(List<String> packagesToScan,
+														 Function<Class<?>, Object> factory) {
+		List<Object> instances = ClassFinder.getPackageClasses(packagesToScan.toArray(String[]::new))
 				.stream()
 				.filter(aClass -> aClass.isAnnotationPresent(Endpoint.class))
 				.map(factory)
@@ -99,7 +98,7 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 	 *
 	 * @return self
 	 */
-	public final RPCProtocolBuilder<T> registerOriginInterfaces(Class<?>... classes) {
+	public final RPCProtocolBuilder registerOriginInterfaces(Class<?>... classes) {
 		Map<Class<?>, Object> originInstances = new HashMap<>();
 		for (Class<?> clazz : classes) {
 			validateOriginClass(clazz);
@@ -114,13 +113,25 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 	}
 
 	/**
+	 * Process origin interfaces {@link Origin}
+	 *
+	 * @param consumer function for process.
+	 *
+	 * @return self
+	 */
+	public final RPCProtocolBuilder processOriginInstances(Consumer<Map<Class<?>, Object>> consumer) {
+		consumer.accept(Map.copyOf(this.originInstances));
+		return this;
+	}
+
+	/**
 	 * Register endpoint classes {@link Endpoint}
 	 *
 	 * @param classes classes to register.
 	 *
 	 * @return self
 	 */
-	public final RPCProtocolBuilder<T> registerEndpointClasses(Class<?>... classes) {
+	public final RPCProtocolBuilder registerEndpointClasses(Class<?>... classes) {
 		for (Class<?> clazz : classes) {
 			validateEndpointClass(clazz);
 			Object instance = Try.supplyOrRethrow(() -> clazz.getConstructor().newInstance());
@@ -137,7 +148,7 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 	 *
 	 * @return self
 	 */
-	public final RPCProtocolBuilder<T> registerEndpointInstances(List<Object> instances) {
+	public final RPCProtocolBuilder registerEndpointInstances(List<Object> instances) {
 		for (Object instance : instances) {
 			validateEndpointClass(instance.getClass());
 			endpointInstances.put(instance.getClass(), instance);
@@ -153,7 +164,7 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 	 *
 	 * @return self
 	 */
-	public final RPCProtocolBuilder<T> registerOriginExtraArgExtractor(OriginExtraArgExtractor<?, ?>... extractors) {
+	public final RPCProtocolBuilder registerOriginExtraArgExtractor(OriginExtraArgExtractor<?, ?>... extractors) {
 		this.originExtraArgExtractors.addAll(Arrays.asList(extractors));
 		return this;
 	}
@@ -165,20 +176,20 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 	 *
 	 * @return self
 	 */
-	public final RPCProtocolBuilder<T> registerEndpointExtraArgInjector(EndpointExtraArgInjector<?, ?>... injectors) {
+	public final RPCProtocolBuilder registerEndpointExtraArgInjector(EndpointExtraArgInjector<?, ?>... injectors) {
 		this.endpointExtraArgInjectors.addAll(Arrays.asList(injectors));
 		return this;
 	}
 
-	public final BuildResult<T> build() {
+	public final RPCProtocol build() {
 		if (built) {
 			throw new IllegalStateException("Already built");
 		}
 		built = true;
 
-		T protocol = buildOverride();
-		originInvocationHandler.initProtocol((RPCProtocol) protocol);
-		return new BuildResult<>(protocol, new OriginInstanceResolver(originInstances));
+		RPCProtocol protocol = buildOverride();
+		originInvocationHandler.initProtocol(protocol);
+		return protocol;
 	}
 
 	protected final ProtocolConfig getConfigs() {
@@ -186,7 +197,7 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 				endpointExtraArgInjectors);
 	}
 
-	protected abstract T buildOverride();
+	protected abstract RPCProtocol buildOverride();
 
 	private void validateOriginClass(Class<?> clazz) {
 		boolean isOrigin = clazz.isAnnotationPresent(Origin.class);
@@ -211,24 +222,6 @@ public abstract class RPCProtocolBuilder<T extends Protocol> {
 		else if (!isEndpoint) {
 			throw new RPCProtocolConfigurationException(
 					String.format("%s does not have @%s annotation", clazz, Endpoint.class));
-		}
-	}
-
-	public static final class BuildResult<T> {
-		private final T protocol;
-		private final OriginInstanceResolver originInstanceResolver;
-
-		public BuildResult(T protocol, OriginInstanceResolver originInstanceResolver) {
-			this.protocol = protocol;
-			this.originInstanceResolver = originInstanceResolver;
-		}
-
-		public T getProtocol() {
-			return protocol;
-		}
-
-		public OriginInstanceResolver getOriginInstanceResolver() {
-			return originInstanceResolver;
 		}
 	}
 }

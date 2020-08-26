@@ -22,7 +22,7 @@ public class ResponseTest extends BaseTest {
 
 	@Test
 	public void test() throws InterruptedException, IOException {
-		ClientService rpcService = originInstanceResolver.get(ClientService.class);
+		ClientService rpcService = rpcProtocol.getOrigin(ClientService.class);
 
 		AtomicBoolean valueReturned = new AtomicBoolean(false);
 		AtomicBoolean errorReturned = new AtomicBoolean(false);

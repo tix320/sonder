@@ -4,11 +4,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 
 import com.github.tix320.sonder.api.client.SonderClient;
-import com.github.tix320.sonder.api.client.communication.ClientSideProtocol;
-import com.github.tix320.sonder.api.common.RPCProtocolBuilder.BuildResult;
-import com.github.tix320.sonder.api.common.rpc.build.OriginInstanceResolver;
 import com.github.tix320.sonder.api.server.SonderServer;
-import com.github.tix320.sonder.api.server.communication.ServerSideProtocol;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import org.junit.jupiter.api.AfterEach;
 
@@ -24,26 +20,20 @@ public abstract class BaseTest {
 
 	private SonderClient sonderClient;
 
-	protected OriginInstanceResolver originInstanceResolver;
+	protected RPCProtocol rpcProtocol;
 
 	public void setUp() throws IOException {
-		ServerSideProtocol rpcProtocol = RPCProtocol.forServer()
-				.registerEndpointClasses(ServerEndpoint.class)
-				.build()
-				.getProtocol();
+		RPCProtocol rpcProtocol = RPCProtocol.forServer().registerEndpointClasses(ServerEndpoint.class).build();
 
 		sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT)).registerProtocol(rpcProtocol).build();
 
 		sonderServer.start();
 
-		BuildResult<ClientSideProtocol> buildResult = RPCProtocol.forClient()
-				.registerOriginInterfaces(ClientService.class)
+		this.rpcProtocol = RPCProtocol.forClient().registerOriginInterfaces(ClientService.class).build();
+
+		sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT))
+				.registerProtocol(this.rpcProtocol)
 				.build();
-
-		ClientSideProtocol protocol = buildResult.getProtocol();
-		originInstanceResolver = buildResult.getOriginInstanceResolver();
-
-		sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT)).registerProtocol(protocol).build();
 
 		sonderClient.connect();
 	}
