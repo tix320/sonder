@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.common.rpc.protocol;
+package com.github.tix320.sonder.api.common.rpc;
 
 import java.io.IOException;
 import java.lang.annotation.Annotation;
@@ -27,8 +27,6 @@ import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
-import com.github.tix320.sonder.api.common.rpc.Response;
-import com.github.tix320.sonder.api.common.rpc.build.RPCProtocolBuilder;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
@@ -40,6 +38,7 @@ import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolExcepti
 import com.github.tix320.sonder.internal.common.rpc.exception.RPCRemoteException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArgExtractionException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
+import com.github.tix320.sonder.internal.common.rpc.protocol.*;
 import com.github.tix320.sonder.internal.common.rpc.service.*;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
 import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocolBuilder;

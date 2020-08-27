@@ -7,7 +7,7 @@ import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.internal.client.rpc.extra.ClientEndpointMethodClientIdInjector;
 import com.github.tix320.sonder.internal.client.rpc.extra.ClientOriginMethodClientIdExtractor;
 import com.github.tix320.sonder.internal.common.rpc.protocol.ProtocolConfig;
-import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
+import com.github.tix320.sonder.api.common.rpc.RPCProtocol;
 
 /**
  * @author Tigran Sargsyan on 25-Aug-20

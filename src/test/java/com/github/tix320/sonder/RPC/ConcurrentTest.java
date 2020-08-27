@@ -11,7 +11,7 @@ import java.util.stream.IntStream;
 
 import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.server.SonderServer;
-import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
+import com.github.tix320.sonder.api.common.rpc.RPCProtocol;
 import org.junit.jupiter.api.Test;
 
 import static java.util.stream.Collectors.toSet;

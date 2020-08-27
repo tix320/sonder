@@ -1,7 +1,7 @@
 package com.github.tix320.sonder.internal.client.rpc;
 
 
-import com.github.tix320.sonder.api.common.rpc.build.RPCProtocolBuilder;
+import com.github.tix320.sonder.api.common.rpc.RPCProtocolBuilder;
 
 /**
  * @author Tigran Sargsyan on 25-Aug-20
