@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
@@ -104,23 +103,23 @@ public final class SocketClientsSelector implements ClientsSelector {
 			}
 			catch (SocketException e) {
 				if (!e.getMessage().contains("Connection reset")) {
-					new SocketConnectionException(String.format("An error occurs while write to client %s", client.id),
-							e).printStackTrace();
+					throw new SocketConnectionException(
+							String.format("An error occurs while write to client %s", client.id), e);
 				}
 
 				closeClientConnection(client);
 			}
 			catch (IOException e) {
 				if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
-					new SocketConnectionException(String.format("An error occurs while write to client %s", client.id),
-							e).printStackTrace();
+					throw new SocketConnectionException(
+							String.format("An error occurs while write to client %s", client.id), e);
 				}
 
 				closeClientConnection(client);
 			}
 		}
 		else {
-			new IllegalArgumentException(String.format("Client %s is disconnected", clientId)).printStackTrace();
+			throw new IllegalArgumentException(String.format("Client %s is disconnected", clientId));
 		}
 	}
 
@@ -203,8 +202,6 @@ public final class SocketClientsSelector implements ClientsSelector {
 		runAsync(() -> eventDispatcher.fire(new NewClientConnectionEvent(clientId)));
 	}
 
-	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-
 	private void read(SelectionKey selectionKey, Consumer<ClientPack> packConsumer) throws InvalidPackException {
 		Client client = (Client) selectionKey.attachment();
 		PackChannel channel = client.channel;
@@ -214,8 +211,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 		}
 		catch (IOException e) {
 			if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
-				new SocketConnectionException(String.format("An error occurs while write to client %s", client.id),
-						e).printStackTrace();
+				throw new SocketConnectionException(
+						String.format("An error occurs while write to client %s", client.id), e);
 			}
 
 			closeClientConnection(client);
@@ -278,8 +275,8 @@ public final class SocketClientsSelector implements ClientsSelector {
 		}
 		catch (IOException e) {
 			if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
-				new SocketConnectionException(String.format("An error occurs while write to client %s", client.id),
-						e).printStackTrace();
+				throw new SocketConnectionException(
+						String.format("An error occurs while write to client %s", client.id), e);
 			}
 
 			closeClientConnection(client);

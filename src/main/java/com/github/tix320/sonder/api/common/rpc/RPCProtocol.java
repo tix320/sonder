@@ -50,6 +50,8 @@ public abstract class RPCProtocol implements Protocol {
 
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
+	private TransferTunnel transferTunnel;
+
 	protected SonderEventDispatcher sonderEventDispatcher;
 
 	private final Map<Class<?>, ?> originInstances;
@@ -70,8 +72,6 @@ public abstract class RPCProtocol implements Protocol {
 	protected final Map<CantorPair, Subscription> realSubscriptions; // [clientId, responseKey] in CantorPair
 
 	private final IDGenerator responseKeyGenerator;
-
-	private final Publisher<Transfer> outgoingRequests;
 
 	public RPCProtocol(ProtocolConfig protocolConfig) {
 		List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors = protocolConfig.getOriginExtraArgExtractors();
@@ -109,7 +109,6 @@ public abstract class RPCProtocol implements Protocol {
 		this.remoteSubscriptionPublishers = new ConcurrentHashMap<>();
 		this.realSubscriptions = new ConcurrentHashMap<>();
 		this.responseKeyGenerator = new IDGenerator(1);
-		this.outgoingRequests = Publisher.simple();
 	}
 
 	public static RPCProtocolBuilder forServer() {
@@ -121,8 +120,9 @@ public abstract class RPCProtocol implements Protocol {
 	}
 
 	@Override
-	public void init(SonderEventDispatcher sonderEventDispatcher) {
+	public void init(TransferTunnel transferTunnel, SonderEventDispatcher sonderEventDispatcher) {
 		synchronized (this) { // for memory effects
+			this.transferTunnel = transferTunnel;
 			this.sonderEventDispatcher = sonderEventDispatcher;
 		}
 		init();
@@ -162,18 +162,12 @@ public abstract class RPCProtocol implements Protocol {
 	}
 
 	@Override
-	public Observable<Transfer> outgoingTransfers() {
-		return outgoingRequests.asObservable();
-	}
-
-	@Override
 	public String getName() {
 		return "sonder-RPC";
 	}
 
 	@Override
 	public void destroy() {
-		outgoingRequests.complete();
 		requestMetadataByResponseKey.values()
 				.forEach(requestMetadata -> requestMetadata.getResponsePublisher().complete());
 	}
@@ -278,7 +272,7 @@ public abstract class RPCProtocol implements Protocol {
 				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(responsePublisher, method));
 
 				Transfer transfer = transferToSend;
-				outgoingRequests.publish(transfer);
+				transferTunnel.send(transfer);
 				return null;
 			case ASYNC_VALUE:
 			case ASYNC_RESPONSE:
@@ -288,7 +282,7 @@ public abstract class RPCProtocol implements Protocol {
 				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(responsePublisher, method));
 
 				transfer = new ChannelTransfer(headers, transferToSend.channel());
-				outgoingRequests.publish(transfer);
+				transferTunnel.send(transfer);
 				return responsePublisher.asObservable();
 			case SUBSCRIPTION:
 				headers = transferToSend.getHeaders().compose().header(Headers.NEED_RESPONSE, true).build();
@@ -301,7 +295,7 @@ public abstract class RPCProtocol implements Protocol {
 				Observable<Object> observable = dummyPublisher.asObservable();
 				DummyObservable dummyObservable = new DummyObservable(observable, clientId, responseKey);
 
-				outgoingRequests.publish(transfer);
+				transferTunnel.send(transfer);
 				return dummyObservable;
 			default:
 				throw new IllegalStateException(String.format("Unknown enum type %s", method.getReturnType()));
@@ -634,22 +628,22 @@ public abstract class RPCProtocol implements Protocol {
 		switch (endpointMethod.resultType()) {
 			case VOID:
 				builder.contentType(ContentType.BINARY);
-				outgoingRequests.publish(new StaticTransfer(builder.build(), new byte[0]));
+				transferTunnel.send(new StaticTransfer(builder.build(), new byte[0]));
 				break;
 			case OBJECT:
 				builder.contentType(ContentType.JSON);
 				byte[] transferContent = serializeObject(result);
-				outgoingRequests.publish(new StaticTransfer(builder.build(), transferContent));
+				transferTunnel.send(new StaticTransfer(builder.build(), transferContent));
 				break;
 			case BINARY:
 				builder.contentType(ContentType.BINARY);
-				outgoingRequests.publish(new StaticTransfer(builder.build(), (byte[]) result));
+				transferTunnel.send(new StaticTransfer(builder.build(), (byte[]) result));
 				break;
 			case TRANSFER:
 				builder.contentType(ContentType.TRANSFER);
 				Transfer resultTransfer = (Transfer) result;
 				Headers finalHeaders = resultTransfer.getHeaders().compose().headers(builder.build()).build();
-				outgoingRequests.publish(new ChannelTransfer(finalHeaders, resultTransfer.channel()));
+				transferTunnel.send(new ChannelTransfer(finalHeaders, resultTransfer.channel()));
 				break;
 			case SUBSCRIPTION:
 				Observable<?> observable = (Observable<?>) result;
@@ -715,7 +709,7 @@ public abstract class RPCProtocol implements Protocol {
 		headers = headers.compose().header(Headers.TRANSFER_TYPE, TransferType.ERROR_RESULT.name()).build();
 
 		Transfer transfer = new StaticTransfer(headers, content);
-		outgoingRequests.publish(transfer);
+		transferTunnel.send(transfer);
 	}
 
 	private static String exceptionMessagesToString(Throwable e) {
@@ -840,7 +834,7 @@ public abstract class RPCProtocol implements Protocol {
 								.build();
 
 						Transfer transfer = new StaticTransfer(headers, new byte[0]);
-						outgoingRequests.publish(transfer);
+						transferTunnel.send(transfer);
 					}
 				}
 			});
@@ -878,7 +872,7 @@ public abstract class RPCProtocol implements Protocol {
 			byte[] content = serializeObject(item);
 			Transfer transferToSend = new StaticTransfer(headers, content);
 
-			outgoingRequests.publish(transferToSend);
+			transferTunnel.send(transferToSend);
 
 			return true;
 		}
@@ -897,7 +891,7 @@ public abstract class RPCProtocol implements Protocol {
 
 				Transfer transferToSend = new StaticTransfer(headers, new byte[0]);
 
-				outgoingRequests.publish(transferToSend);
+				transferTunnel.send(transferToSend);
 			}
 		}
 	}

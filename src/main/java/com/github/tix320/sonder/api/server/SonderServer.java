@@ -66,7 +66,7 @@ public final class SonderServer implements Closeable {
 		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 		this.eventDispatcher = eventDispatcher;
-		protocols.forEach((protocolName, protocol) -> listenProtocol(protocol));
+		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
 	}
 
 	public void start() throws IOException {
@@ -97,19 +97,15 @@ public final class SonderServer implements Closeable {
 		}
 	}
 
-	private MonoObservable<None> closed() {
-		return state.asObservable().filter(state -> state == State.CLOSED).map(s -> None.SELF).toMono();
-	}
+	private void initProtocol(Protocol protocol) {
+		TransferTunnel transferTunnel = transfer -> {
+			state.checkState("Sonder Client does not connected or already closed", State.RUNNING);
+			transfer = setProtocolHeader(transfer, protocol.getName());
+			ClientPack pack = transferToClientPack(transfer);
+			clientsSelector.send(pack);
+		};
 
-	private void listenProtocol(Protocol protocol) {
-		protocol.outgoingTransfers()
-				.peek(transfer -> {
-					state.checkState("Sonder Client does not connected or already closed", State.RUNNING);
-				})
-				.map(transfer -> setProtocolHeader(transfer, protocol.getName()))
-				.map(this::transferToClientPack)
-				.takeUntil(closed())
-				.subscribe(clientsSelector::send);
+		protocol.init(transferTunnel, eventDispatcher);
 	}
 
 	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
