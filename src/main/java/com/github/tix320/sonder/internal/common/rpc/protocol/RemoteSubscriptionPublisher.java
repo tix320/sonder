@@ -64,4 +64,8 @@ public final class RemoteSubscriptionPublisher {
 	public OriginMethod getOriginMethod() {
 		return originMethod;
 	}
+
+	public void closePublisher() {
+		itemsPublisher.complete();
+	}
 }

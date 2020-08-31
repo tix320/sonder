@@ -8,11 +8,8 @@ import java.util.Map;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.property.Property;
-import com.github.tix320.kiwi.api.reactive.property.StateProperty;
-import com.github.tix320.kiwi.api.util.None;
+import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.event.SonderEvent;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
@@ -47,8 +44,6 @@ public final class SonderClient implements Closeable {
 
 	private final SonderEventDispatcher eventDispatcher;
 
-	private final StateProperty<State> state = Property.forState(State.INITIAL);
-
 	/**
 	 * Prepare client creating for this socket address.
 	 *
@@ -64,40 +59,48 @@ public final class SonderClient implements Closeable {
 		this.connection = connection;
 		this.protocols = Collections.unmodifiableMap(protocols);
 		this.eventDispatcher = eventDispatcher;
-		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
 	}
 
 	public synchronized void connect() throws IOException {
-		state.compareAndSetValue(State.INITIAL, State.RUNNING);
-
+		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
 		connection.connect(pack -> {
 			Transfer transfer = convertDataPackToTransfer(pack);
 			processTransfer(transfer);
 		});
+
+		eventDispatcher.on(ConnectionClosedEvent.class)
+				.toMono()
+				.subscribe(connectionClosedEvent -> protocols.forEach((protocolName, protocol) -> protocol.destroy()));
 	}
 
 	public <T extends SonderEvent> Observable<T> onEvent(Class<T> eventClass) {
-		state.checkState(State.INITIAL, State.RUNNING);
+		State state = connection.getState();
+		if (state == State.CLOSED) {
+			throw new IllegalStateException("Closed");
+		}
 
 		return eventDispatcher.on(eventClass);
 	}
 
 	@Override
 	public void close() throws IOException {
-		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
+		boolean closed = connection.close();
 
-		if (changed) {
-			state.close();
-			connection.close();
+		if (closed) {
+			protocols.forEach((protocolName, protocol) -> protocol.destroy());
 		}
 	}
 
 	private void initProtocol(Protocol protocol) {
 		TransferTunnel transferTunnel = transfer -> {
-			state.checkState("Sonder Client does not connected or already closed", State.RUNNING);
 			transfer = setProtocolHeader(transfer, protocol.getName());
 			Pack pack = transferToDataPack(transfer);
-			connection.send(pack);
+			try {
+				connection.send(pack);
+			}
+			catch (IllegalStateException e) {
+				throw new IllegalStateException("Sonder Client does not connected or already closed");
+			}
 		};
 
 		protocol.init(transferTunnel, eventDispatcher);

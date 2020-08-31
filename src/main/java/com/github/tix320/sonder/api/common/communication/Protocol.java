@@ -21,7 +21,7 @@ import com.github.tix320.sonder.api.server.SonderServerBuilder;
 public interface Protocol {
 
 	/**
-	 * This method will be called once on server/client start for some protocol initialization.
+	 * This method will be called on server/client start or reconnect for some protocol initialization.
 	 *
 	 * @param transferTunnel                for sending transfers.
 	 * @param sonderEventDispatcher for emitting and listening some events.
@@ -43,7 +43,7 @@ public interface Protocol {
 	void handleIncomingTransfer(Transfer transfer) throws IOException;
 
 	/**
-	 * This method will be called once on server/client close for some protocol destruction.
+	 * This method will be called on server/client close or connection lose for some cleanup.
 	 */
 	void destroy();
 

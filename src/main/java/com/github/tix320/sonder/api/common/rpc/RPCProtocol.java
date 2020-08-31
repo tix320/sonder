@@ -121,11 +121,11 @@ public abstract class RPCProtocol implements Protocol {
 
 	@Override
 	public void init(TransferTunnel transferTunnel, SonderEventDispatcher sonderEventDispatcher) {
-		synchronized (this) { // for memory effects
+		synchronized (this) { // also for memory effects
 			this.transferTunnel = transferTunnel;
 			this.sonderEventDispatcher = sonderEventDispatcher;
+			init();
 		}
-		init();
 	}
 
 	protected abstract void init();
@@ -168,8 +168,20 @@ public abstract class RPCProtocol implements Protocol {
 
 	@Override
 	public void destroy() {
-		requestMetadataByResponseKey.values()
-				.forEach(requestMetadata -> requestMetadata.getResponsePublisher().complete());
+		synchronized (this) {
+			this.transferTunnel = null;
+			this.sonderEventDispatcher = null;
+
+			requestMetadataByResponseKey.values()
+					.forEach(requestMetadata -> requestMetadata.getResponsePublisher().complete());
+			requestMetadataByResponseKey.clear();
+
+			remoteSubscriptionPublishers.values().forEach(RemoteSubscriptionPublisher::closePublisher);
+			remoteSubscriptionPublishers.clear();
+
+			realSubscriptions.values().forEach(Subscription::unsubscribe);
+			realSubscriptions.clear();
+		}
 	}
 
 	@SuppressWarnings("unchecked")

@@ -48,12 +48,13 @@ public class SocketServerConnection implements ServerConnection {
 
 	@Override
 	public synchronized void connect(Consumer<Pack> packConsumer) throws IOException {
+		SocketChannel socketChannel = SocketChannel.open(address);
 		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
 		if (!changed) {
 			throw new IllegalStateException("Already running");
 		}
 
-		this.channel = new PackChannel(SocketChannel.open(address), contentTimeoutDurationFactory);
+		this.channel = new PackChannel(socketChannel, contentTimeoutDurationFactory);
 		eventDispatcher.fire(new ConnectionEstablishedEvent());
 		runLoop(packConsumer);
 	}
@@ -86,13 +87,20 @@ public class SocketServerConnection implements ServerConnection {
 	}
 
 	@Override
-	public void close() throws IOException {
+	public boolean close() throws IOException {
 		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
 
 		if (changed) {
 			workers.shutdown();
 			channel.close();
 		}
+
+		return changed;
+	}
+
+	@Override
+	public State getState() {
+		return state.getValue();
 	}
 
 	private void runLoop(Consumer<Pack> packConsumer) {
@@ -104,7 +112,6 @@ public class SocketServerConnection implements ServerConnection {
 					CertainReadableByteChannel contentChannel = pack.channel();
 					runAsync(() -> packConsumer.accept(pack));
 					if (contentChannel instanceof LimitedReadableByteChannel) {
-
 						Duration timeoutDuration = contentTimeoutDurationFactory.apply(
 								contentChannel.getContentLength());
 
@@ -115,21 +122,31 @@ public class SocketServerConnection implements ServerConnection {
 
 			}
 			catch (AsynchronousCloseException e) {
-				eventDispatcher.fire(new ConnectionClosedEvent());
+				resetConnection();
 				throw new InterruptedException();
 			}
 			catch (ClosedChannelException e) {
-				eventDispatcher.fire(new ConnectionClosedEvent());
+				resetConnection();
 				e.printStackTrace();
 				throw new InterruptedException();
 			}
 			catch (IOException e) {
-				eventDispatcher.fire(new ConnectionClosedEvent());
-				Try.run(() -> channel.close()).onFailure(Throwable::printStackTrace);
+				resetConnection();
 				new SocketConnectionException("The problem is occurred while reading data", e).printStackTrace();
 				throw new InterruptedException();
 			}
 		}).start();
+	}
+
+	private void resetConnection() {
+		synchronized (this) {
+			boolean changed = this.state.compareAndSetValue(State.RUNNING, State.INITIAL);
+			if (changed) {
+				Try.run(() -> channel.close()).onFailure(Throwable::printStackTrace);
+				this.channel = null;
+				eventDispatcher.fire(new ConnectionClosedEvent());
+			}
+		}
 	}
 
 	private void runAsync(Runnable runnable) {
