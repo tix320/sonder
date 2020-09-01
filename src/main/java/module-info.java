@@ -1,4 +1,4 @@
-module sonder {
+module com.github.tix.sonder {
 	requires transitive kiwi;
 	requires transitive com.fasterxml.jackson.core;
 	requires transitive com.fasterxml.jackson.databind;
