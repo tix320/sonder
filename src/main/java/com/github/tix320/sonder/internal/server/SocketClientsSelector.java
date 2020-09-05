@@ -17,6 +17,7 @@ import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.kiwi.api.util.IDGenerator;
+import com.github.tix320.kiwi.api.util.LoopThread.BreakLoopException;
 import com.github.tix320.kiwi.api.util.None;
 import com.github.tix320.kiwi.api.util.Threads;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
@@ -178,11 +179,11 @@ public final class SocketClientsSelector implements ClientsSelector {
 				// bye key
 			}
 			catch (ClosedSelectorException e) {
-				throw new InterruptedException();
+				throw new BreakLoopException();
 			}
 			catch (IOException e) {
 				new SocketConnectionException("The problem is occurred in selector work", e).printStackTrace();
-				throw new InterruptedException();
+				throw new BreakLoopException();
 			}
 		}).start();
 	}

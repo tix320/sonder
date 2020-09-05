@@ -13,6 +13,7 @@ import java.util.function.LongFunction;
 import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
+import com.github.tix320.kiwi.api.util.LoopThread.BreakLoopException;
 import com.github.tix320.kiwi.api.util.Threads;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
 import com.github.tix320.sonder.api.client.event.ConnectionEstablishedEvent;
@@ -116,19 +117,24 @@ public class SocketServerConnection implements ServerConnection {
 								contentChannel.getContentLength());
 
 						LimitedReadableByteChannel limitedReadableByteChannel = (LimitedReadableByteChannel) contentChannel;
-						limitedReadableByteChannel.onFinish().get(timeoutDuration);
+						try {
+							limitedReadableByteChannel.onFinish().get(timeoutDuration);
+						}
+						catch (InterruptedException e) {
+							throw new IllegalStateException(e);
+						}
 					}
 				}
 
 			}
 			catch (AsynchronousCloseException e) {
 				resetConnection();
-				throw new InterruptedException();
+				throw new BreakLoopException();
 			}
 			catch (ClosedChannelException e) {
 				resetConnection();
 				e.printStackTrace();
-				throw new InterruptedException();
+				throw new BreakLoopException();
 			}
 			catch (IOException e) {
 				resetConnection();
@@ -136,7 +142,7 @@ public class SocketServerConnection implements ServerConnection {
 					new SocketConnectionException("The problem is occurred while reading data", e).printStackTrace();
 				}
 
-				throw new InterruptedException();
+				throw new BreakLoopException();
 			}
 		}).start();
 	}
