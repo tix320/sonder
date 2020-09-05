@@ -132,7 +132,10 @@ public class SocketServerConnection implements ServerConnection {
 			}
 			catch (IOException e) {
 				resetConnection();
-				new SocketConnectionException("The problem is occurred while reading data", e).printStackTrace();
+				if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
+					new SocketConnectionException("The problem is occurred while reading data", e).printStackTrace();
+				}
+
 				throw new InterruptedException();
 			}
 		}).start();

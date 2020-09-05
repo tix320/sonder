@@ -414,7 +414,9 @@ public abstract class RPCProtocol implements Protocol {
 				RemoteSubscriptionPublisher remoteSubscriptionPublisher = remoteSubscriptionPublishers.remove(
 						responseKey);
 				if (remoteSubscriptionPublisher == null) {
-					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
+					// This may happen, when we are unsubscribe from observable locally, after which completed received
+					// System.err.printf("Subscription not found for key %s%n", responseKey);
+					return;
 				}
 
 				long orderId = headers.getNonNullLong(Headers.SUBSCRIPTION_RESULT_ORDER_ID);
@@ -426,7 +428,7 @@ public abstract class RPCProtocol implements Protocol {
 				if (remoteSubscriptionPublisher == null) {
 					// This may happen, when we are unsubscribe from observable locally, but unsubscription still not reached to other end and he send regular value.
 					// So we are ignoring this case, just log it
-					System.err.printf("Subscription not found for key %s%n", responseKey);
+					// System.err.printf("Subscription not found for key %s%n", responseKey);
 					return;
 				}
 
@@ -872,7 +874,7 @@ public abstract class RPCProtocol implements Protocol {
 		}
 
 		@Override
-		public synchronized boolean onPublish(Object item) {
+		public boolean onPublish(Object item) {
 			Headers headers = Headers.builder()
 					.header(Headers.DESTINATION_ID, destinationId)
 					.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)

@@ -299,7 +299,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 					e).printStackTrace();
 		}
 		finally {
-			runAsync(() -> eventDispatcher.fire(new ClientConnectionClosedEvent(client.id)));
+			eventDispatcher.fire(new ClientConnectionClosedEvent(client.id));
 		}
 	}
 
