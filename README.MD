@@ -1,6 +1,6 @@
 # Sonder
 
-##Description
+## Description
 Sonder is a Java library providing TCP client-server asynchronous communication on high level abstraction.
 It's implemented over NIO encapsulating hard work of selectors and some byte-level packet protocol.
 
@@ -19,11 +19,11 @@ Java 11 or higher.
 </dependency>
 ```
 
-##Usage
+## Usage
 Bellow a small example to demonstrate client-server communication.
 For the detailed information about the internal working and usage please see the [documentation](https://github.com/tix320/sonder/wiki).
 
-  ##### Server Endpoint
+##### Server Endpoint
 ```java
 package com.github.tix320.sonder.readme.server;
 
@@ -39,7 +39,7 @@ public class MyEndpoint {
 }
 ``` 
   
- ##### Server Main
+##### Server Main
 ```java
 package com.github.tix320.sonder.readme.server;
 
@@ -59,7 +59,7 @@ public class ServerTest {
 ```
 
 
- ##### Client RPC interface
+##### Client RPC interface
 ```java
 package com.github.tix320.sonder.readme.client;
 
@@ -74,7 +74,7 @@ public interface MyService {
 }
 ```
 
- ##### Client Main
+##### Client Main
 ```java
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -147,8 +147,8 @@ class ClientTest {
 }
 ```
 
-##Credits
+## Credits
 - Tigran Sargsyan - **[tix320](https://github.com/tix320).**
 
-##License
+## License
 This project is licensed under the Apache License - see the [LICENSE](https://github.com/tix320/sonder/blob/master/LICENSE) file for details.
