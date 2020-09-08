@@ -23,58 +23,7 @@ Java 11 or higher.
 Bellow a small example to demonstrate client-server communication.
 For the detailed information about the internal working and usage please see the [documentation](https://github.com/tix320/sonder/wiki).
 
-##### Server Endpoint
-```java
-package com.github.tix320.sonder.readme.server;
-
-import com.github.tix320.sonder.api.common.rpc.Endpoint;
-
-@Endpoint("myService")
-public class MyEndpoint {
-
-	@Endpoint("myMethod")
-	public Integer getLengthOfString(String s) {
-		return s.length();
-	}
-}
-``` 
-  
-##### Server Main
-```java
-package com.github.tix320.sonder.readme.server;
-
-import java.net.InetSocketAddress;
-
-import com.github.tix320.sonder.api.server.SonderServerServer;
-
-public class ServerTest {
-
-	public static void main(String[] args) {
-		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(8888))
-                                    				.withRPCProtocol(builder -> builder.scanClasses(MyEndpoint.class))
-                                    				.build();
-	    sonderServer.start();
-	}
-}
-```
-
-
-##### Client RPC interface
-```java
-package com.github.tix320.sonder.readme.client;
-
-import com.github.tix320.kiwi.api.observable.Observable;
-import com.github.tix320.sonder.api.common.rpc.Origin;
-
-@Origin("myService")
-public interface MyService {
-
-	@Origin("myMethod")
-	MonoObservable<Integer> getLengthOfString(String s);
-}
-```
-
-##### Client Main
+##### Example
 ```java
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -146,6 +95,7 @@ class ClientTest {
 	}
 }
 ```
+  
 
 ## Credits
 - Tigran Sargsyan - **[tix320](https://github.com/tix320).**
