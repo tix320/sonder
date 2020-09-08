@@ -21,7 +21,7 @@ Java 11 or higher.
 
 ##Usage
 Bellow a small example to demonstrate client-server communication.
-For the detailed information about the internal working and usage please see the [documentation](https://github.com/tix320).
+For the detailed information about the internal working and usage please see the [documentation](https://github.com/tix320/sonder/wiki).
 
   ##### Server Endpoint
 ```java
