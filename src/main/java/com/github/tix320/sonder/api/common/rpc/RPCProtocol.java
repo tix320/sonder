@@ -30,7 +30,6 @@ import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
-import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocolBuilder;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
 import com.github.tix320.sonder.internal.common.rpc.exception.IncompatibleTypeException;
 import com.github.tix320.sonder.internal.common.rpc.exception.PathNotFoundException;
@@ -41,7 +40,6 @@ import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.protocol.*;
 import com.github.tix320.sonder.internal.common.rpc.service.*;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
-import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocolBuilder;
 
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toUnmodifiableMap;
@@ -85,13 +83,13 @@ public abstract class RPCProtocol implements Protocol {
 		this.originInstances = originInstances;
 		this.endpointInstances = endpointInstances;
 
-		OriginRPCServiceMethods originServiceMethods = new OriginRPCServiceMethods(originInstances.keySet(),
+		OriginRPCMethodResolver originServiceMethods = new OriginRPCMethodResolver(originInstances.keySet(),
 				this.originExtraArgExtractors.values()
 						.stream()
 						.map(OriginExtraArgExtractor::getParamDefinition)
 						.collect(Collectors.toList()));
 
-		EndpointRPCServiceMethods endpointServiceMethods = new EndpointRPCServiceMethods(endpointInstances.keySet(),
+		EndpointRPCMethodResolver endpointServiceMethods = new EndpointRPCMethodResolver(endpointInstances.keySet(),
 				this.endpointExtraArgInjectors.values()
 						.stream()
 						.map(EndpointExtraArgInjector::getParamDefinition)
@@ -109,14 +107,6 @@ public abstract class RPCProtocol implements Protocol {
 		this.remoteSubscriptionPublishers = new ConcurrentHashMap<>();
 		this.realSubscriptions = new ConcurrentHashMap<>();
 		this.responseKeyGenerator = new IDGenerator(1);
-	}
-
-	public static RPCProtocolBuilder forServer() {
-		return new ServerRPCProtocolBuilder();
-	}
-
-	public static RPCProtocolBuilder forClient() {
-		return new ClientRPCProtocolBuilder();
 	}
 
 	@Override

@@ -1,18 +1,22 @@
 package com.github.tix320.sonder.api.common.rpc;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import com.github.tix320.kiwi.api.check.Try;
+import com.github.tix320.sonder.api.common.rpc.RPCProtocol.OriginInvocationHandler;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolConfigurationException;
 import com.github.tix320.sonder.internal.common.rpc.protocol.ProtocolConfig;
-import com.github.tix320.sonder.api.common.rpc.RPCProtocol.OriginInvocationHandler;
 import com.github.tix320.sonder.internal.common.util.ClassFinder;
+
+import static java.util.function.Predicate.not;
 
 /**
  * Builder for RPC protocol {@link RPCProtocol}.
@@ -31,7 +35,7 @@ public abstract class RPCProtocolBuilder {
 
 	private boolean built = false;
 
-	public RPCProtocolBuilder() {
+	protected RPCProtocolBuilder() {
 		originInstances = new HashMap<>();
 		endpointInstances = new HashMap<>();
 		originExtraArgExtractors = new ArrayList<>();
@@ -131,7 +135,7 @@ public abstract class RPCProtocolBuilder {
 	public final RPCProtocolBuilder registerEndpointClasses(Class<?>... classes) {
 		for (Class<?> clazz : classes) {
 			validateEndpointClass(clazz);
-			Object instance = Try.supplyOrRethrow(() -> clazz.getConstructor().newInstance());
+			Object instance = createInstance(clazz);
 			endpointInstances.put(clazz, instance);
 		}
 
@@ -196,7 +200,32 @@ public abstract class RPCProtocolBuilder {
 
 	protected abstract RPCProtocol buildOverride();
 
+	private Object createInstance(Class<?> clazz) throws RPCProtocolConfigurationException {
+		Constructor<?> declaredConstructor = null;
+		try {
+			declaredConstructor = clazz.getDeclaredConstructor();
+			declaredConstructor.setAccessible(true);
+			return declaredConstructor.newInstance();
+		}
+		catch (NoSuchMethodException e) {
+			throw new RPCProtocolConfigurationException(String.format("No-arg constructor not found in %s", clazz));
+		}
+		catch (IllegalAccessException | InstantiationException e) {
+			throw new RPCProtocolConfigurationException(String.format("Cannot construct instance of %s", clazz), e);
+		}
+		catch (InvocationTargetException e) {
+			throw new RPCProtocolConfigurationException(String.format("Cannot construct instance of %s", clazz),
+					e.getTargetException());
+		}
+
+	}
+
 	private void validateOriginClass(Class<?> clazz) {
+		RPCProtocolConfigurationException.checkAndThrow(clazz,
+				aClass -> String.format("Failed to resolve origin service(%s), there are the following errors.",
+						aClass),
+				RPCProtocolConfigurationException.throwWhen(not(Class::isInterface), "Must be interface"));
+
 		boolean isOrigin = clazz.isAnnotationPresent(Origin.class);
 		boolean isEndpoint = clazz.isAnnotationPresent(Endpoint.class);
 		if (isOrigin && isEndpoint) {
@@ -210,6 +239,14 @@ public abstract class RPCProtocolBuilder {
 	}
 
 	private void validateEndpointClass(Class<?> clazz) {
+		RPCProtocolConfigurationException.checkAndThrow(clazz,
+				aClass -> String.format("Failed to resolve endpoint service(%s), there are the following errors.",
+						aClass), RPCProtocolConfigurationException.throwWhen(
+						aClass -> Modifier.isAbstract(aClass.getModifiers()) || aClass.isEnum(),
+						"Must be a concrete class"), RPCProtocolConfigurationException.throwWhen(
+						aClass -> (aClass.isMemberClass() && !Modifier.isStatic(aClass.getModifiers())),
+						"Must be static, when is a member class"));
+
 		boolean isOrigin = clazz.isAnnotationPresent(Origin.class);
 		boolean isEndpoint = clazz.isAnnotationPresent(Endpoint.class);
 		if (isOrigin && isEndpoint) {

@@ -10,8 +10,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.IntStream;
 
 import com.github.tix320.sonder.api.client.SonderClient;
-import com.github.tix320.sonder.api.server.SonderServer;
 import com.github.tix320.sonder.api.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.api.server.SonderServer;
 import org.junit.jupiter.api.Test;
 
 import static java.util.stream.Collectors.toSet;
@@ -27,7 +27,9 @@ public class ConcurrentTest {
 
 	@Test
 	public void test() throws IOException, InterruptedException {
-		RPCProtocol rpcProtocol = RPCProtocol.forServer().registerEndpointClasses(ServerEndpoint.class).build();
+		RPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
+				.registerEndpointClasses(ServerEndpoint.class)
+				.build();
 
 		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT))
 				.registerProtocol(rpcProtocol)
@@ -42,7 +44,9 @@ public class ConcurrentTest {
 		List<SonderClient> clients = new ArrayList<>();
 
 		for (int i = 1; i <= usersCount; i++) {
-			RPCProtocol protocol = RPCProtocol.forClient().registerOriginInterfaces(ClientService.class).build();
+			RPCProtocol protocol = SonderClient.getRPCProtocolBuilder()
+					.registerOriginInterfaces(ClientService.class)
+					.build();
 
 			SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT))
 					.registerProtocol(protocol)

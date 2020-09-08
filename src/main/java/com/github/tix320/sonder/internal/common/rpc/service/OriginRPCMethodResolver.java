@@ -24,20 +24,10 @@ import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnT
 
 import static java.util.function.Predicate.not;
 
-public final class OriginRPCServiceMethods extends RPCServiceMethods<OriginMethod> {
+public final class OriginRPCMethodResolver extends RPCMethodResolver<OriginMethod> {
 
-	public OriginRPCServiceMethods(Set<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
+	public OriginRPCMethodResolver(Set<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
 		super(classes, extraParamDefinitions);
-	}
-
-	@Override
-	protected final void checkService(Class<?> clazz) {
-		RPCProtocolConfigurationException.checkAndThrow(clazz,
-				aClass -> String.format("Failed to resolve origin service(%s), there are the following errors.",
-						aClass),
-				RPCProtocolConfigurationException.throwWhen(not(Class::isInterface), "Must be interface"),
-				RPCProtocolConfigurationException.throwWhen(not(aClass -> Modifier.isPublic(aClass.getModifiers())),
-						"Must be public"));
 	}
 
 	@Override

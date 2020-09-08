@@ -2,6 +2,7 @@ package com.github.tix320.sonder.internal.common.rpc.service;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.WrongMethodTypeException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -17,6 +18,8 @@ import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
  */
 public class EndpointMethod extends ServiceMethod {
 
+	private static final Lookup LOOKUP = MethodHandles.publicLookup();
+
 	private final MethodHandle methodHandle;
 
 	private final ResultType resultType;
@@ -26,7 +29,8 @@ public class EndpointMethod extends ServiceMethod {
 		super(path, method, simpleParams, extraParams);
 		this.resultType = resultType;
 		try {
-			this.methodHandle = MethodHandles.publicLookup().unreflect(method);
+			method.setAccessible(true);
+			this.methodHandle = LOOKUP.unreflect(method);
 		}
 		catch (IllegalAccessException e) {
 			throw new IllegalStateException(String.format("Cannot access to %s, you must open your module.", method),

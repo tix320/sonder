@@ -13,8 +13,10 @@ import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.event.SonderEvent;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
+import com.github.tix320.sonder.api.common.rpc.RPCProtocolBuilder;
 import com.github.tix320.sonder.internal.client.ServerConnection;
 import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
+import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocolBuilder;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 
@@ -53,6 +55,10 @@ public final class SonderClient implements Closeable {
 	 */
 	public static SonderClientBuilder forAddress(InetSocketAddress inetSocketAddress) {
 		return new SonderClientBuilder(inetSocketAddress);
+	}
+
+	public static RPCProtocolBuilder getRPCProtocolBuilder() {
+		return new ClientRPCProtocolBuilder();
 	}
 
 	SonderClient(ServerConnection connection, Map<String, Protocol> protocols, SonderEventDispatcher eventDispatcher) {

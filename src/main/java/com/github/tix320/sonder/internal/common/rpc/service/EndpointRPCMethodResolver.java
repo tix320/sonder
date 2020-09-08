@@ -14,22 +14,10 @@ import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolConfigu
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod.ResultType;
 
-public final class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointMethod> {
+public final class EndpointRPCMethodResolver extends RPCMethodResolver<EndpointMethod> {
 
-	public EndpointRPCServiceMethods(Set<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
+	public EndpointRPCMethodResolver(Set<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
 		super(classes, extraParamDefinitions);
-	}
-
-	@Override
-	protected final void checkService(Class<?> clazz) {
-		RPCProtocolConfigurationException.checkAndThrow(clazz,
-				aClass -> String.format("Failed to resolve endpoint service(%s), there are the following errors.",
-						aClass),
-				RPCProtocolConfigurationException.throwWhen(aClass -> Modifier.isAbstract(aClass.getModifiers()) || aClass.isEnum(),
-						"Must be a concrete class"), RPCProtocolConfigurationException.throwWhen(
-						aClass -> (aClass.isMemberClass() && !Modifier.isStatic(aClass.getModifiers())),
-						"Must be static, when is a member class"),
-				RPCProtocolConfigurationException.throwWhen(aClass -> !Modifier.isPublic(aClass.getModifiers()), "Must be public"));
 	}
 
 	@Override
@@ -42,8 +30,8 @@ public final class EndpointRPCServiceMethods extends RPCServiceMethods<EndpointM
 		RPCProtocolConfigurationException.checkAndThrow(method,
 				m -> String.format("Failed to resolve endpoint method '%s'(%s), there are the following errors.",
 						m.getName(), m.getDeclaringClass()),
-				RPCProtocolConfigurationException.throwWhen(m -> !Modifier.isPublic(m.getModifiers()), "Must be public"),
-				RPCProtocolConfigurationException.throwWhen(
+				RPCProtocolConfigurationException.throwWhen(m -> !Modifier.isPublic(m.getModifiers()),
+						"Must be public"), RPCProtocolConfigurationException.throwWhen(
 						m -> m.isAnnotationPresent(Subscription.class) && m.getReturnType() != Observable.class,
 						String.format("Return type must be `%s` when `@%s` annotation is present",
 								Observable.class.getSimpleName(), Subscription.class.getSimpleName())));

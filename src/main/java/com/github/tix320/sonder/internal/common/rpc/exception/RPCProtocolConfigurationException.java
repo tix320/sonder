@@ -15,6 +15,10 @@ public final class RPCProtocolConfigurationException extends RuntimeException {
 		super(message);
 	}
 
+	public RPCProtocolConfigurationException(String message, Throwable cause) {
+		super(message, cause);
+	}
+
 	@SafeVarargs
 	public static <T> void checkAndThrow(T value, Function<T, String> rootMessage, Check<T>... checks) {
 		String checksMessage = IntStream.range(0, checks.length)

@@ -17,13 +17,13 @@ import static java.util.stream.Collectors.*;
 /**
  * @author Tigran.Sargsyan on 13-Dec-18
  */
-public abstract class RPCServiceMethods<T extends ServiceMethod> {
+public abstract class RPCMethodResolver<T extends ServiceMethod> {
 
 	private final List<T> serviceMethods;
 
 	private final List<ExtraParamDefinition<?, ?>> extraParamDefinitions;
 
-	public RPCServiceMethods(Set<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
+	public RPCMethodResolver(Set<Class<?>> classes, List<ExtraParamDefinition<?, ?>> extraParamDefinitions) {
 		this.extraParamDefinitions = validateExtraParamDefinitions(extraParamDefinitions);
 		this.serviceMethods = createServiceMethods(classes);
 	}
@@ -34,7 +34,6 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 
 	private List<T> createServiceMethods(Collection<Class<?>> services) {
 		return services.stream()
-				.peek(this::checkService)
 				.flatMap(clazz -> Arrays.stream(clazz.getDeclaredMethods()))
 				.filter(this::isServiceMethod)
 				.peek(this::checkMethod)
@@ -45,8 +44,6 @@ public abstract class RPCServiceMethods<T extends ServiceMethod> {
 					return methods;
 				}));
 	}
-
-	protected abstract void checkService(Class<?> clazz);
 
 	protected abstract boolean isServiceMethod(Method method);
 
