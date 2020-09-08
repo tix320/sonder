@@ -9,7 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import com.github.tix320.kiwi.api.util.WrapperException;
+import com.github.tix320.skimp.api.exception.WrapperException;
 import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 

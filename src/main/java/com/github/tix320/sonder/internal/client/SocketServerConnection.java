@@ -10,11 +10,11 @@ import java.util.concurrent.*;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
-import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
-import com.github.tix320.kiwi.api.util.LoopThread.BreakLoopException;
-import com.github.tix320.kiwi.api.util.Threads;
+import com.github.tix320.skimp.api.check.Try;
+import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
+import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
 import com.github.tix320.sonder.api.client.event.ConnectionEstablishedEvent;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;

@@ -1,5 +1,7 @@
 module com.github.tix.sonder {
 	requires transitive com.github.tix.kiwi;
+	requires transitive com.github.tix.skimp;
+
 	requires transitive com.fasterxml.jackson.core;
 	requires transitive com.fasterxml.jackson.databind;
 	requires transitive com.fasterxml.jackson.annotation;

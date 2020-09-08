@@ -7,7 +7,7 @@ import java.nio.channels.ReadableByteChannel;
 
 import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
-import com.github.tix320.kiwi.api.util.None;
+import com.github.tix320.skimp.api.object.None;
 
 public final class LimitedReadableByteChannel implements CertainReadableByteChannel {
 
@@ -34,8 +34,7 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 	}
 
 	@Override
-	public synchronized int read(ByteBuffer dst)
-			throws IOException {
+	public synchronized int read(ByteBuffer dst) throws IOException {
 		if (!isOpen()) {
 			throw new ClosedChannelException();
 		}
@@ -87,8 +86,7 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 	}
 
 	@Override
-	public synchronized byte[] readAll()
-			throws IOException {
+	public synchronized byte[] readAll() throws IOException {
 		if (limit > Integer.MAX_VALUE) {
 			throw new UnsupportedOperationException(
 					"Cannot read all bytes, due there are larger than Integer.MAX_VALUE");
@@ -111,8 +109,7 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 		return buffer.array();
 	}
 
-	public synchronized void readRemainingInVain()
-			throws IOException {
+	public synchronized void readRemainingInVain() throws IOException {
 		ByteBuffer buffer = ByteBuffer.allocate(1024 * 64);
 		while (remaining > 0) {
 			int read = channel.read(buffer);

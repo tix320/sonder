@@ -13,13 +13,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
-import com.github.tix320.kiwi.api.check.Try;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
-import com.github.tix320.kiwi.api.util.IDGenerator;
-import com.github.tix320.kiwi.api.util.LoopThread.BreakLoopException;
-import com.github.tix320.kiwi.api.util.None;
-import com.github.tix320.kiwi.api.util.Threads;
+import com.github.tix320.skimp.api.check.Try;
+import com.github.tix320.skimp.api.generator.IDGenerator;
+import com.github.tix320.skimp.api.object.None;
+import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
+import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
