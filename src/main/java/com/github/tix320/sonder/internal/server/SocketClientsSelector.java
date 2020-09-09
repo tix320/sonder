@@ -210,10 +210,18 @@ public final class SocketClientsSelector implements ClientsSelector {
 		try {
 			pack = channel.read();
 		}
+		catch (SocketException e) {
+			if (!e.getMessage().contains("Connection reset")) {
+				throw new SocketConnectionException(
+						String.format("An error occurs while read from client %s", client.id), e);
+			}
+			closeClientConnection(client);
+			return;
+		}
 		catch (IOException e) {
 			if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
 				throw new SocketConnectionException(
-						String.format("An error occurs while write to client %s", client.id), e);
+						String.format("An error occurs while read from client %s", client.id), e);
 			}
 
 			closeClientConnection(client);
