@@ -2,7 +2,7 @@ package com.github.tix320.sonder.api.common.rpc.extra;
 
 import java.lang.annotation.Annotation;
 
-public class ExtraParamDefinition<A extends Annotation, T> {
+public final class ExtraParamDefinition<A extends Annotation, T> {
 
 	private final Class<A> annotationType;
 

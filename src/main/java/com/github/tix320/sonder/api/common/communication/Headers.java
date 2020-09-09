@@ -51,10 +51,6 @@ public final class Headers implements Serializable {
 		return values.get(key) != null;
 	}
 
-	public ContentType getContentType() {
-		return ContentType.valueOf(getNonNullString(Headers.CONTENT_TYPE));
-	}
-
 	public String getNonNullString(String key) {
 		Object value = values.get(key);
 		if (value instanceof String) {
@@ -167,11 +163,6 @@ public final class Headers implements Serializable {
 			return this;
 		}
 
-		public HeadersBuilder contentType(ContentType contentType) {
-			values.put(CONTENT_TYPE, contentType.name());
-			return this;
-		}
-
 		public Headers build() {
 			return new Headers(values);
 		}
@@ -181,16 +172,6 @@ public final class Headers implements Serializable {
 	public static final String PROTOCOL = "protocol";
 	public static final String SOURCE_ID = "source-id";
 	public static final String DESTINATION_ID = "destination-id";
-
-	//	-------------------- RPC protocol headers
-	public static final String RESPONSE_KEY = "response-key";
-	public static final String PATH = "path";
-	public static final String TRANSFER_TYPE = "transfer-type";
-	public static final String ERROR_TYPE = "error-type";
-	public static final String NEED_RESPONSE = "need-response";
-	public static final String CONTENT_TYPE = "content-type";
-	public static final String SUBSCRIPTION_ACTION_TYPE = "subscription-action-type";
-	public static final String SUBSCRIPTION_RESULT_ORDER_ID = "subscription_result_order_id";
 
 	public static class HeadersSerializer extends StdSerializer<Headers> {
 

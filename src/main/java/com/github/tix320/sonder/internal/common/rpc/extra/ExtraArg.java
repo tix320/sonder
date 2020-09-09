@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.api.common.rpc.extra;
+package com.github.tix320.sonder.internal.common.rpc.extra;
 
 import java.lang.annotation.Annotation;
 

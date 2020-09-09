@@ -28,7 +28,7 @@ import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
-import com.github.tix320.sonder.api.common.rpc.extra.ExtraArg;
+import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
 import com.github.tix320.sonder.internal.common.rpc.exception.IncompatibleTypeException;
@@ -124,7 +124,7 @@ public abstract class RPCProtocol implements Protocol {
 	public final void handleIncomingTransfer(Transfer transfer) throws IOException {
 		Headers headers = transfer.getHeaders();
 
-		TransferType transferType = TransferType.valueOf(headers.getNonNullString(Headers.TRANSFER_TYPE));
+		TransferType transferType = TransferType.valueOf(headers.getNonNullString(RPCHeaders.TRANSFER_TYPE));
 
 		try {
 			switch (transferType) {
@@ -239,26 +239,26 @@ public abstract class RPCProtocol implements Protocol {
 
 		long responseKey = responseKeyGenerator.next();
 
-		HeadersBuilder builder = headersBuilder.header(Headers.TRANSFER_TYPE, TransferType.INVOCATION)
-				.header(Headers.PATH, method.getPath())
-				.header(Headers.RESPONSE_KEY, responseKey);
+		HeadersBuilder builder = headersBuilder.header(RPCHeaders.TRANSFER_TYPE, TransferType.INVOCATION)
+				.header(RPCHeaders.PATH, method.getPath())
+				.header(RPCHeaders.RESPONSE_KEY, responseKey);
 
 		Long clientId = builder.build().getLong(Headers.DESTINATION_ID);
 
 		Transfer transferToSend;
 		switch (method.getRequestDataType()) {
 			case ARGUMENTS:
-				builder.contentType(ContentType.JSON);
+				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.JSON);
 				byte[] content = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs))
 						.getOrElseThrow(e -> new RPCProtocolException("Cannot convert arguments to JSON", e));
 				transferToSend = new StaticTransfer(builder.build(), content);
 				break;
 			case BINARY:
-				builder.contentType(ContentType.BINARY);
+				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.BINARY);
 				transferToSend = new StaticTransfer(builder.build(), (byte[]) simpleArgs.get(0));
 				break;
 			case TRANSFER:
-				builder.contentType(ContentType.TRANSFER);
+				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.TRANSFER);
 				transferToSend = (Transfer) simpleArgs.get(0);
 				transferToSend = new ChannelTransfer(
 						transferToSend.getHeaders().compose().headers(builder.build()).build(),
@@ -278,7 +278,7 @@ public abstract class RPCProtocol implements Protocol {
 				return null;
 			case ASYNC_VALUE:
 			case ASYNC_RESPONSE:
-				Headers headers = transferToSend.getHeaders().compose().header(Headers.NEED_RESPONSE, true).build();
+				Headers headers = transferToSend.getHeaders().compose().header(RPCHeaders.NEED_RESPONSE, true).build();
 
 				responsePublisher = Publisher.mono();
 				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(responsePublisher, method));
@@ -287,7 +287,7 @@ public abstract class RPCProtocol implements Protocol {
 				transferTunnel.send(transfer);
 				return responsePublisher.asObservable();
 			case SUBSCRIPTION:
-				headers = transferToSend.getHeaders().compose().header(Headers.NEED_RESPONSE, true).build();
+				headers = transferToSend.getHeaders().compose().header(RPCHeaders.NEED_RESPONSE, true).build();
 
 				transfer = new ChannelTransfer(headers, transferToSend.channel());
 
@@ -308,7 +308,7 @@ public abstract class RPCProtocol implements Protocol {
 	private void processMethodInvocation(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
-		String path = headers.getNonNullString(Headers.PATH);
+		String path = headers.getNonNullString(RPCHeaders.PATH);
 
 		EndpointMethod endpointMethod = endpointsByPath.get(path);
 		if (endpointMethod == null) {
@@ -316,7 +316,7 @@ public abstract class RPCProtocol implements Protocol {
 			throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
 		}
 
-		ContentType contentType = headers.getContentType();
+		ContentType contentType = ContentType.valueOf(headers.getNonNullString(RPCHeaders.CONTENT_TYPE));
 
 		Object[] simpleArgs;
 
@@ -348,7 +348,7 @@ public abstract class RPCProtocol implements Protocol {
 			throw e;
 		}
 
-		boolean needResponse = headers.has(Headers.NEED_RESPONSE);
+		boolean needResponse = headers.has(RPCHeaders.NEED_RESPONSE);
 		if (needResponse) {
 			processEndpointMethodResult(headers, endpointMethod, result);
 		}
@@ -356,7 +356,7 @@ public abstract class RPCProtocol implements Protocol {
 
 	private void processErrorResult(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
-		long responseKey = headers.getNonNullLong(Headers.RESPONSE_KEY);
+		long responseKey = headers.getNonNullLong(RPCHeaders.RESPONSE_KEY);
 
 		Exception exception = extractExceptionFromErrorResult(transfer);
 
@@ -386,10 +386,10 @@ public abstract class RPCProtocol implements Protocol {
 		Headers headers = transfer.getHeaders();
 
 		SubscriptionActionType subscriptionActionType = SubscriptionActionType.valueOf(
-				headers.getNonNullString(Headers.SUBSCRIPTION_ACTION_TYPE));
+				headers.getNonNullString(RPCHeaders.SUBSCRIPTION_ACTION_TYPE));
 
 		Long sourceId = headers.getLong(Headers.SOURCE_ID);
-		long responseKey = headers.getNonNullLong(Headers.RESPONSE_KEY);
+		long responseKey = headers.getNonNullLong(RPCHeaders.RESPONSE_KEY);
 
 		switch (subscriptionActionType) {
 			case UNSUBSCRIBE:
@@ -409,7 +409,7 @@ public abstract class RPCProtocol implements Protocol {
 					return;
 				}
 
-				long orderId = headers.getNonNullLong(Headers.SUBSCRIPTION_RESULT_ORDER_ID);
+				long orderId = headers.getNonNullLong(RPCHeaders.SUBSCRIPTION_RESULT_ORDER_ID);
 
 				remoteSubscriptionPublisher.complete(orderId);
 				break;
@@ -429,7 +429,7 @@ public abstract class RPCProtocol implements Protocol {
 									originMethod.getRawClass().getName(), originMethod.getRawMethod().getName()));
 				}
 
-				orderId = headers.getNonNullLong(Headers.SUBSCRIPTION_RESULT_ORDER_ID);
+				orderId = headers.getNonNullLong(RPCHeaders.SUBSCRIPTION_RESULT_ORDER_ID);
 
 				JavaType returnJavaType = originMethod.getReturnJavaType();
 				Object value = deserializeObject(Try.supplyOrRethrow(transfer.channel()::readAll), returnJavaType);
@@ -444,7 +444,7 @@ public abstract class RPCProtocol implements Protocol {
 	private void processInvocationResult(Transfer transfer) {
 		Headers headers = transfer.getHeaders();
 
-		long responseKey = headers.getNonNullNumber(Headers.RESPONSE_KEY).longValue();
+		long responseKey = headers.getNonNullNumber(RPCHeaders.RESPONSE_KEY).longValue();
 
 		RequestMetadata requestMetadata = requestMetadataByResponseKey.remove(responseKey);
 		if (requestMetadata == null) {
@@ -470,7 +470,7 @@ public abstract class RPCProtocol implements Protocol {
 			}
 		}
 		else {
-			ContentType contentType = headers.getContentType();
+			ContentType contentType = ContentType.valueOf(headers.getNonNullString(RPCHeaders.CONTENT_TYPE));
 
 			Object result;
 			switch (contentType) {
@@ -511,10 +511,10 @@ public abstract class RPCProtocol implements Protocol {
 
 		byte[] content = Try.supplyOrRethrow(transfer.channel()::readAll);
 
-		ErrorType errorType = ErrorType.valueOf(headers.getNonNullString(Headers.ERROR_TYPE));
+		ErrorType errorType = ErrorType.valueOf(headers.getNonNullString(RPCHeaders.ERROR_TYPE));
 		switch (errorType) {
 			case PATH_NOT_FOUND:
-				String path = headers.getNonNullString(Headers.PATH);
+				String path = headers.getNonNullString(RPCHeaders.PATH);
 				return new RPCRemoteException(new PathNotFoundException("Endpoint with path '" + path + "' not found"));
 			case INCOMPATIBLE_REQUEST:
 			case INTERNAL_SERVER_ERROR:
@@ -623,28 +623,28 @@ public abstract class RPCProtocol implements Protocol {
 		HeadersBuilder builder = Headers.builder();
 
 		Long sourceId = headers.getLong(Headers.SOURCE_ID);
-		long responseKey = headers.getNonNullLong(Headers.RESPONSE_KEY);
+		long responseKey = headers.getNonNullLong(RPCHeaders.RESPONSE_KEY);
 
-		builder.header(Headers.TRANSFER_TYPE, TransferType.INVOCATION_RESULT)
-				.header(Headers.RESPONSE_KEY, responseKey)
+		builder.header(RPCHeaders.TRANSFER_TYPE, TransferType.INVOCATION_RESULT)
+				.header(RPCHeaders.RESPONSE_KEY, responseKey)
 				.header(Headers.DESTINATION_ID, sourceId);
 
 		switch (endpointMethod.resultType()) {
 			case VOID:
-				builder.contentType(ContentType.BINARY);
+				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.BINARY);
 				transferTunnel.send(new StaticTransfer(builder.build(), new byte[0]));
 				break;
 			case OBJECT:
-				builder.contentType(ContentType.JSON);
+				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.JSON);
 				byte[] transferContent = serializeObject(result);
 				transferTunnel.send(new StaticTransfer(builder.build(), transferContent));
 				break;
 			case BINARY:
-				builder.contentType(ContentType.BINARY);
+				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.BINARY);
 				transferTunnel.send(new StaticTransfer(builder.build(), (byte[]) result));
 				break;
 			case TRANSFER:
-				builder.contentType(ContentType.TRANSFER);
+				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.TRANSFER);
 				Transfer resultTransfer = (Transfer) result;
 				Headers finalHeaders = resultTransfer.getHeaders().compose().headers(builder.build()).build();
 				transferTunnel.send(new ChannelTransfer(finalHeaders, resultTransfer.channel()));
@@ -663,9 +663,9 @@ public abstract class RPCProtocol implements Protocol {
 		try {
 			Headers errorHeaders = Headers.builder()
 					.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
-					.header(Headers.RESPONSE_KEY, headers.getLong(Headers.RESPONSE_KEY))
-					.header(Headers.ERROR_TYPE, ErrorType.PATH_NOT_FOUND)
-					.header(Headers.PATH, headers.getNonNullString(Headers.PATH))
+					.header(RPCHeaders.RESPONSE_KEY, headers.getLong(RPCHeaders.RESPONSE_KEY))
+					.header(RPCHeaders.ERROR_TYPE, ErrorType.PATH_NOT_FOUND)
+					.header(RPCHeaders.PATH, headers.getNonNullString(RPCHeaders.PATH))
 					.build();
 
 			sendErrorResult(errorHeaders, new byte[0]);
@@ -679,9 +679,9 @@ public abstract class RPCProtocol implements Protocol {
 		try {
 			Headers errorHeaders = Headers.builder()
 					.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
-					.header(Headers.RESPONSE_KEY, headers.getLong(Headers.RESPONSE_KEY))
-					.header(Headers.ERROR_TYPE, ErrorType.INCOMPATIBLE_REQUEST)
-					.header(Headers.PATH, headers.getNonNullString(Headers.PATH))
+					.header(RPCHeaders.RESPONSE_KEY, headers.getLong(RPCHeaders.RESPONSE_KEY))
+					.header(RPCHeaders.ERROR_TYPE, ErrorType.INCOMPATIBLE_REQUEST)
+					.header(RPCHeaders.PATH, headers.getNonNullString(RPCHeaders.PATH))
 					.build();
 
 			sendErrorResult(errorHeaders, content);
@@ -695,9 +695,9 @@ public abstract class RPCProtocol implements Protocol {
 		try {
 			Headers errorHeaders = Headers.builder()
 					.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
-					.header(Headers.RESPONSE_KEY, headers.getNonNullLong(Headers.RESPONSE_KEY))
-					.header(Headers.ERROR_TYPE, ErrorType.INTERNAL_SERVER_ERROR)
-					.header(Headers.PATH, headers.getNonNullString(Headers.PATH))
+					.header(RPCHeaders.RESPONSE_KEY, headers.getNonNullLong(RPCHeaders.RESPONSE_KEY))
+					.header(RPCHeaders.ERROR_TYPE, ErrorType.INTERNAL_SERVER_ERROR)
+					.header(RPCHeaders.PATH, headers.getNonNullString(RPCHeaders.PATH))
 					.build();
 
 			byte[] content = exceptionMessagesToString(exception).getBytes();
@@ -710,7 +710,7 @@ public abstract class RPCProtocol implements Protocol {
 	}
 
 	private void sendErrorResult(Headers headers, byte[] content) {
-		headers = headers.compose().header(Headers.TRANSFER_TYPE, TransferType.ERROR_RESULT.name()).build();
+		headers = headers.compose().header(RPCHeaders.TRANSFER_TYPE, TransferType.ERROR_RESULT.name()).build();
 
 		Transfer transfer = new StaticTransfer(headers, content);
 		transferTunnel.send(transfer);
@@ -832,9 +832,9 @@ public abstract class RPCProtocol implements Protocol {
 					if (completionType == CompletionType.UNSUBSCRIPTION) {
 						Headers headers = Headers.builder()
 								.header(Headers.DESTINATION_ID, destinationId)
-								.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
-								.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.UNSUBSCRIBE)
-								.header(Headers.RESPONSE_KEY, responseKey)
+								.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
+								.header(RPCHeaders.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.UNSUBSCRIBE)
+								.header(RPCHeaders.RESPONSE_KEY, responseKey)
 								.build();
 
 						Transfer transfer = new StaticTransfer(headers, new byte[0]);
@@ -867,10 +867,10 @@ public abstract class RPCProtocol implements Protocol {
 		public boolean onPublish(Object item) {
 			Headers headers = Headers.builder()
 					.header(Headers.DESTINATION_ID, destinationId)
-					.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
-					.header(Headers.RESPONSE_KEY, responseKey)
-					.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.REGULAR_ITEM)
-					.header(Headers.SUBSCRIPTION_RESULT_ORDER_ID, orderIdGenerator.next())
+					.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
+					.header(RPCHeaders.RESPONSE_KEY, responseKey)
+					.header(RPCHeaders.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.REGULAR_ITEM)
+					.header(RPCHeaders.SUBSCRIPTION_RESULT_ORDER_ID, orderIdGenerator.next())
 					.build();
 
 			byte[] content = serializeObject(item);
@@ -886,11 +886,11 @@ public abstract class RPCProtocol implements Protocol {
 			if (completionType == CompletionType.SOURCE_COMPLETED) {
 				Headers headers = Headers.builder()
 						.header(Headers.DESTINATION_ID, destinationId)
-						.header(Headers.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
-						.header(Headers.RESPONSE_KEY, responseKey)
-						.header(Headers.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.SUBSCRIPTION_COMPLETED)
-						.header(Headers.SUBSCRIPTION_RESULT_ORDER_ID, orderIdGenerator.next())
-						.contentType(ContentType.BINARY)
+						.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
+						.header(RPCHeaders.RESPONSE_KEY, responseKey)
+						.header(RPCHeaders.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.SUBSCRIPTION_COMPLETED)
+						.header(RPCHeaders.SUBSCRIPTION_RESULT_ORDER_ID, orderIdGenerator.next())
+						.header(RPCHeaders.CONTENT_TYPE, ContentType.BINARY)
 						.build();
 
 				Transfer transferToSend = new StaticTransfer(headers, new byte[0]);
@@ -900,4 +900,14 @@ public abstract class RPCProtocol implements Protocol {
 		}
 	}
 
+	private static final class RPCHeaders {
+		private static final String RESPONSE_KEY = "response-key";
+		private static final String PATH = "path";
+		private static final String TRANSFER_TYPE = "transfer-type";
+		private static final String ERROR_TYPE = "error-type";
+		private static final String NEED_RESPONSE = "need-response";
+		private static final String CONTENT_TYPE = "content-type";
+		private static final String SUBSCRIPTION_ACTION_TYPE = "subscription-action-type";
+		private static final String SUBSCRIPTION_RESULT_ORDER_ID = "subscription_result_order_id";
+	}
 }

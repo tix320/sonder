@@ -23,7 +23,7 @@ public interface Protocol {
 	/**
 	 * This method will be called on server/client start or reconnect for some protocol initialization.
 	 *
-	 * @param transferTunnel                for sending transfers.
+	 * @param transferTunnel        for sending transfers.
 	 * @param sonderEventDispatcher for emitting and listening some events.
 	 */
 	void init(TransferTunnel transferTunnel, SonderEventDispatcher sonderEventDispatcher);
