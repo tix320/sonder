@@ -81,7 +81,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 	}
 
 	@Override
-	public void send(ClientPack clientPack) {
+	public void send(ClientPack clientPack) throws ClientClosedException {
 		state.checkState(State.RUNNING);
 
 		long clientId = clientPack.getClientId();
@@ -103,20 +103,24 @@ public final class SocketClientsSelector implements ClientsSelector {
 				}
 			}
 			catch (SocketException e) {
+				closeClientConnection(client);
 				if (!e.getMessage().contains("Connection reset")) {
 					throw new SocketConnectionException(
 							String.format("An error occurs while write to client %s", client.id), e);
 				}
-
-				closeClientConnection(client);
+				else {
+					throw new ClientClosedException();
+				}
 			}
 			catch (IOException e) {
+				closeClientConnection(client);
 				if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
 					throw new SocketConnectionException(
 							String.format("An error occurs while write to client %s", client.id), e);
 				}
-
-				closeClientConnection(client);
+				else {
+					throw new ClientClosedException();
+				}
 			}
 		}
 		else {
@@ -211,20 +215,20 @@ public final class SocketClientsSelector implements ClientsSelector {
 			pack = channel.read();
 		}
 		catch (SocketException e) {
+			closeClientConnection(client);
 			if (!e.getMessage().contains("Connection reset")) {
 				throw new SocketConnectionException(
 						String.format("An error occurs while read from client %s", client.id), e);
 			}
-			closeClientConnection(client);
 			return;
 		}
 		catch (IOException e) {
+			closeClientConnection(client);
 			if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
 				throw new SocketConnectionException(
 						String.format("An error occurs while read from client %s", client.id), e);
 			}
 
-			closeClientConnection(client);
 			return;
 		}
 
@@ -240,7 +244,14 @@ public final class SocketClientsSelector implements ClientsSelector {
 		else {
 			CertainReadableByteChannel contentChannel = pack.channel();
 			ClientPack clientPack = new ClientPack(client.id, pack);
-			runAsync(() -> packConsumer.accept(clientPack));
+			runAsync(() -> {
+				try {
+					packConsumer.accept(clientPack);
+				}
+				finally {
+					Try.runOrRethrow(contentChannel::readRemainingInVain);
+				}
+			});
 			if (contentChannel instanceof LimitedReadableByteChannel) {
 
 				Duration timeoutDuration = contentTimeoutDurationFactory.apply(contentChannel.getContentLength());

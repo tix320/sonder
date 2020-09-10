@@ -35,16 +35,14 @@ public interface CertainReadableByteChannel extends ReadableByteChannel {
 	 * @throws UnsupportedOperationException if content length larger than {@link Integer#MAX_VALUE}
 	 * @throws IllegalStateException         if this method called after any one byte read
 	 */
-	byte[] readAll()
-			throws IOException;
+	byte[] readAll() throws IOException;
 
 	/**
-	 * Read all content in vain.
+	 * Read all content in vain and close channel.
 	 * This method may used when you do not need to read content, but you must,
 	 * because of next transfers will be blocked until this is processed.
 	 *
 	 * @throws IOException if any IO errors occurs
 	 */
-	void readRemainingInVain()
-			throws IOException;
+	void readRemainingInVain() throws IOException;
 }

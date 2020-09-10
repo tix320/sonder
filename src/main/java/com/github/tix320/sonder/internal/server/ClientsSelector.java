@@ -10,7 +10,7 @@ public interface ClientsSelector extends Closeable {
 
 	void run(Consumer<ClientPack> packConsumer) throws IOException;
 
-	void send(ClientPack clientPack);
+	void send(ClientPack clientPack) throws ClientClosedException;
 
 	class ClientPack {
 		private final long clientId;

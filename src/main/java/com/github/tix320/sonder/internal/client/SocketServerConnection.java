@@ -71,11 +71,11 @@ public class SocketServerConnection implements ServerConnection {
 			}
 		}
 		catch (ClosedChannelException e) {
-			eventDispatcher.fire(new ConnectionClosedEvent());
+			resetConnection();
 			throw new SocketConnectionException("Socket connection is closed", e);
 		}
 		catch (IOException e) {
-			eventDispatcher.fire(new ConnectionClosedEvent());
+			resetConnection();
 			try {
 				channel.close();
 				throw new SocketConnectionException("The problem is occurred while sending data", e);

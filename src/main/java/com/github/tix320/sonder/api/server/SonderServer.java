@@ -120,16 +120,22 @@ public final class SonderServer implements Closeable {
 	private ClientPack transferToClientPack(Transfer transfer) {
 		long destinationId = transfer.getHeaders().getNonNullLong(Headers.DESTINATION_ID);
 
-		byte[] headers;
+		byte[] headers = serializeHeaders(transfer.getHeaders());
+
+		CertainReadableByteChannel channel = transfer.channel();
+		return new ClientPack(destinationId, new Pack(headers, channel));
+	}
+
+	private byte[] serializeHeaders(Headers headers) {
+		byte[] headerBytes;
 		try {
-			headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
+			headerBytes = JSON_MAPPER.writeValueAsBytes(headers);
 		}
 		catch (JsonProcessingException e) {
 			throw new IllegalStateException("Cannot write JSON", e);
 		}
 
-		CertainReadableByteChannel channel = transfer.channel();
-		return new ClientPack(destinationId, new Pack(headers, channel));
+		return headerBytes;
 	}
 
 	private Transfer clientPackToTransfer(ClientsSelector.ClientPack clientPack) {
@@ -153,7 +159,8 @@ public final class SonderServer implements Closeable {
 
 		Number destinationId = headers.getNumber(Headers.DESTINATION_ID);
 		if (destinationId != null) { // for any client, so we are redirecting without any processing
-			clientsSelector.send(transferToClientPack(transfer));
+			ClientPack clientPack = transferToClientPack(transfer);
+			clientsSelector.send(clientPack);
 		}
 		else {
 			String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);

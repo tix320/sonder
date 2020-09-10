@@ -20,8 +20,7 @@ public class ReadableByteArrayChannel implements CertainReadableByteChannel {
 	}
 
 	@Override
-	public synchronized int read(ByteBuffer dst)
-			throws IOException {
+	public synchronized int read(ByteBuffer dst) throws IOException {
 		if (position == array.length) {
 			return -1;
 		}
@@ -53,8 +52,7 @@ public class ReadableByteArrayChannel implements CertainReadableByteChannel {
 	}
 
 	@Override
-	public synchronized byte[] readAll()
-			throws IOException {
+	public synchronized byte[] readAll() throws IOException {
 		if (position != 0) {
 			throw new IllegalStateException("readAll not allowed, when any bytes already was read");
 		}
@@ -63,8 +61,7 @@ public class ReadableByteArrayChannel implements CertainReadableByteChannel {
 	}
 
 	@Override
-	public synchronized void readRemainingInVain()
-			throws IOException {
+	public synchronized void readRemainingInVain() throws IOException {
 		position = array.length;
 	}
 }

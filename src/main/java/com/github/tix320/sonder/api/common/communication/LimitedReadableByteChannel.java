@@ -121,6 +121,7 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 		}
 
 		finishEvent.publish(None.SELF);
+		close();
 	}
 
 	private boolean isFinished() {
