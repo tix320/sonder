@@ -8,15 +8,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.sonder.api.common.communication.*;
-import com.github.tix320.sonder.api.common.event.SonderEvent;
-import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
+import com.github.tix320.sonder.api.common.event.EventListener;
 import com.github.tix320.sonder.api.common.rpc.RPCProtocolBuilder;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
+import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
 import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
 import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
@@ -46,7 +45,7 @@ public final class SonderServer implements Closeable {
 
 	private final ClientsSelector clientsSelector;
 
-	private final SonderEventDispatcher eventDispatcher;
+	private final EventDispatcher eventDispatcher;
 
 	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
@@ -65,8 +64,7 @@ public final class SonderServer implements Closeable {
 		return new ServerRPCProtocolBuilder();
 	}
 
-	SonderServer(ClientsSelector clientsSelector, Map<String, Protocol> protocols,
-				 SonderEventDispatcher eventDispatcher) {
+	SonderServer(ClientsSelector clientsSelector, Map<String, Protocol> protocols, EventDispatcher eventDispatcher) {
 		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 		this.eventDispatcher = eventDispatcher;
@@ -85,10 +83,8 @@ public final class SonderServer implements Closeable {
 		});
 	}
 
-	public <T extends SonderEvent> Observable<T> onEvent(Class<T> eventClass) {
-		state.checkState(State.INITIAL, State.RUNNING);
-
-		return eventDispatcher.on(eventClass);
+	public EventListener getEventListener() {
+		return eventDispatcher;
 	}
 
 	@Override

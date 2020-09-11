@@ -39,7 +39,7 @@ public final class ServerRPCProtocol extends RPCProtocol {
 	}
 
 	private void listenConnectionCloses() {
-		this.sonderEventDispatcher.on(ClientConnectionClosedEvent.class)
+		this.eventListener.on(ClientConnectionClosedEvent.class)
 				.subscribe(event -> cleanupSubscriptionsOfClient(event.getClientId()));
 	}
 

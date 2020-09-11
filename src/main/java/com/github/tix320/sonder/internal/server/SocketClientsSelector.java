@@ -22,7 +22,6 @@ import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
-import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
 import com.github.tix320.sonder.api.server.event.NewClientConnectionEvent;
 import com.github.tix320.sonder.internal.common.State;
@@ -30,6 +29,7 @@ import com.github.tix320.sonder.internal.common.communication.InvalidPackExcepti
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
+import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 
 public final class SocketClientsSelector implements ClientsSelector {
 
@@ -43,7 +43,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private final SonderEventDispatcher eventDispatcher;
+	private final EventDispatcher eventDispatcher;
 
 	private volatile Selector selector;
 
@@ -52,7 +52,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
 	public SocketClientsSelector(InetSocketAddress address, LongFunction<Duration> contentTimeoutDurationFactory,
-								 int workersCoreCount, SonderEventDispatcher eventDispatcher) {
+								 int workersCoreCount, EventDispatcher eventDispatcher) {
 		this.address = address;
 		this.selectionKeysById = new ConcurrentHashMap<>();
 		this.clientIdGenerator = new IDGenerator(1); // 1 is important aspect, do not touch!

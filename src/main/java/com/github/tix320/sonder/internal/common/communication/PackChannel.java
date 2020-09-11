@@ -16,6 +16,7 @@ import java.util.function.LongFunction;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.skimp.api.check.Try;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.EmptyReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
 

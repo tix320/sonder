@@ -26,7 +26,7 @@ import com.github.tix320.skimp.api.object.CantorPair;
 import com.github.tix320.skimp.api.object.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
-import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
+import com.github.tix320.sonder.api.common.event.EventListener;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
@@ -50,7 +50,7 @@ public abstract class RPCProtocol implements Protocol {
 
 	private TransferTunnel transferTunnel;
 
-	protected SonderEventDispatcher sonderEventDispatcher;
+	protected EventListener eventListener;
 
 	private final Map<Class<?>, ?> originInstances;
 
@@ -110,10 +110,10 @@ public abstract class RPCProtocol implements Protocol {
 	}
 
 	@Override
-	public void init(TransferTunnel transferTunnel, SonderEventDispatcher sonderEventDispatcher) {
+	public void init(TransferTunnel transferTunnel, EventListener eventListener) {
 		synchronized (this) { // also for memory effects
 			this.transferTunnel = transferTunnel;
-			this.sonderEventDispatcher = sonderEventDispatcher;
+			this.eventListener = eventListener;
 			init();
 		}
 	}
@@ -153,7 +153,7 @@ public abstract class RPCProtocol implements Protocol {
 	public void destroy() {
 		synchronized (this) {
 			this.transferTunnel = null;
-			this.sonderEventDispatcher = null;
+			this.eventListener = null;
 
 			requestMetadataByResponseKey.values()
 					.forEach(requestMetadata -> requestMetadata.getResponsePublisher().complete());

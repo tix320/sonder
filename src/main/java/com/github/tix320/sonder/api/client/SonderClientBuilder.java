@@ -8,8 +8,8 @@ import java.util.function.LongFunction;
 
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
 import com.github.tix320.sonder.internal.client.SocketServerConnection;
+import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 import com.github.tix320.sonder.internal.common.event.SimpleEventDispatcher;
 
 /**
@@ -23,7 +23,7 @@ public final class SonderClientBuilder {
 
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
-	private final SonderEventDispatcher sonderEventDispatcher = new SimpleEventDispatcher();
+	private final EventDispatcher sonderEventDispatcher = new SimpleEventDispatcher();
 
 	SonderClientBuilder(InetSocketAddress inetSocketAddress) {
 		if (inetSocketAddress.getAddress().isAnyLocalAddress()) {

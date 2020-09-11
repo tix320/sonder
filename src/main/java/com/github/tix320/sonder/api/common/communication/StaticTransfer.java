@@ -2,8 +2,6 @@ package com.github.tix320.sonder.api.common.communication;
 
 import java.util.Arrays;
 
-import com.github.tix320.sonder.internal.common.communication.ReadableByteArrayChannel;
-
 /**
  * The byte array implementation of transfer.
  */

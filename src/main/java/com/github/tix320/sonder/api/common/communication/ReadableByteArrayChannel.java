@@ -1,9 +1,7 @@
-package com.github.tix320.sonder.internal.common.communication;
+package com.github.tix320.sonder.api.common.communication;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-
-import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 
 public class ReadableByteArrayChannel implements CertainReadableByteChannel {
 
@@ -57,11 +55,13 @@ public class ReadableByteArrayChannel implements CertainReadableByteChannel {
 			throw new IllegalStateException("readAll not allowed, when any bytes already was read");
 		}
 
+		position = array.length;
 		return array;
 	}
 
 	@Override
 	public synchronized void readRemainingInVain() throws IOException {
 		position = array.length;
+		close();
 	}
 }

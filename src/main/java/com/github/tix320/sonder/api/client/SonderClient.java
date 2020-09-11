@@ -8,17 +8,15 @@ import java.util.Map;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
 import com.github.tix320.sonder.api.common.communication.*;
-import com.github.tix320.sonder.api.common.event.SonderEvent;
-import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
+import com.github.tix320.sonder.api.common.event.EventListener;
 import com.github.tix320.sonder.api.common.rpc.RPCProtocolBuilder;
 import com.github.tix320.sonder.internal.client.ServerConnection;
 import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocolBuilder;
-import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
+import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 
 /**
  * Entry point class for your socket client.
@@ -44,7 +42,7 @@ public final class SonderClient implements Closeable {
 
 	private final ServerConnection connection;
 
-	private final SonderEventDispatcher eventDispatcher;
+	private final EventDispatcher eventDispatcher;
 
 	/**
 	 * Prepare client creating for this socket address.
@@ -61,7 +59,7 @@ public final class SonderClient implements Closeable {
 		return new ClientRPCProtocolBuilder();
 	}
 
-	SonderClient(ServerConnection connection, Map<String, Protocol> protocols, SonderEventDispatcher eventDispatcher) {
+	SonderClient(ServerConnection connection, Map<String, Protocol> protocols, EventDispatcher eventDispatcher) {
 		this.connection = connection;
 		this.protocols = Collections.unmodifiableMap(protocols);
 		this.eventDispatcher = eventDispatcher;
@@ -79,13 +77,8 @@ public final class SonderClient implements Closeable {
 				.subscribe(connectionClosedEvent -> protocols.forEach((protocolName, protocol) -> protocol.destroy()));
 	}
 
-	public <T extends SonderEvent> Observable<T> onEvent(Class<T> eventClass) {
-		State state = connection.getState();
-		if (state == State.CLOSED) {
-			throw new IllegalStateException("Closed");
-		}
-
-		return eventDispatcher.on(eventClass);
+	public EventListener getEventListener() {
+		return eventDispatcher;
 	}
 
 	@Override

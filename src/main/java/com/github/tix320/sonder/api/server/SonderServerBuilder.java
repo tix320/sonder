@@ -8,7 +8,7 @@ import java.util.function.LongFunction;
 
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
+import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 import com.github.tix320.sonder.internal.common.event.SimpleEventDispatcher;
 import com.github.tix320.sonder.internal.server.SocketClientsSelector;
 
@@ -25,7 +25,7 @@ public final class SonderServerBuilder {
 
 	private int workersCoreCount;
 
-	private final SonderEventDispatcher sonderEventDispatcher = new SimpleEventDispatcher();
+	private final EventDispatcher sonderEventDispatcher = new SimpleEventDispatcher();
 
 	public SonderServerBuilder(InetSocketAddress inetSocketAddress) {
 		this.inetSocketAddress = inetSocketAddress;

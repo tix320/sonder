@@ -1,9 +1,7 @@
-package com.github.tix320.sonder.internal.common.communication;
+package com.github.tix320.sonder.api.common.communication;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-
-import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 
 public class EmptyReadableByteChannel implements CertainReadableByteChannel {
 
@@ -13,8 +11,7 @@ public class EmptyReadableByteChannel implements CertainReadableByteChannel {
 	}
 
 	@Override
-	public int read(ByteBuffer dst)
-			throws IOException {
+	public int read(ByteBuffer dst) throws IOException {
 		return -1;
 	}
 
@@ -24,8 +21,7 @@ public class EmptyReadableByteChannel implements CertainReadableByteChannel {
 	}
 
 	@Override
-	public void close()
-			throws IOException {
+	public void close() throws IOException {
 
 	}
 
@@ -40,14 +36,12 @@ public class EmptyReadableByteChannel implements CertainReadableByteChannel {
 	}
 
 	@Override
-	public byte[] readAll()
-			throws IOException {
+	public byte[] readAll() throws IOException {
 		return new byte[0];
 	}
 
 	@Override
-	public void readRemainingInVain()
-			throws IOException {
+	public void readRemainingInVain() throws IOException {
 
 	}
 }

@@ -5,15 +5,16 @@ import java.util.function.LongFunction;
 
 import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.client.SonderClientBuilder;
-import com.github.tix320.sonder.api.common.event.SonderEventDispatcher;
+import com.github.tix320.sonder.api.common.event.EventListener;
 import com.github.tix320.sonder.api.server.SonderServer;
 import com.github.tix320.sonder.api.server.SonderServerBuilder;
+import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 
 /**
  * Protocol is used for handling transfers sent between clients and server.
  * Each protocol must have unique name in one server or client scope. Method {@link #getName()} must return it.
  * Protocol must implement method {@link #handleIncomingTransfer(Transfer)} for receiving data
- * and use {@link TransferTunnel} interface for sending data, which will be injected via {@link Protocol#init(TransferTunnel, SonderEventDispatcher)} method.
+ * and use {@link TransferTunnel} interface for sending data, which will be injected via {@link Protocol#init(TransferTunnel, EventDispatcher)} method.
  *
  * @see SonderServer
  * @see SonderClient
@@ -23,10 +24,10 @@ public interface Protocol {
 	/**
 	 * This method will be called on server/client start or reconnect for some protocol initialization.
 	 *
-	 * @param transferTunnel        for sending transfers.
-	 * @param sonderEventDispatcher for emitting and listening some events.
+	 * @param transferTunnel for sending transfers.
+	 * @param eventListener  for listening some events.
 	 */
-	void init(TransferTunnel transferTunnel, SonderEventDispatcher sonderEventDispatcher);
+	void init(TransferTunnel transferTunnel, EventListener eventListener);
 
 	/**
 	 * This method will be called if any transfer received for this protocol.
@@ -43,7 +44,7 @@ public interface Protocol {
 	void handleIncomingTransfer(Transfer transfer) throws IOException;
 
 	/**
-	 * This method will be called on server/client close or connection lose for some cleanup.
+	 * This method will be called on server/client close or connection lost for some cleanup.
 	 */
 	void destroy();
 
