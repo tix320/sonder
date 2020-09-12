@@ -29,7 +29,7 @@ import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.github.tix320.sonder.api.common.event.EventListener;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
-import com.github.tix320.sonder.internal.common.communication.UnsupportedContentTypeException;
+import com.github.tix320.sonder.internal.common.rpc.exception.UnsupportedContentTypeException;
 import com.github.tix320.sonder.internal.common.rpc.exception.IncompatibleTypeException;
 import com.github.tix320.sonder.internal.common.rpc.exception.PathNotFoundException;
 import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolException;

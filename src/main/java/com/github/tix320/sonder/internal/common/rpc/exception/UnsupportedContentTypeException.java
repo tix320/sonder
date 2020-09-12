@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.common.communication;
+package com.github.tix320.sonder.internal.common.rpc.exception;
 
 import com.github.tix320.sonder.internal.common.rpc.protocol.ContentType;
 import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolException;
