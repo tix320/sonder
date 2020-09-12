@@ -25,7 +25,7 @@ import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
 import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 
-public class SocketServerConnection implements ServerConnection {
+public final class SocketServerConnection implements ServerConnection {
 
 	private final ExecutorService workers = new ThreadPoolExecutor(1, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
 			new SynchronousQueue<>(), Threads::daemon);

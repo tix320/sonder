@@ -3,7 +3,7 @@ package com.github.tix320.sonder.api.common.communication;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-public class EmptyReadableByteChannel implements CertainReadableByteChannel {
+public final class EmptyReadableByteChannel implements CertainReadableByteChannel {
 
 	public static final EmptyReadableByteChannel SELF = new EmptyReadableByteChannel();
 

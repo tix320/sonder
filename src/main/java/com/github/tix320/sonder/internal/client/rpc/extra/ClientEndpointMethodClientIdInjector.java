@@ -10,7 +10,7 @@ import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
 /**
  * @author Tigran Sargsyan on 23-Mar-20.
  */
-public class ClientEndpointMethodClientIdInjector implements EndpointExtraArgInjector<ClientID, Long> {
+public final class ClientEndpointMethodClientIdInjector implements EndpointExtraArgInjector<ClientID, Long> {
 
 
 	@Override

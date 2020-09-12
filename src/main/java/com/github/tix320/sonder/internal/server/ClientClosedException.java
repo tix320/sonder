@@ -1,3 +1,3 @@
 package com.github.tix320.sonder.internal.server;
 
-public class ClientClosedException extends RuntimeException {}
+public final class ClientClosedException extends RuntimeException {}

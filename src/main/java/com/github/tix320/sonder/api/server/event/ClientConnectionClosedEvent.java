@@ -5,7 +5,7 @@ import com.github.tix320.sonder.api.common.event.SonderEvent;
 /**
  * @author Tigran Sargsyan on 22-Mar-20.
  */
-public class ClientConnectionClosedEvent implements SonderEvent {
+public final class ClientConnectionClosedEvent implements SonderEvent {
 
 	private final long clientId;
 

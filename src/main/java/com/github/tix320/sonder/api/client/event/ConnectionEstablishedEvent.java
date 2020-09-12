@@ -5,4 +5,4 @@ import com.github.tix320.sonder.api.common.event.SonderEvent;
 /**
  * @author Tigran Sargsyan on 22-Mar-20.
  */
-public class ConnectionEstablishedEvent implements SonderEvent {}
+public final class ConnectionEstablishedEvent implements SonderEvent {}

@@ -10,7 +10,7 @@ import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 /**
  * @author Tigran Sargsyan on 24-Mar-20.
  */
-public class ClientOriginMethodClientIdExtractor implements OriginExtraArgExtractor<ClientID, Long> {
+public final class ClientOriginMethodClientIdExtractor implements OriginExtraArgExtractor<ClientID, Long> {
 
 	@Override
 	public ExtraParamDefinition<ClientID, ?> getParamDefinition() {

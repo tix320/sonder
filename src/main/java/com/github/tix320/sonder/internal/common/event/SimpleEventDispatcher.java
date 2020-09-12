@@ -10,7 +10,7 @@ import com.github.tix320.sonder.api.common.event.SonderEvent;
 /**
  * @author Tigran Sargsyan on 22-Mar-20.
  */
-public class SimpleEventDispatcher implements EventDispatcher {
+public final class SimpleEventDispatcher implements EventDispatcher {
 
 	private final Map<Class<? extends SonderEvent>, Publisher<SonderEvent>> publishers = new ConcurrentHashMap<>();
 

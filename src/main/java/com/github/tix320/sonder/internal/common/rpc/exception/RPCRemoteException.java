@@ -1,6 +1,6 @@
 package com.github.tix320.sonder.internal.common.rpc.exception;
 
-public class RPCRemoteException extends RuntimeException {
+public final class RPCRemoteException extends RuntimeException {
 
 	public RPCRemoteException(Throwable cause) {
 		super("See cause", cause);

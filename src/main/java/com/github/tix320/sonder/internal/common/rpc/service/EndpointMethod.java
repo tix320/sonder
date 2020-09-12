@@ -16,7 +16,7 @@ import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 /**
  * @author tix32 on 24-Feb-19
  */
-public class EndpointMethod extends ServiceMethod {
+public final class EndpointMethod extends ServiceMethod {
 
 	private static final Lookup LOOKUP = MethodHandles.publicLookup();
 

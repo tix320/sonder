@@ -4,7 +4,7 @@ import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class IncompatibleTypeException extends RuntimeException {
+public final class IncompatibleTypeException extends RuntimeException {
 
 	private static final Pattern CLASS_CAST_MESSAGE_PATTERN = Pattern.compile(
 			".*class (([a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)*[0-9a-zA-Z_])*) cannot be cast to class (([a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)*[0-9a-zA-Z_])*)\\s*.*");
