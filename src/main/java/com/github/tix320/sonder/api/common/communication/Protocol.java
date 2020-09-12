@@ -8,13 +8,13 @@ import com.github.tix320.sonder.api.client.SonderClientBuilder;
 import com.github.tix320.sonder.api.common.event.EventListener;
 import com.github.tix320.sonder.api.server.SonderServer;
 import com.github.tix320.sonder.api.server.SonderServerBuilder;
-import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 
 /**
  * Protocol is used for handling transfers sent between clients and server.
  * Each protocol must have unique name in one server or client scope. Method {@link #getName()} must return it.
  * Protocol must implement method {@link #handleIncomingTransfer(Transfer)} for receiving data
- * and use {@link TransferTunnel} interface for sending data, which will be injected via {@link Protocol#init(TransferTunnel, EventDispatcher)} method.
+ * and use {@link TransferTunnel} interface for sending data, which will be injected via {@link Protocol#init(TransferTunnel, EventListener)} method.
+ * NOTE: Implementation must be thread-safe.
  *
  * @see SonderServer
  * @see SonderClient
@@ -22,7 +22,7 @@ import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 public interface Protocol {
 
 	/**
-	 * This method will be called on server/client start or reconnect for some protocol initialization.
+	 * This method will be called once on server/client instance creation for some protocol initialization.
 	 *
 	 * @param transferTunnel for sending transfers.
 	 * @param eventListener  for listening some events.
@@ -45,8 +45,9 @@ public interface Protocol {
 
 	/**
 	 * This method will be called on server/client close or connection lost for some cleanup.
+	 * You must reset protocol to state, so that can work properly after reconnect.
 	 */
-	void destroy();
+	void reset();
 
 	/**
 	 * Return name of protocol.

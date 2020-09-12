@@ -63,10 +63,10 @@ public final class SonderClient implements Closeable {
 		this.connection = connection;
 		this.protocols = Collections.unmodifiableMap(protocols);
 		this.eventDispatcher = eventDispatcher;
+		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
 	}
 
 	public synchronized void connect() throws IOException {
-		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
 		connection.connect(pack -> {
 			Transfer transfer = convertDataPackToTransfer(pack);
 			processTransfer(transfer);
@@ -74,7 +74,7 @@ public final class SonderClient implements Closeable {
 
 		eventDispatcher.on(ConnectionClosedEvent.class)
 				.toMono()
-				.subscribe(connectionClosedEvent -> protocols.forEach((protocolName, protocol) -> protocol.destroy()));
+				.subscribe(connectionClosedEvent -> protocols.forEach((protocolName, protocol) -> protocol.reset()));
 	}
 
 	public EventListener getEventListener() {
@@ -86,7 +86,7 @@ public final class SonderClient implements Closeable {
 		boolean closed = connection.close();
 
 		if (closed) {
-			protocols.forEach((protocolName, protocol) -> protocol.destroy());
+			protocols.forEach((protocolName, protocol) -> protocol.reset());
 		}
 	}
 

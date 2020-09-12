@@ -150,7 +150,7 @@ public abstract class RPCProtocol implements Protocol {
 	}
 
 	@Override
-	public void destroy() {
+	public void reset() {
 		synchronized (this) {
 			this.transferTunnel = null;
 			this.eventListener = null;
