@@ -41,6 +41,8 @@ public final class SonderServerBuilder {
 	 * Register protocol {@link Protocol}.
 	 *
 	 * @param protocol to register.
+	 *
+	 * @return self
 	 */
 	public SonderServerBuilder registerProtocol(Protocol protocol) {
 		String protocolName = protocol.getName();
