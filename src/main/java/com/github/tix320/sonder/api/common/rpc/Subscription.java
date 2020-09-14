@@ -9,5 +9,5 @@ import java.lang.annotation.Target;
  * @author Tigran.Sargsyan on 19-Mar-20
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.TYPE, ElementType.METHOD})
+@Target(ElementType.METHOD)
 public @interface Subscription {}

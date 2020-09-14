@@ -19,6 +19,6 @@ public final class ServerEndpointMethodClientIdInjector implements EndpointExtra
 
 	@Override
 	public Long extract(Method method, ClientID annotation, Headers headers) {
-		return headers.getLong(Headers.SOURCE_ID);
+		return headers.getNonNullLong(Headers.SOURCE_ID);
 	}
 }

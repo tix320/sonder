@@ -32,13 +32,14 @@ public class TextProtocol implements Protocol {
 	@Override
 	public void handleIncomingTransfer(Transfer transfer) throws IOException {
 		Headers headers = transfer.getHeaders();
+		long sourceId = headers.getNonNullLong(Headers.SOURCE_ID);
 		String charset = headers.getNonNullString("charset"); // Get the charset for decoding content
 
 		byte[] bytes = transfer.channel().readAll(); // read all content to byte array
 
 		String text = new String(bytes, charset); // convert bytes to string according to charset
 
-		System.out.println(text);
+		System.out.printf("Message from %s was received: %s", sourceId, text);
 	}
 
 	@Override
