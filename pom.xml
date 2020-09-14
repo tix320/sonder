@@ -10,11 +10,11 @@
 
 	<groupId>com.github.tix320</groupId>
 	<artifactId>sonder</artifactId>
-	<version>2.2.1-SNAPSHOT</version>
+	<version>2.2.1</version>
 	<packaging>jar</packaging>
 
 	<name>Sonder</name>
-	<description>TCP client-server</description>
+	<description>TCP client-server library</description>
 	<url>https://github.com/tix320/sonder</url>
 
 	<licenses>
