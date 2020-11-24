@@ -6,6 +6,7 @@ import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.rpc.extra.ClientID;
 import com.github.tix320.sonder.api.common.rpc.extra.ExtraParamDefinition;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
+import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol.ServerRPCHeaders;
 
 /**
  * @author Tigran Sargsyan on 24-Mar-20.
@@ -19,6 +20,6 @@ public final class ServerOriginMethodClientIdExtractor implements OriginExtraArg
 
 	@Override
 	public Headers extract(Method method, ClientID annotation, Long value) {
-		return Headers.builder().header(Headers.DESTINATION_ID, value).build();
+		return Headers.builder().header(ServerRPCHeaders.DESTINATION_CLIENT_ID, value).build();
 	}
 }

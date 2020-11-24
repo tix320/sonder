@@ -4,8 +4,9 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 
 import com.github.tix320.sonder.api.client.SonderClient;
-import com.github.tix320.sonder.api.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.server.SonderServer;
+import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
 import org.junit.jupiter.api.AfterEach;
 
 /**
@@ -20,10 +21,10 @@ public abstract class BaseTest {
 
 	private SonderClient sonderClient;
 
-	protected RPCProtocol rpcProtocol;
+	protected ClientRPCProtocol rpcProtocol;
 
 	public void setUp() throws IOException {
-		RPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
+		ServerRPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
 				.registerEndpointClasses(ServerEndpoint.class)
 				.build();
 
@@ -42,7 +43,7 @@ public abstract class BaseTest {
 
 	@AfterEach
 	public void close() throws IOException {
-		sonderClient.close();
-		sonderServer.close();
+		sonderClient.stop();
+		sonderServer.stop();
 	}
 }

@@ -19,9 +19,11 @@ public final class SonderClientBuilder {
 
 	private final InetSocketAddress inetSocketAddress;
 
-	private final Map<String, Protocol> protocols;
+	private final Map<String, ClientSideProtocol> protocols;
 
 	private LongFunction<Duration> contentTimeoutDurationFactory;
+
+	private boolean autoReconnect;
 
 	private final EventDispatcher sonderEventDispatcher = new SimpleEventDispatcher();
 
@@ -35,6 +37,7 @@ public final class SonderClientBuilder {
 			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
 			return Duration.ofSeconds(timout);
 		};
+		this.autoReconnect = false;
 	}
 
 	/**
@@ -44,7 +47,7 @@ public final class SonderClientBuilder {
 	 *
 	 * @return self
 	 */
-	public SonderClientBuilder registerProtocol(Protocol protocol) {
+	public SonderClientBuilder registerProtocol(ClientSideProtocol protocol) {
 		String protocolName = protocol.getName();
 		if (protocols.containsKey(protocolName)) {
 			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));
@@ -70,6 +73,20 @@ public final class SonderClientBuilder {
 	}
 
 	/**
+	 * Set auto reconnect ability, default false.
+	 *
+	 * @param autoReconnect true for ON, false otherwise.
+	 *
+	 * @return self
+	 *
+	 * @see Transfer
+	 */
+	public SonderClientBuilder autoReconnect(boolean autoReconnect) {
+		this.autoReconnect = autoReconnect;
+		return this;
+	}
+
+	/**
 	 * Build and run client.
 	 *
 	 * @return client instance.
@@ -77,6 +94,6 @@ public final class SonderClientBuilder {
 	public SonderClient build() {
 		return new SonderClient(
 				new SocketServerConnection(inetSocketAddress, contentTimeoutDurationFactory, sonderEventDispatcher),
-				protocols, sonderEventDispatcher);
+				protocols, sonderEventDispatcher, autoReconnect);
 	}
 }

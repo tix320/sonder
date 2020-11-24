@@ -1,4 +1,7 @@
-package com.github.tix320.sonder.api.common.communication;
+package com.github.tix320.sonder.api.client;
+
+import com.github.tix320.sonder.api.common.communication.Protocol;
+import com.github.tix320.sonder.api.common.communication.Transfer;
 
 /**
  * This interface is used in protocols {@link Protocol} for sending transfers from its.

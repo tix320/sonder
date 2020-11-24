@@ -1,20 +1,23 @@
 package com.github.tix320.sonder.api.client;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
+import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
+import com.github.tix320.sonder.api.client.event.ConnectionEstablishedEvent;
+import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
+import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocolBuilder;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.event.EventListener;
-import com.github.tix320.sonder.api.common.rpc.RPCProtocolBuilder;
 import com.github.tix320.sonder.internal.client.ServerConnection;
-import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocol;
-import com.github.tix320.sonder.internal.client.rpc.ClientRPCProtocolBuilder;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 
@@ -25,7 +28,7 @@ import com.github.tix320.sonder.internal.common.event.EventDispatcher;
  * Communication is performed by sending and receiving transfer objects {@link Transfer}.
  * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
  *
- * You can register any protocol by calling method {@link SonderClientBuilder#registerProtocol(Protocol)}.
+ * You can register any protocol by calling method {@link SonderClientBuilder#registerProtocol(ClientSideProtocol)}.
  * There are some built-in protocols, such as RPC protocol {@link ClientRPCProtocol}.
  *
  * Create client builder by calling method {@link #forAddress}.
@@ -34,15 +37,17 @@ import com.github.tix320.sonder.internal.common.event.EventDispatcher;
  * @see Protocol
  * @see Transfer
  */
-public final class SonderClient implements Closeable {
+public final class SonderClient {
 
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-	private final Map<String, Protocol> protocols;
+	private final Map<String, ClientSideProtocol> protocols;
 
 	private final ServerConnection connection;
 
 	private final EventDispatcher eventDispatcher;
+
+	private final boolean autoReconnect;
 
 	/**
 	 * Prepare client creating for this socket address.
@@ -55,34 +60,38 @@ public final class SonderClient implements Closeable {
 		return new SonderClientBuilder(inetSocketAddress);
 	}
 
-	public static RPCProtocolBuilder getRPCProtocolBuilder() {
+	public static ClientRPCProtocolBuilder getRPCProtocolBuilder() {
 		return new ClientRPCProtocolBuilder();
 	}
 
-	SonderClient(ServerConnection connection, Map<String, Protocol> protocols, EventDispatcher eventDispatcher) {
+	SonderClient(ServerConnection connection, Map<String, ClientSideProtocol> protocols,
+				 EventDispatcher eventDispatcher, boolean autoReconnect) {
 		this.connection = connection;
 		this.protocols = Collections.unmodifiableMap(protocols);
 		this.eventDispatcher = eventDispatcher;
-		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
+		this.autoReconnect = autoReconnect;
 	}
 
-	public synchronized void connect() throws IOException {
-		connection.connect(pack -> {
-			Transfer transfer = convertDataPackToTransfer(pack);
-			processTransfer(transfer);
+	public void connect() throws IOException {
+		connectToServer();
+
+		eventDispatcher.on(ConnectionClosedEvent.class).toMono().subscribe(connectionClosedEvent -> {
+			System.err.println("SONDER: Connection closed.");
+			System.err.println("SONDER: Resetting protocols...");
+			protocols.forEach((protocolName, protocol) -> protocol.reset());
+			if (autoReconnect) {
+				System.err.println("SONDER: Auto Reconnect is ON, trying to connect...");
+				tryReconnect();
+				eventDispatcher.fire(new ConnectionEstablishedEvent());
+			}
 		});
 
-		eventDispatcher.on(ConnectionClosedEvent.class)
-				.toMono()
-				.subscribe(connectionClosedEvent -> protocols.forEach((protocolName, protocol) -> protocol.reset()));
+		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
+
+		eventDispatcher.fire(new ConnectionEstablishedEvent());
 	}
 
-	public EventListener getEventListener() {
-		return eventDispatcher;
-	}
-
-	@Override
-	public void close() throws IOException {
+	public void stop() throws IOException {
 		boolean closed = connection.close();
 
 		if (closed) {
@@ -90,16 +99,15 @@ public final class SonderClient implements Closeable {
 		}
 	}
 
-	private void initProtocol(Protocol protocol) {
+	public EventListener getEventListener() {
+		return eventDispatcher;
+	}
+
+	private void initProtocol(ClientSideProtocol protocol) {
 		TransferTunnel transferTunnel = transfer -> {
 			transfer = setProtocolHeader(transfer, protocol.getName());
 			Pack pack = transferToDataPack(transfer);
-			try {
-				connection.send(pack);
-			}
-			catch (IllegalStateException e) {
-				throw new IllegalStateException("Sonder Client does not connected or already closed");
-			}
+			connection.send(pack);
 		};
 
 		protocol.init(transferTunnel, eventDispatcher);
@@ -123,22 +131,22 @@ public final class SonderClient implements Closeable {
 		return new Pack(headers, channel);
 	}
 
-	private Transfer convertDataPackToTransfer(Pack dataPack) {
+	private Transfer convertDataPackToTransfer(Pack pack) {
 		Headers headers;
 		try {
-			headers = JSON_MAPPER.readValue(dataPack.getHeaders(), Headers.class);
+			headers = JSON_MAPPER.readValue(pack.getHeaders(), Headers.class);
 		}
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
-		CertainReadableByteChannel channel = dataPack.channel();
+		CertainReadableByteChannel channel = pack.channel();
 
 		return new ChannelTransfer(headers, channel);
 	}
 
 	private void processTransfer(Transfer transfer) {
 		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
-		Protocol protocol = protocols.get(protocolName);
+		ClientSideProtocol protocol = protocols.get(protocolName);
 		if (protocol == null) {
 			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
 		}
@@ -148,5 +156,35 @@ public final class SonderClient implements Closeable {
 		catch (IOException e) {
 			throw new RuntimeException(e);
 		}
+	}
+
+	private void connectToServer() throws IOException {
+		Consumer<Pack> packConsumer = pack -> {
+			Transfer transfer = convertDataPackToTransfer(pack);
+			processTransfer(transfer);
+		};
+
+		connection.connect(packConsumer);
+	}
+
+	private void tryReconnect() {
+		AtomicInteger count = new AtomicInteger(1);
+		Threads.createLoopDaemonThread(() -> {
+			try {
+				Thread.sleep(5000);
+			}
+			catch (InterruptedException e) {
+				throw new IllegalStateException(e);
+			}
+			System.err.printf("SONDER: Try connect %s...%n", count.getAndIncrement());
+			try {
+				connectToServer();
+				System.err.println("SONDER: Connected.");
+				throw new BreakLoopException();
+			}
+			catch (IOException e) {
+				e.printStackTrace();
+			}
+		}).start();
 	}
 }

@@ -19,7 +19,7 @@ public final class SonderServerBuilder {
 
 	private final InetSocketAddress inetSocketAddress;
 
-	private final Map<String, Protocol> protocols;
+	private final Map<String, ServerSideProtocol> protocols;
 
 	private LongFunction<Duration> contentTimeoutDurationFactory;
 
@@ -44,7 +44,7 @@ public final class SonderServerBuilder {
 	 *
 	 * @return self
 	 */
-	public SonderServerBuilder registerProtocol(Protocol protocol) {
+	public SonderServerBuilder registerProtocol(ServerSideProtocol protocol) {
 		String protocolName = protocol.getName();
 		if (protocols.containsKey(protocolName)) {
 			throw new IllegalStateException(String.format("Protocol %s already registered", protocolName));

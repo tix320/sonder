@@ -62,17 +62,17 @@ public final class SocketClientsSelector implements ClientsSelector {
 		this.eventDispatcher = eventDispatcher;
 	}
 
-	public synchronized void run(Consumer<ClientPack> packConsumer) throws IOException {
-		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
-		if (!changed) {
-			throw new IllegalStateException("Already running");
-		}
-
+	public void run(Consumer<ClientPack> packConsumer) throws IOException {
 		Selector selector = Try.supplyOrRethrow(Selector::open);
 		ServerSocketChannel serverChannel = ServerSocketChannel.open();
 		serverChannel.bind(address);
 		serverChannel.configureBlocking(false);
 		serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
+		if (!changed) {
+			throw new IllegalStateException("Already running");
+		}
 
 		this.selector = selector;
 		this.serverChannel = serverChannel;
@@ -204,7 +204,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 
 		selectionKeysById.put(clientId, selectionKey);
 
-		runAsync(() -> eventDispatcher.fire(new NewClientConnectionEvent(clientId)));
+		eventDispatcher.fire(new NewClientConnectionEvent(clientId));
 	}
 
 	private void read(SelectionKey selectionKey, Consumer<ClientPack> packConsumer) throws InvalidPackException {
@@ -213,6 +213,10 @@ public final class SocketClientsSelector implements ClientsSelector {
 		Pack pack;
 		try {
 			pack = channel.read();
+		}
+		catch (ClosedChannelException e) {
+			closeClientConnection(client);
+			return;
 		}
 		catch (SocketException e) {
 			closeClientConnection(client);

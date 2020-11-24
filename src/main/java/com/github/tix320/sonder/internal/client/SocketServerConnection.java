@@ -16,7 +16,6 @@ import com.github.tix320.skimp.api.check.Try;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
-import com.github.tix320.sonder.api.client.event.ConnectionEstablishedEvent;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
 import com.github.tix320.sonder.internal.common.State;
@@ -56,7 +55,6 @@ public final class SocketServerConnection implements ServerConnection {
 		}
 
 		this.channel = new PackChannel(socketChannel, contentTimeoutDurationFactory);
-		eventDispatcher.fire(new ConnectionEstablishedEvent());
 		runLoop(packConsumer);
 	}
 
@@ -99,11 +97,6 @@ public final class SocketServerConnection implements ServerConnection {
 		return changed;
 	}
 
-	@Override
-	public State getState() {
-		return state.getValue();
-	}
-
 	private void runLoop(Consumer<Pack> packConsumer) {
 		Threads.createLoopThread(() -> {
 			try {
@@ -111,7 +104,14 @@ public final class SocketServerConnection implements ServerConnection {
 
 				if (pack != null) {
 					CertainReadableByteChannel contentChannel = pack.channel();
-					runAsync(() -> packConsumer.accept(pack));
+					runAsync(() -> {
+						try {
+							packConsumer.accept(pack);
+						}
+						finally {
+							Try.runOrRethrow(contentChannel::readRemainingInVain);
+						}
+					});
 					if (contentChannel instanceof LimitedReadableByteChannel) {
 						Duration timeoutDuration = contentTimeoutDurationFactory.apply(
 								contentChannel.getContentLength());
@@ -127,13 +127,8 @@ public final class SocketServerConnection implements ServerConnection {
 				}
 
 			}
-			catch (AsynchronousCloseException e) {
-				resetConnection();
-				throw new BreakLoopException();
-			}
 			catch (ClosedChannelException e) {
 				resetConnection();
-				e.printStackTrace();
 				throw new BreakLoopException();
 			}
 			catch (IOException e) {

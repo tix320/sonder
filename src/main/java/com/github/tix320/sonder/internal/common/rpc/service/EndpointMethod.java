@@ -9,8 +9,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import com.github.tix320.skimp.api.exception.WrapperException;
-import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolException;
+import com.github.tix320.sonder.internal.common.rpc.exception.MethodInvocationException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
 
 /**
@@ -47,13 +46,10 @@ public final class EndpointMethod extends ServiceMethod {
 			return methodHandle.bindTo(instance).invokeWithArguments(args);
 		}
 		catch (WrongMethodTypeException e) {
-			throw new RPCProtocolException(illegalEndpointSignatureErrorMessage(args), e);
-		}
-		catch (RuntimeException e) {
-			throw e;
+			throw new MethodInvocationException(illegalEndpointSignatureErrorMessage(args), e);
 		}
 		catch (Throwable throwable) {
-			throw WrapperException.wrap(throwable);
+			throw new MethodInvocationException(throwable);
 		}
 	}
 

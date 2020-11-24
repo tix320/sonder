@@ -30,10 +30,11 @@ import java.net.InetSocketAddress;
 
 import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.sonder.api.client.SonderClient;
+import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Origin;
-import com.github.tix320.sonder.api.common.rpc.RPCProtocol;
 import com.github.tix320.sonder.api.server.SonderServer;
+import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
 
 @Endpoint("someService")
 class ServerEndpoint {
@@ -48,7 +49,7 @@ class ServerTest {
 
 	public static void main(String[] args) throws IOException {
 		// Creating protocol for communication
-		RPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
+		ServerRPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
 				.registerEndpointClasses(ServerEndpoint.class)
 				.build();
 
@@ -72,11 +73,11 @@ interface ClientOrigin {
 class ClientTest {
 	public static void main(String[] args) throws IOException {
 		// Creating protocol for communication
-		RPCProtocol rpcProtocol = SonderClient.getRPCProtocolBuilder()
+		ClientRPCProtocol rpcProtocol = SonderClient.getRPCProtocolBuilder()
 				.registerOriginInterfaces(ClientOrigin.class)
 				.build();
 
-		// Creating the сдшуте itself and registering the protocol
+		// Creating the client itself and registering the protocol
 		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888))
 				.registerProtocol(rpcProtocol)
 				.build();

@@ -6,8 +6,9 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.github.tix320.sonder.api.client.SonderClient;
-import com.github.tix320.sonder.api.common.rpc.RPCProtocol;
+import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.server.SonderServer;
+import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,7 +27,7 @@ public class EndpointCustomInstanceTest {
 		ServerEndpoint serverEndpoint = new ServerEndpoint();
 		serverEndpoint.forTest = 5;
 
-		RPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
+		ServerRPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
 				.registerEndpointInstances(List.of(serverEndpoint))
 				.build();
 
@@ -34,7 +35,7 @@ public class EndpointCustomInstanceTest {
 
 		sonderServer.start();
 
-		RPCProtocol protocol = SonderClient.getRPCProtocolBuilder()
+		ClientRPCProtocol protocol = SonderClient.getRPCProtocolBuilder()
 				.registerOriginInterfaces(ClientService.class)
 				.build();
 
@@ -49,7 +50,7 @@ public class EndpointCustomInstanceTest {
 
 		assertEquals(5, holder.get());
 
-		sonderClient.close();
-		sonderServer.close();
+		sonderClient.stop();
+		sonderServer.stop();
 	}
 }

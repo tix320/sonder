@@ -91,7 +91,7 @@ public final class Headers implements Serializable {
 		else if (value instanceof Number) {
 			return ((Number) value).longValue();
 		}
-		throw new InvalidHeaderException(key, value, Number.class);
+		throw new InvalidHeaderException(key, value, Long.class);
 	}
 
 	public long getNonNullLong(String key) {
@@ -99,7 +99,7 @@ public final class Headers implements Serializable {
 		if (value instanceof Number) {
 			return ((Number) value).longValue();
 		}
-		throw new InvalidHeaderException(key, value, Number.class);
+		throw new InvalidHeaderException(key, value, Long.class);
 	}
 
 	public Boolean getBoolean(String key) {
@@ -170,8 +170,6 @@ public final class Headers implements Serializable {
 
 	//	-------------------- Sonder headers
 	public static final String PROTOCOL = "protocol";
-	public static final String SOURCE_ID = "source-id";
-	public static final String DESTINATION_ID = "destination-id";
 
 	public static class HeadersSerializer extends StdSerializer<Headers> {
 

@@ -86,28 +86,29 @@ public final class OriginRPCMethodResolver extends RPCMethodResolver<OriginMetho
 		else if (returnType == MonoObservable.class) {
 			Type genericReturnType = method.getGenericReturnType();
 
-			if (genericReturnType instanceof Class) { // Observable
+			if (genericReturnType instanceof Class) { // MonoObservable
 				return ReturnType.ASYNC_VALUE;
 			}
-			else if (genericReturnType instanceof ParameterizedType) { // Observable<...>
+			else if (genericReturnType instanceof ParameterizedType) { // MonoObservable<...>
 				Type argument = ((ParameterizedType) genericReturnType).getActualTypeArguments()[0]; // <...>
 				if (argument instanceof Class) {
 					Class<?> classType = (Class<?>) argument;
 					if (classType == Response.class) {
-						return ReturnType.ASYNC_RESPONSE;
+						return ReturnType.ASYNC_DUAL_RESPONSE;
 					}
 				}
 				else if (argument instanceof ParameterizedType) {
 					Type rawType = ((ParameterizedType) argument).getRawType();
 					if (rawType == Response.class) {
-						return ReturnType.ASYNC_RESPONSE;
+						return ReturnType.ASYNC_DUAL_RESPONSE;
 					}
 				}
 
 				return ReturnType.ASYNC_VALUE;
 			}
-
-			return ReturnType.ASYNC_RESPONSE;
+			else {
+				throw new IllegalStateException(returnType.getName());
+			}
 		}
 		else if (method.isAnnotationPresent(Subscription.class)) {
 			return ReturnType.SUBSCRIPTION;

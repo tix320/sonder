@@ -1,6 +1,5 @@
 package com.github.tix320.sonder.api.server;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Map;
@@ -12,14 +11,13 @@ import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.event.EventListener;
-import com.github.tix320.sonder.api.common.rpc.RPCProtocolBuilder;
+import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
+import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocolBuilder;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 import com.github.tix320.sonder.internal.server.ClientsSelector;
 import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
-import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocol;
-import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocolBuilder;
 
 /**
  * Entry point class for your socket server.
@@ -28,7 +26,7 @@ import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocolBuilder;
  * Communication is performed by sending and receiving transfer objects {@link Transfer}.
  * Each transfer is handled by some protocol {@link Protocol}, which will be selected by header of transfer {@link Headers#PROTOCOL}.
  *
- * You can register any protocol by calling method {@link SonderServerBuilder#registerProtocol(Protocol)}.
+ * You can register any protocol by calling method {@link SonderServerBuilder#registerProtocol(ServerSideProtocol)}.
  * There are some built-in protocols, such as RPC protocol {@link ServerRPCProtocol}.
  *
  * Create client builder by calling method {@link #forAddress}.
@@ -37,11 +35,11 @@ import com.github.tix320.sonder.internal.server.rpc.ServerRPCProtocolBuilder;
  * @see Protocol
  * @see Transfer
  */
-public final class SonderServer implements Closeable {
+public final class SonderServer {
 
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-	private final Map<String, Protocol> protocols;
+	private final Map<String, ServerSideProtocol> protocols;
 
 	private final ClientsSelector clientsSelector;
 
@@ -60,15 +58,15 @@ public final class SonderServer implements Closeable {
 		return new SonderServerBuilder(inetSocketAddress);
 	}
 
-	public static RPCProtocolBuilder getRPCProtocolBuilder() {
+	public static ServerRPCProtocolBuilder getRPCProtocolBuilder() {
 		return new ServerRPCProtocolBuilder();
 	}
 
-	SonderServer(ClientsSelector clientsSelector, Map<String, Protocol> protocols, EventDispatcher eventDispatcher) {
+	SonderServer(ClientsSelector clientsSelector, Map<String, ServerSideProtocol> protocols,
+				 EventDispatcher eventDispatcher) {
 		this.clientsSelector = clientsSelector;
 		this.protocols = new ConcurrentHashMap<>(protocols);
 		this.eventDispatcher = eventDispatcher;
-		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
 	}
 
 	public void start() throws IOException {
@@ -78,17 +76,13 @@ public final class SonderServer implements Closeable {
 		}
 
 		clientsSelector.run(clientPack -> {
-			Transfer transfer = clientPackToTransfer(clientPack);
-			processTransfer(transfer);
+			Transfer transfer = convertDataPackToTransfer(clientPack.getPack());
+			processTransfer(clientPack.getClientId(), transfer);
 		});
+		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
 	}
 
-	public EventListener getEventListener() {
-		return eventDispatcher;
-	}
-
-	@Override
-	public void close() throws IOException {
+	public void stop() throws IOException {
 		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
 
 		if (changed) {
@@ -97,13 +91,16 @@ public final class SonderServer implements Closeable {
 		}
 	}
 
-	private void initProtocol(Protocol protocol) {
-		TransferTunnel transferTunnel = transfer -> {
-			state.checkState("Sonder Client does not connected or already closed", State.RUNNING);
+	public EventListener getEventListener() {
+		return eventDispatcher;
+	}
+
+	private void initProtocol(ServerSideProtocol protocol) {
+		TransferTunnel transferTunnel = ((clientId, transfer) -> {
 			transfer = setProtocolHeader(transfer, protocol.getName());
-			ClientPack pack = transferToClientPack(transfer);
+			ClientPack pack = transferToClientPack(clientId, transfer);
 			clientsSelector.send(pack);
-		};
+		});
 
 		protocol.init(transferTunnel, eventDispatcher);
 	}
@@ -113,13 +110,11 @@ public final class SonderServer implements Closeable {
 				transfer.channel());
 	}
 
-	private ClientPack transferToClientPack(Transfer transfer) {
-		long destinationId = transfer.getHeaders().getNonNullLong(Headers.DESTINATION_ID);
-
+	private ClientPack transferToClientPack(long clientId, Transfer transfer) {
 		byte[] headers = serializeHeaders(transfer.getHeaders());
 
 		CertainReadableByteChannel channel = transfer.channel();
-		return new ClientPack(destinationId, new Pack(headers, channel));
+		return new ClientPack(clientId, new Pack(headers, channel));
 	}
 
 	private byte[] serializeHeaders(Headers headers) {
@@ -134,43 +129,31 @@ public final class SonderServer implements Closeable {
 		return headerBytes;
 	}
 
-	private Transfer clientPackToTransfer(ClientsSelector.ClientPack clientPack) {
-		Pack dataPack = clientPack.getPack();
-
+	private Transfer convertDataPackToTransfer(Pack pack) {
 		Headers headers;
 		try {
-			headers = JSON_MAPPER.readValue(dataPack.getHeaders(), Headers.class);
+			headers = JSON_MAPPER.readValue(pack.getHeaders(), Headers.class);
 		}
 		catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
-		headers = headers.compose().header(Headers.SOURCE_ID, clientPack.getClientId()).build();
-		CertainReadableByteChannel channel = dataPack.channel();
+		CertainReadableByteChannel channel = pack.channel();
 
 		return new ChannelTransfer(headers, channel);
 	}
 
-	private void processTransfer(Transfer transfer) {
-		Headers headers = transfer.getHeaders();
+	private void processTransfer(long clientId, Transfer transfer) {
+		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
 
-		Number destinationId = headers.getNumber(Headers.DESTINATION_ID);
-		if (destinationId != null) { // for any client, so we are redirecting without any processing
-			ClientPack clientPack = transferToClientPack(transfer);
-			clientsSelector.send(clientPack);
+		ServerSideProtocol protocol = protocols.get(protocolName);
+		if (protocol == null) {
+			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
 		}
-		else {
-			String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
-
-			Protocol protocol = protocols.get(protocolName);
-			if (protocol == null) {
-				throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
-			}
-			try {
-				protocol.handleIncomingTransfer(transfer);
-			}
-			catch (IOException e) {
-				throw new RuntimeException(e);
-			}
+		try {
+			protocol.handleIncomingTransfer(clientId, transfer);
+		}
+		catch (IOException e) {
+			throw new RuntimeException(e);
 		}
 	}
 }

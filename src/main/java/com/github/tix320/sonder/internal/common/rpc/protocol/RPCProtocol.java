@@ -1,10 +1,13 @@
-package com.github.tix320.sonder.api.common.rpc;
+package com.github.tix320.sonder.internal.common.rpc.protocol;
 
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -17,28 +20,23 @@ import com.github.tix320.kiwi.api.reactive.observable.CompletionType;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
 import com.github.tix320.kiwi.api.reactive.observable.Subscription;
+import com.github.tix320.kiwi.api.reactive.publisher.BufferedPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
-import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
 import com.github.tix320.skimp.api.check.Try;
 import com.github.tix320.skimp.api.generator.IDGenerator;
-import com.github.tix320.skimp.api.object.CantorPair;
 import com.github.tix320.skimp.api.object.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
-import com.github.tix320.sonder.api.common.event.EventListener;
+import com.github.tix320.sonder.api.common.rpc.Response;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
-import com.github.tix320.sonder.internal.common.rpc.exception.UnsupportedContentTypeException;
-import com.github.tix320.sonder.internal.common.rpc.exception.IncompatibleTypeException;
-import com.github.tix320.sonder.internal.common.rpc.exception.PathNotFoundException;
-import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolException;
-import com.github.tix320.sonder.internal.common.rpc.exception.RPCRemoteException;
+import com.github.tix320.sonder.internal.common.rpc.exception.*;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArg;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraArgExtractionException;
 import com.github.tix320.sonder.internal.common.rpc.extra.ExtraParam;
-import com.github.tix320.sonder.internal.common.rpc.protocol.*;
 import com.github.tix320.sonder.internal.common.rpc.service.*;
+import com.github.tix320.sonder.internal.common.rpc.service.EndpointMethod.ResultType;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
 
 import static java.util.function.Function.identity;
@@ -47,10 +45,6 @@ import static java.util.stream.Collectors.toUnmodifiableMap;
 public abstract class RPCProtocol implements Protocol {
 
 	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-
-	private TransferTunnel transferTunnel;
-
-	protected EventListener eventListener;
 
 	private final Map<Class<?>, ?> originInstances;
 
@@ -63,19 +57,24 @@ public abstract class RPCProtocol implements Protocol {
 	private final Map<Class<? extends Annotation>, OriginExtraArgExtractor<?, ?>> originExtraArgExtractors;
 	private final Map<Class<? extends Annotation>, EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors;
 
-	private final Map<Long, RequestMetadata> requestMetadataByResponseKey;
+	protected final Map<Long, RequestMetadata> requestMetadataByResponseKey;
 
-	private final Map<Long, RemoteSubscriptionPublisher> remoteSubscriptionPublishers;
-
-	protected final Map<CantorPair, Subscription> realSubscriptions; // [clientId, responseKey] in CantorPair
+	protected final Map<Long, RemoteSubscriptionPublisher> remoteSubscriptionPublishers;
 
 	private final IDGenerator responseKeyGenerator;
 
 	public RPCProtocol(ProtocolConfig protocolConfig) {
-		List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors = protocolConfig.getOriginExtraArgExtractors();
-		this.originExtraArgExtractors = appendBuiltInOriginExtraArgExtractors(originExtraArgExtractors);
-		List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors = protocolConfig.getEndpointExtraArgInjectors();
-		this.endpointExtraArgInjectors = appendBuiltInEndpointExtraArgInjectors(endpointExtraArgInjectors);
+		this.originExtraArgExtractors = protocolConfig.getOriginExtraArgExtractors()
+				.stream()
+				.collect(toUnmodifiableMap(
+						originExtraArgExtractor -> originExtraArgExtractor.getParamDefinition().getAnnotationType(),
+						identity()));
+
+		this.endpointExtraArgInjectors = protocolConfig.getEndpointExtraArgInjectors()
+				.stream()
+				.collect(toUnmodifiableMap(
+						originExtraArgExtractor -> originExtraArgExtractor.getParamDefinition().getAnnotationType(),
+						identity()));
 
 		Map<Class<?>, Object> originInstances = protocolConfig.getOriginInstances();
 		Map<Class<?>, Object> endpointInstances = protocolConfig.getEndpointInstances();
@@ -105,66 +104,12 @@ public abstract class RPCProtocol implements Protocol {
 
 		this.requestMetadataByResponseKey = new ConcurrentHashMap<>();
 		this.remoteSubscriptionPublishers = new ConcurrentHashMap<>();
-		this.realSubscriptions = new ConcurrentHashMap<>();
 		this.responseKeyGenerator = new IDGenerator(1);
 	}
 
 	@Override
-	public void init(TransferTunnel transferTunnel, EventListener eventListener) {
-		synchronized (this) { // also for memory effects
-			this.transferTunnel = transferTunnel;
-			this.eventListener = eventListener;
-			init();
-		}
-	}
-
-	protected abstract void init();
-
-	@Override
-	public final void handleIncomingTransfer(Transfer transfer) throws IOException {
-		Headers headers = transfer.getHeaders();
-
-		TransferType transferType = TransferType.valueOf(headers.getNonNullString(RPCHeaders.TRANSFER_TYPE));
-
-		switch (transferType) {
-			case INVOCATION:
-				processMethodInvocation(transfer);
-				break;
-			case INVOCATION_RESULT:
-				processInvocationResult(transfer);
-				break;
-			case SUBSCRIPTION_RESULT:
-				processSubscriptionResult(transfer);
-				break;
-			case ERROR_RESULT:
-				processErrorResult(transfer);
-				break;
-			default:
-				throw new IllegalStateException();
-		}
-	}
-
-	@Override
-	public String getName() {
+	public final String getName() {
 		return "sonder-RPC";
-	}
-
-	@Override
-	public void reset() {
-		synchronized (this) {
-			this.transferTunnel = null;
-			this.eventListener = null;
-
-			requestMetadataByResponseKey.values()
-					.forEach(requestMetadata -> requestMetadata.getResponsePublisher().complete());
-			requestMetadataByResponseKey.clear();
-
-			remoteSubscriptionPublishers.values().forEach(RemoteSubscriptionPublisher::closePublisher);
-			remoteSubscriptionPublishers.clear();
-
-			realSubscriptions.values().forEach(Subscription::unsubscribe);
-			realSubscriptions.clear();
-		}
 	}
 
 	@SuppressWarnings("unchecked")
@@ -176,72 +121,63 @@ public abstract class RPCProtocol implements Protocol {
 		return service;
 	}
 
-	protected abstract List<OriginExtraArgExtractor<?, ?>> getBuiltInExtractors();
+	protected final void handleIncomingTransfer(Transfer transfer, TransferSender transferSender,
+												SubscriptionAdder subscriptionAdder,
+												SubscriptionRemover subscriptionRemover) throws IOException {
+		Headers headers = transfer.getHeaders();
 
-	protected abstract List<EndpointExtraArgInjector<?, ?>> getBuiltInInjectors();
+		TransferType transferType = TransferType.valueOf(headers.getNonNullString(RPCHeaders.TRANSFER_TYPE));
 
-	private Map<Class<? extends Annotation>, OriginExtraArgExtractor<?, ?>> appendBuiltInOriginExtraArgExtractors(
-			List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors) {
-		Map<Class<? extends Annotation>, OriginExtraArgExtractor<?, ?>> extraArgExtractorsMap = new HashMap<>();
-
-		for (OriginExtraArgExtractor<?, ?> extraArgExtractor : originExtraArgExtractors) {
-			extraArgExtractorsMap.put(extraArgExtractor.getParamDefinition().getAnnotationType(), extraArgExtractor);
+		switch (transferType) {
+			case INVOCATION:
+				try {
+					processMethodInvocation(transfer, transferSender, subscriptionAdder);
+				}
+				catch (PathNotFoundException e) {
+					Transfer errorTransfer = buildEndpointPathNotFoundErrorTransfer(headers);
+					transferSender.send(errorTransfer);
+					throw e;
+				}
+				catch (BadRequestException e) {
+					Transfer errorTransfer = buildIncompatibilityRequestAndMethodErrorTransfer(headers, e);
+					transferSender.send(errorTransfer);
+					throw e;
+				}
+				catch (MethodInvocationException e) {
+					Transfer errorTransfer = buildMethodInvocationErrorTransfer(headers, e);
+					transferSender.send(errorTransfer);
+					throw e;
+				}
+				break;
+			case INVOCATION_RESULT:
+				processInvocationResult(transfer);
+				break;
+			case SUBSCRIPTION_RESULT:
+				processSubscriptionResult(transfer, subscriptionRemover);
+				break;
+			case ERROR_RESPONSE:
+				processErrorResponse(transfer);
+				break;
+			default:
+				throw new IllegalStateException();
 		}
-
-		for (OriginExtraArgExtractor<?, ?> extractor : getBuiltInExtractors()) {
-			extraArgExtractorsMap.put(extractor.getParamDefinition().getAnnotationType(), extractor);
-		}
-
-		return extraArgExtractorsMap;
 	}
 
-	private Map<Class<? extends Annotation>, EndpointExtraArgInjector<?, ?>> appendBuiltInEndpointExtraArgInjectors(
-			List<EndpointExtraArgInjector<?, ?>> extraArgInjectors) {
+	protected abstract TransferSender getTransferSenderFromOriginCallHeaders(Headers extraArgHeaders);
 
-		Map<Class<? extends Annotation>, EndpointExtraArgInjector<?, ?>> extraArgInjectorsMap = new HashMap<>();
-
-		for (EndpointExtraArgInjector<?, ?> extraArgInjector : extraArgInjectors) {
-			extraArgInjectorsMap.put(extraArgInjector.getParamDefinition().getAnnotationType(), extraArgInjector);
-		}
-
-		for (EndpointExtraArgInjector<?, ?> injector : getBuiltInInjectors()) {
-			extraArgInjectorsMap.put(injector.getParamDefinition().getAnnotationType(), injector);
-		}
-
-		return extraArgInjectorsMap;
-	}
-
-	private Object handleOriginCall(OriginMethod method, List<Object> simpleArgs, List<ExtraArg> extraArgs) {
-		HeadersBuilder headersBuilder = Headers.builder();
-
-		for (ExtraArg extraArg : extraArgs) {
-			Annotation annotation = extraArg.getAnnotation();
-
-			@SuppressWarnings("unchecked")
-			OriginExtraArgExtractor<Annotation, Object> extractor = (OriginExtraArgExtractor<Annotation, Object>) originExtraArgExtractors
-					.get(annotation.annotationType());
-
-			try {
-				Headers headers = extractor.extract(method.getRawMethod(), annotation, extraArg.getValue());
-				headersBuilder.headers(headers);
-			}
-			catch (Throwable e) {
-				throw new ExtraArgExtractionException("An error occurred while extracting extra argument", e);
-			}
-		}
-
+	private Object handleOriginCall(OriginMethod method, List<Object> simpleArgs, Headers extraArgHeaders,
+									TransferSender transferSender) {
 		long responseKey = responseKeyGenerator.next();
 
-		HeadersBuilder builder = headersBuilder.header(RPCHeaders.TRANSFER_TYPE, TransferType.INVOCATION)
+		HeadersBuilder builder = extraArgHeaders.compose()
+				.header(RPCHeaders.TRANSFER_TYPE, TransferType.INVOCATION)
 				.header(RPCHeaders.PATH, method.getPath())
 				.header(RPCHeaders.RESPONSE_KEY, responseKey);
-
-		Long clientId = builder.build().getLong(Headers.DESTINATION_ID);
 
 		Transfer transferToSend;
 		switch (method.getRequestDataType()) {
 			case ARGUMENTS:
-				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.JSON);
+				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.ARGUMENTS);
 				byte[] content = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs))
 						.getOrElseThrow(e -> new RPCProtocolException("Cannot convert arguments to JSON", e));
 				transferToSend = new StaticTransfer(builder.build(), content);
@@ -267,45 +203,44 @@ public abstract class RPCProtocol implements Protocol {
 				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(responsePublisher, method));
 
 				Transfer transfer = transferToSend;
-				transferTunnel.send(transfer);
+				transferSender.send(transfer);
 				return null;
 			case ASYNC_VALUE:
-			case ASYNC_RESPONSE:
+			case ASYNC_DUAL_RESPONSE:
 				Headers headers = transferToSend.getHeaders().compose().header(RPCHeaders.NEED_RESPONSE, true).build();
 
 				responsePublisher = Publisher.mono();
 				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(responsePublisher, method));
 
 				transfer = new ChannelTransfer(headers, transferToSend.channel());
-				transferTunnel.send(transfer);
+				transferSender.send(transfer);
 				return responsePublisher.asObservable();
 			case SUBSCRIPTION:
 				headers = transferToSend.getHeaders().compose().header(RPCHeaders.NEED_RESPONSE, true).build();
 
 				transfer = new ChannelTransfer(headers, transferToSend.channel());
 
-				SimplePublisher<Object> dummyPublisher = Publisher.simple();
+				BufferedPublisher<Object> dummyPublisher = Publisher.buffered();
 				remoteSubscriptionPublishers.put(responseKey, new RemoteSubscriptionPublisher(dummyPublisher, method));
 
 				Observable<Object> observable = dummyPublisher.asObservable();
-				DummyObservable dummyObservable = new DummyObservable(observable, clientId, responseKey);
+				DummyObservable dummyObservable = new DummyObservable(observable, responseKey, transferSender);
 
-				transferTunnel.send(transfer);
+				transferSender.send(transfer);
 				return dummyObservable;
 			default:
 				throw new IllegalStateException(String.format("Unknown enum type %s", method.getReturnType()));
 		}
 	}
 
-
-	private void processMethodInvocation(Transfer transfer) throws IOException {
+	private void processMethodInvocation(Transfer transfer, TransferSender transferSender,
+										 SubscriptionAdder subscriptionAdder) throws IOException {
 		Headers headers = transfer.getHeaders();
 
 		String path = headers.getNonNullString(RPCHeaders.PATH);
 
 		EndpointMethod endpointMethod = endpointsByPath.get(path);
 		if (endpointMethod == null) {
-			onEndpointPathNotFound(headers);
 			throw new PathNotFoundException("Endpoint with path '" + path + "' not found");
 		}
 
@@ -314,17 +249,17 @@ public abstract class RPCProtocol implements Protocol {
 		Object[] simpleArgs;
 
 		switch (contentType) {
-			case BINARY:
-				simpleArgs = extractArgsFromBinaryRequest(transfer, endpointMethod);
-				break;
-			case JSON:
-				simpleArgs = extractArgsFromJsonRequest(transfer, endpointMethod);
-				break;
 			case TRANSFER:
 				simpleArgs = extractArgsFromTransferRequest(transfer, endpointMethod);
 				break;
+			case BINARY:
+				simpleArgs = extractArgsFromBinaryRequest(transfer, endpointMethod);
+				break;
+			case ARGUMENTS:
+				simpleArgs = extractArgsFromJsonRequest(transfer, endpointMethod);
+				break;
 			default:
-				throw new UnsupportedContentTypeException(contentType);
+				throw new IllegalStateException();
 		}
 
 		Object[] extraArgs = extractExtraArgs(headers, endpointMethod.getExtraParams(), endpointMethod.getRawMethod());
@@ -332,31 +267,26 @@ public abstract class RPCProtocol implements Protocol {
 
 		Object serviceInstance = endpointInstances.get(endpointMethod.getRawClass());
 
-		Object result;
-		try {
-			result = endpointMethod.invoke(serviceInstance, args);
-		}
-		catch (Exception e) {
-			onMethodInvocationException(headers, e);
-			throw e;
-		}
+		Object result = endpointMethod.invoke(serviceInstance, args);
 
 		boolean needResponse = headers.has(RPCHeaders.NEED_RESPONSE);
 		if (needResponse) {
-			processEndpointMethodResult(headers, endpointMethod, result);
+			ResultType resultType = endpointMethod.resultType();
+			long responseKey = headers.getNonNullLong(RPCHeaders.RESPONSE_KEY);
+			sendEndpointResult(responseKey, resultType, result, transferSender, subscriptionAdder);
 		}
 	}
 
-	private void processErrorResult(Transfer transfer) throws IOException {
+	private void processErrorResponse(Transfer transfer) throws IOException {
 		Headers headers = transfer.getHeaders();
 		long responseKey = headers.getNonNullLong(RPCHeaders.RESPONSE_KEY);
 
-		Exception exception = extractExceptionFromErrorResult(transfer);
+		Exception exception = extractExceptionFromErrorResponse(transfer);
 
 		RequestMetadata requestMetadata = requestMetadataByResponseKey.remove(responseKey);
 		if (requestMetadata == null) {
 			throw new RPCProtocolException(
-					String.format("Request metadata or not found for response key %s", responseKey));
+					String.format("Request metadata not found for response key %s", responseKey));
 		}
 		else {
 			MonoPublisher<Object> responsePublisher = requestMetadata.getResponsePublisher();
@@ -364,7 +294,7 @@ public abstract class RPCProtocol implements Protocol {
 			OriginMethod originMethod = requestMetadata.getOriginMethod();
 			ReturnType returnType = originMethod.getReturnType();
 
-			boolean isAsyncObject = returnType == ReturnType.ASYNC_RESPONSE;
+			boolean isAsyncObject = returnType == ReturnType.ASYNC_DUAL_RESPONSE;
 
 			if (isAsyncObject) {
 				responsePublisher.publish(new Response<>(exception, false));
@@ -375,19 +305,18 @@ public abstract class RPCProtocol implements Protocol {
 		}
 	}
 
-	private void processSubscriptionResult(Transfer transfer) throws IOException {
+	private void processSubscriptionResult(Transfer transfer,
+										   SubscriptionRemover subscriptionRemover) throws IOException {
 		Headers headers = transfer.getHeaders();
 
 		SubscriptionActionType subscriptionActionType = SubscriptionActionType.valueOf(
 				headers.getNonNullString(RPCHeaders.SUBSCRIPTION_ACTION_TYPE));
 
-		Long sourceId = headers.getLong(Headers.SOURCE_ID);
 		long responseKey = headers.getNonNullLong(RPCHeaders.RESPONSE_KEY);
 
 		switch (subscriptionActionType) {
 			case UNSUBSCRIBE:
-				Subscription subscription = realSubscriptions.remove(
-						new CantorPair(sourceId == null ? -1 : sourceId, responseKey));
+				Subscription subscription = subscriptionRemover.remove(responseKey);
 				if (subscription == null) {
 					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
 				}
@@ -437,7 +366,7 @@ public abstract class RPCProtocol implements Protocol {
 	private void processInvocationResult(Transfer transfer) throws IOException {
 		Headers headers = transfer.getHeaders();
 
-		long responseKey = headers.getNonNullNumber(RPCHeaders.RESPONSE_KEY).longValue();
+		long responseKey = headers.getNonNullLong(RPCHeaders.RESPONSE_KEY);
 
 		RequestMetadata requestMetadata = requestMetadataByResponseKey.remove(responseKey);
 		if (requestMetadata == null) {
@@ -447,7 +376,7 @@ public abstract class RPCProtocol implements Protocol {
 		OriginMethod originMethod = requestMetadata.getOriginMethod();
 
 		ReturnType returnType = originMethod.getReturnType();
-		boolean isAsyncObject = returnType == ReturnType.ASYNC_RESPONSE;
+		boolean isDualResponse = returnType == ReturnType.ASYNC_DUAL_RESPONSE;
 
 		Publisher<Object> responsePublisher = requestMetadata.getResponsePublisher();
 
@@ -455,7 +384,7 @@ public abstract class RPCProtocol implements Protocol {
 		if (returnJavaType.getRawClass() == None.class) {
 			transfer.channel().readRemainingInVain();
 
-			if (isAsyncObject) {
+			if (isDualResponse) {
 				responsePublisher.publish(new Response<>(None.SELF, true));
 			}
 			else {
@@ -470,7 +399,7 @@ public abstract class RPCProtocol implements Protocol {
 				case BINARY:
 					result = transfer.channel().readAll();
 					break;
-				case JSON:
+				case ARGUMENTS:
 					if (transfer.channel().getContentLength() == 0) {
 						throw new IllegalStateException(
 								String.format("Response content is empty, and it cannot be converted to type %s",
@@ -485,21 +414,16 @@ public abstract class RPCProtocol implements Protocol {
 					throw new UnsupportedContentTypeException(contentType);
 			}
 
-			try {
-				if (isAsyncObject) {
-					responsePublisher.publish(new Response<>(result, true));
-				}
-				else {
-					responsePublisher.publish(result);
-				}
+			if (isDualResponse) {
+				responsePublisher.publish(new Response<>(result, true));
 			}
-			catch (ClassCastException e) {
-				throw IncompatibleTypeException.forMethodReturnType(originMethod.getRawMethod(), e);
+			else {
+				responsePublisher.publish(result);
 			}
 		}
 	}
 
-	private Exception extractExceptionFromErrorResult(Transfer transfer) throws IOException {
+	private Exception extractExceptionFromErrorResponse(Transfer transfer) throws IOException {
 		Headers headers = transfer.getHeaders();
 
 		byte[] content = transfer.channel().readAll();
@@ -518,8 +442,6 @@ public abstract class RPCProtocol implements Protocol {
 	}
 
 	private Object[] extractArgsFromBinaryRequest(Transfer transfer, EndpointMethod endpointMethod) throws IOException {
-		Headers headers = transfer.getHeaders();
-
 		List<Param> simpleParams = endpointMethod.getSimpleParams();
 
 		if (simpleParams.size() != 1) {
@@ -527,9 +449,7 @@ public abstract class RPCProtocol implements Protocol {
 					"The content type is %s. Consequently endpoint method %s(%s) must have only one parameter with type byte[]",
 					ContentType.BINARY.name(), endpointMethod.getRawMethod().getName(),
 					endpointMethod.getRawClass().getName());
-			onIncompatibilityRequestAndMethod(headers, Try.supply(() -> JSON_MAPPER.writeValueAsBytes(errorMessage))
-					.getOrElseThrow(RPCProtocolException::new));
-			throw new RPCProtocolException(errorMessage);
+			throw new BadRequestException(errorMessage);
 		}
 
 		byte[] data = transfer.channel().readAll();
@@ -538,8 +458,6 @@ public abstract class RPCProtocol implements Protocol {
 	}
 
 	private Object[] extractArgsFromJsonRequest(Transfer transfer, EndpointMethod endpointMethod) throws IOException {
-		Headers headers = transfer.getHeaders();
-
 		List<Param> simpleParams = endpointMethod.getSimpleParams();
 
 		ArrayNode argsNode;
@@ -548,8 +466,7 @@ public abstract class RPCProtocol implements Protocol {
 			argsNode = JSON_MAPPER.readValue(content, ArrayNode.class);
 		}
 		catch (IOException e) {
-			onIncompatibilityRequestAndMethod(headers, exceptionMessagesToString(e).getBytes());
-			throw new RPCProtocolException("Cannot parse bytes to ArrayNode", e);
+			throw new BadRequestException("Cannot parse bytes to ArrayNode", e);
 		}
 
 		Object[] simpleArgs = new Object[simpleParams.size()];
@@ -560,8 +477,7 @@ public abstract class RPCProtocol implements Protocol {
 				simpleArgs[i] = JSON_MAPPER.convertValue(argNode, param.getType());
 			}
 			catch (IllegalArgumentException e) {
-				onIncompatibilityRequestAndMethod(headers, exceptionMessagesToString(e).getBytes());
-				throw new RPCProtocolException(
+				throw new BadRequestException(
 						String.format("Fail to build object of type `%s` from json %s", param.getType(),
 								argsNode.toPrettyString()), e);
 			}
@@ -571,7 +487,6 @@ public abstract class RPCProtocol implements Protocol {
 	}
 
 	private Object[] extractArgsFromTransferRequest(Transfer transfer, EndpointMethod endpointMethod) {
-		Headers headers = transfer.getHeaders();
 		List<Param> simpleParams = endpointMethod.getSimpleParams();
 
 		if (simpleParams.size() != 1) {
@@ -579,10 +494,7 @@ public abstract class RPCProtocol implements Protocol {
 					"The content type is %s. Consequently endpoint method %s(%s) must have only one parameter with type %s",
 					ContentType.TRANSFER.name(), endpointMethod.getRawMethod().getName(),
 					endpointMethod.getRawClass().getName(), Transfer.class.getName());
-			onIncompatibilityRequestAndMethod(headers,
-					Try.supplyOrRethrow(() -> JSON_MAPPER.writeValueAsBytes(errorMessage)));
-
-			throw new RPCProtocolException(errorMessage);
+			throw new BadRequestException(errorMessage);
 		}
 
 		return new Object[]{transfer};
@@ -604,7 +516,7 @@ public abstract class RPCProtocol implements Protocol {
 				Object extraArg = extraArgExtractor.extract(method, annotation, headers);
 				extraArgs[i] = extraArg;
 			}
-			catch (Exception e) {
+			catch (Throwable e) {
 				throw new ExtraArgExtractionException("An error occurred while extracting extra argument", e);
 			}
 		}
@@ -612,101 +524,92 @@ public abstract class RPCProtocol implements Protocol {
 		return extraArgs;
 	}
 
-	private void processEndpointMethodResult(Headers headers, EndpointMethod endpointMethod, Object result) {
+	private void sendEndpointResult(long responseKey, ResultType resultType, Object result,
+									TransferSender transferSender, SubscriptionAdder subscriptionAdder) {
 		HeadersBuilder builder = Headers.builder();
 
-		Long sourceId = headers.getLong(Headers.SOURCE_ID);
-		long responseKey = headers.getNonNullLong(RPCHeaders.RESPONSE_KEY);
-
 		builder.header(RPCHeaders.TRANSFER_TYPE, TransferType.INVOCATION_RESULT)
-				.header(RPCHeaders.RESPONSE_KEY, responseKey)
-				.header(Headers.DESTINATION_ID, sourceId);
+				.header(RPCHeaders.RESPONSE_KEY, responseKey);
 
-		switch (endpointMethod.resultType()) {
+		switch (resultType) {
 			case VOID:
 				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.BINARY);
-				transferTunnel.send(new StaticTransfer(builder.build(), new byte[0]));
+				transferSender.send(new StaticTransfer(builder.build(), new byte[0]));
 				break;
 			case OBJECT:
-				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.JSON);
+				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.ARGUMENTS);
 				byte[] transferContent = serializeObject(result);
-				transferTunnel.send(new StaticTransfer(builder.build(), transferContent));
+				transferSender.send(new StaticTransfer(builder.build(), transferContent));
 				break;
 			case BINARY:
 				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.BINARY);
-				transferTunnel.send(new StaticTransfer(builder.build(), (byte[]) result));
+				transferSender.send(new StaticTransfer(builder.build(), (byte[]) result));
 				break;
 			case TRANSFER:
 				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.TRANSFER);
 				Transfer resultTransfer = (Transfer) result;
 				Headers finalHeaders = resultTransfer.getHeaders().compose().headers(builder.build()).build();
-				transferTunnel.send(new ChannelTransfer(finalHeaders, resultTransfer.channel()));
+				transferSender.send(new ChannelTransfer(finalHeaders, resultTransfer.channel()));
 				break;
 			case SUBSCRIPTION:
-				Observable<?> observable = (Observable<?>) result;
-
-				observable.subscribe(new RealSubscriber(sourceId, responseKey));
+				@SuppressWarnings("unchecked")
+				Observable<Object> observable = (Observable<Object>) result;
+				observable.subscribe(new RealSubscriber(responseKey, transferSender, subscriptionAdder));
 				break;
 			default:
 				throw new IllegalStateException();
 		}
 	}
 
-	private void onEndpointPathNotFound(Headers headers) {
-		try {
-			Headers errorHeaders = Headers.builder()
-					.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
-					.header(RPCHeaders.RESPONSE_KEY, headers.getLong(RPCHeaders.RESPONSE_KEY))
-					.header(RPCHeaders.ERROR_TYPE, ErrorType.PATH_NOT_FOUND)
-					.header(RPCHeaders.PATH, headers.getNonNullString(RPCHeaders.PATH))
-					.build();
+	private Transfer buildEndpointPathNotFoundErrorTransfer(Headers headers) {
+		Headers errorHeaders = Headers.builder()
+				.header(RPCHeaders.TRANSFER_TYPE, TransferType.ERROR_RESPONSE.name())
+				.header(RPCHeaders.ERROR_TYPE, ErrorType.PATH_NOT_FOUND)
+				.header(RPCHeaders.RESPONSE_KEY, headers.getLong(RPCHeaders.RESPONSE_KEY))
+				.header(RPCHeaders.PATH, headers.getNonNullString(RPCHeaders.PATH))
+				.build();
 
-			sendErrorResult(errorHeaders, new byte[0]);
-		}
-		catch (Exception e) {
-			e.printStackTrace();
-		}
+		return new StaticTransfer(errorHeaders, new byte[0]);
 	}
 
-	private void onIncompatibilityRequestAndMethod(Headers headers, byte[] content) {
-		try {
-			Headers errorHeaders = Headers.builder()
-					.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
-					.header(RPCHeaders.RESPONSE_KEY, headers.getLong(RPCHeaders.RESPONSE_KEY))
-					.header(RPCHeaders.ERROR_TYPE, ErrorType.INCOMPATIBLE_REQUEST)
-					.header(RPCHeaders.PATH, headers.getNonNullString(RPCHeaders.PATH))
-					.build();
+	private Transfer buildIncompatibilityRequestAndMethodErrorTransfer(Headers headers, Throwable throwable) {
+		Headers errorHeaders = Headers.builder()
+				.header(RPCHeaders.TRANSFER_TYPE, TransferType.ERROR_RESPONSE.name())
+				.header(RPCHeaders.ERROR_TYPE, ErrorType.INCOMPATIBLE_REQUEST)
+				.header(RPCHeaders.RESPONSE_KEY, headers.getLong(RPCHeaders.RESPONSE_KEY))
+				.header(RPCHeaders.PATH, headers.getNonNullString(RPCHeaders.PATH))
+				.build();
 
-			sendErrorResult(errorHeaders, content);
+		String exceptionMessage = RPCProtocol.exceptionMessagesToString(throwable);
+		byte[] bytes;
+		try {
+			bytes = JSON_MAPPER.writeValueAsBytes(exceptionMessage);
 		}
-		catch (Exception e) {
-			e.printStackTrace();
+		catch (JsonProcessingException e) {
+			throw new IllegalStateException(e);
 		}
+
+		return new StaticTransfer(errorHeaders, bytes);
 	}
 
-	private void onMethodInvocationException(Headers headers, Exception exception) {
+	private Transfer buildMethodInvocationErrorTransfer(Headers headers, Throwable throwable) {
+		Headers errorHeaders = Headers.builder()
+				.header(RPCHeaders.TRANSFER_TYPE, TransferType.ERROR_RESPONSE.name())
+				.header(RPCHeaders.ERROR_TYPE, ErrorType.INTERNAL_SERVER_ERROR)
+				.header(RPCHeaders.RESPONSE_KEY, headers.getNonNullLong(RPCHeaders.RESPONSE_KEY))
+				.header(RPCHeaders.PATH, headers.getNonNullString(RPCHeaders.PATH))
+				.build();
+
+		String exceptionMessage = RPCProtocol.exceptionMessagesToString(throwable);
+		byte[] bytes;
 		try {
-			Headers errorHeaders = Headers.builder()
-					.header(Headers.DESTINATION_ID, headers.getLong(Headers.SOURCE_ID))
-					.header(RPCHeaders.RESPONSE_KEY, headers.getNonNullLong(RPCHeaders.RESPONSE_KEY))
-					.header(RPCHeaders.ERROR_TYPE, ErrorType.INTERNAL_SERVER_ERROR)
-					.header(RPCHeaders.PATH, headers.getNonNullString(RPCHeaders.PATH))
-					.build();
-
-			byte[] content = exceptionMessagesToString(exception).getBytes();
-
-			sendErrorResult(errorHeaders, content);
+			bytes = JSON_MAPPER.writeValueAsBytes(exceptionMessage);
 		}
-		catch (Exception e) {
-			e.printStackTrace();
+		catch (JsonProcessingException e) {
+			throw new IllegalStateException(e);
 		}
-	}
 
-	private void sendErrorResult(Headers headers, byte[] content) {
-		headers = headers.compose().header(RPCHeaders.TRANSFER_TYPE, TransferType.ERROR_RESULT.name()).build();
-
-		Transfer transfer = new StaticTransfer(headers, content);
-		transferTunnel.send(transfer);
+		return new StaticTransfer(errorHeaders, bytes);
 	}
 
 	private static String exceptionMessagesToString(Throwable e) {
@@ -787,7 +690,31 @@ public abstract class RPCProtocol implements Protocol {
 				extraArgs.add(new ExtraArg(args[index], extraParam.getAnnotation()));
 			}
 
-			return protocolInstance.handleOriginCall(originMethod, simpleArgs, extraArgs);
+			Headers extraArgHeaders = extraArgsToHeaders(method, extraArgs);
+
+			TransferSender transferSender = protocolInstance.getTransferSenderFromOriginCallHeaders(extraArgHeaders);
+			return protocolInstance.handleOriginCall(originMethod, simpleArgs, extraArgHeaders, transferSender);
+		}
+
+		private Headers extraArgsToHeaders(Method method, List<ExtraArg> extraArgs) {
+			Headers.HeadersBuilder headersBuilder = Headers.builder();
+			for (ExtraArg extraArg : extraArgs) {
+				Annotation annotation = extraArg.getAnnotation();
+
+				@SuppressWarnings("unchecked")
+				OriginExtraArgExtractor<Annotation, Object> extractor = (OriginExtraArgExtractor<Annotation, Object>) protocolInstance.originExtraArgExtractors
+						.get(annotation.annotationType());
+
+				try {
+					Headers headers = extractor.extract(method, annotation, extraArg.getValue());
+					headersBuilder.headers(headers);
+				}
+				catch (Throwable e) {
+					throw new ExtraArgExtractionException("An error occurred while extracting extra argument", e);
+				}
+			}
+
+			return headersBuilder.build();
 		}
 	}
 
@@ -795,14 +722,14 @@ public abstract class RPCProtocol implements Protocol {
 
 		private final Observable<Object> observable;
 
-		private final Long destinationId;
-
 		private final long responseKey;
 
-		private DummyObservable(Observable<Object> observable, Long destinationId, long responseKey) {
+		private final TransferSender transferSender;
+
+		private DummyObservable(Observable<Object> observable, long responseKey, TransferSender transferSender) {
 			this.observable = observable;
-			this.destinationId = destinationId;
 			this.responseKey = responseKey;
+			this.transferSender = transferSender;
 		}
 
 		@Override
@@ -824,42 +751,42 @@ public abstract class RPCProtocol implements Protocol {
 					subscriber.onComplete(completionType);
 					if (completionType == CompletionType.UNSUBSCRIPTION) {
 						Headers headers = Headers.builder()
-								.header(Headers.DESTINATION_ID, destinationId)
 								.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 								.header(RPCHeaders.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.UNSUBSCRIBE)
 								.header(RPCHeaders.RESPONSE_KEY, responseKey)
 								.build();
 
 						Transfer transfer = new StaticTransfer(headers, new byte[0]);
-						transferTunnel.send(transfer);
+						transferSender.send(transfer);
 					}
 				}
 			});
 		}
 	}
 
-	private final class RealSubscriber implements Subscriber<Object> {
+	private static final class RealSubscriber implements Subscriber<Object> {
 
-		private final long destinationId;
 		private final long responseKey;
+		private final TransferSender transferSender;
+		private final SubscriptionAdder subscriptionAdder;
 		private final IDGenerator orderIdGenerator;
 
-		public RealSubscriber(Long destinationId, long responseKey) {
-			this.destinationId = destinationId == null ? -1 : destinationId;
+		public RealSubscriber(long responseKey, TransferSender transferSender, SubscriptionAdder subscriptionAdder) {
 			this.responseKey = responseKey;
+			this.transferSender = transferSender;
+			this.subscriptionAdder = subscriptionAdder;
 			this.orderIdGenerator = new IDGenerator(1);
 		}
 
 		@Override
 		public boolean onSubscribe(Subscription subscription) {
-			realSubscriptions.put(new CantorPair(destinationId, responseKey), subscription);
+			subscriptionAdder.add(responseKey, subscription);
 			return true;
 		}
 
 		@Override
 		public boolean onPublish(Object item) {
 			Headers headers = Headers.builder()
-					.header(Headers.DESTINATION_ID, destinationId)
 					.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 					.header(RPCHeaders.RESPONSE_KEY, responseKey)
 					.header(RPCHeaders.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.REGULAR_ITEM)
@@ -869,7 +796,7 @@ public abstract class RPCProtocol implements Protocol {
 			byte[] content = serializeObject(item);
 			Transfer transferToSend = new StaticTransfer(headers, content);
 
-			transferTunnel.send(transferToSend);
+			transferSender.send(transferToSend);
 
 			return true;
 		}
@@ -878,7 +805,6 @@ public abstract class RPCProtocol implements Protocol {
 		public void onComplete(CompletionType completionType) {
 			if (completionType == CompletionType.SOURCE_COMPLETED) {
 				Headers headers = Headers.builder()
-						.header(Headers.DESTINATION_ID, destinationId)
 						.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 						.header(RPCHeaders.RESPONSE_KEY, responseKey)
 						.header(RPCHeaders.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.SUBSCRIPTION_COMPLETED)
@@ -888,19 +814,34 @@ public abstract class RPCProtocol implements Protocol {
 
 				Transfer transferToSend = new StaticTransfer(headers, new byte[0]);
 
-				transferTunnel.send(transferToSend);
+				transferSender.send(transferToSend);
 			}
 		}
 	}
 
+	protected interface TransferSender {
+
+		void send(Transfer transfer);
+	}
+
+	protected interface SubscriptionAdder {
+
+		void add(long responseKey, Subscription subscription);
+	}
+
+	protected interface SubscriptionRemover {
+
+		Subscription remove(long responseKey);
+	}
+
 	private static final class RPCHeaders {
-		private static final String RESPONSE_KEY = "response-key";
-		private static final String PATH = "path";
-		private static final String TRANSFER_TYPE = "transfer-type";
-		private static final String ERROR_TYPE = "error-type";
-		private static final String NEED_RESPONSE = "need-response";
-		private static final String CONTENT_TYPE = "content-type";
-		private static final String SUBSCRIPTION_ACTION_TYPE = "subscription-action-type";
-		private static final String SUBSCRIPTION_RESULT_ORDER_ID = "subscription_result_order_id";
+		public static final String TRANSFER_TYPE = "transfer-type";
+		public static final String PATH = "path";
+		public static final String RESPONSE_KEY = "response-key";
+		public static final String ERROR_TYPE = "error-type";
+		public static final String NEED_RESPONSE = "need-response";
+		public static final String CONTENT_TYPE = "content-type";
+		public static final String SUBSCRIPTION_ACTION_TYPE = "subscription-action-type";
+		public static final String SUBSCRIPTION_RESULT_ORDER_ID = "subscription-result-order-id";
 	}
 }

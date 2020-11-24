@@ -2,6 +2,8 @@ package com.github.tix320.sonder.internal.common.rpc.protocol;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
@@ -42,5 +44,17 @@ public final class ProtocolConfig {
 
 	public List<EndpointExtraArgInjector<?, ?>> getEndpointExtraArgInjectors() {
 		return endpointExtraArgInjectors;
+	}
+
+	public ProtocolConfig add(List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors,
+							  List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors) {
+		originExtraArgExtractors = Stream.concat(this.originExtraArgExtractors.stream(),
+				originExtraArgExtractors.stream()).collect(Collectors.toUnmodifiableList());
+
+		endpointExtraArgInjectors = Stream.concat(this.endpointExtraArgInjectors.stream(),
+				endpointExtraArgInjectors.stream()).collect(Collectors.toUnmodifiableList());
+
+		return new ProtocolConfig(originInstances, endpointInstances, originExtraArgExtractors,
+				endpointExtraArgInjectors);
 	}
 }
