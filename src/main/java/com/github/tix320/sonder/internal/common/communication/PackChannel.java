@@ -14,7 +14,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongFunction;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tix320.skimp.api.check.Try;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.EmptyReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.Headers;
@@ -328,9 +327,14 @@ public final class PackChannel implements Channel {
 						limitedChannel.close();
 						long remaining = limitedChannel.getRemaining();
 						if (remaining != 0) {
-							String headersString = Try.supply(
-									() -> JSON_MAPPER.readValue(headers, Headers.class).toString())
-									.getOrElse("Unknown headers");
+							String headersString;
+							try {
+								headersString = JSON_MAPPER.readValue(headers, Headers.class).toString();
+							}
+							catch (IOException e) {
+								e.printStackTrace();
+								headersString = "Unknown headers";
+							}
 							new TimeoutException(String.format(
 									"The provided channel is not was fully read long time: %sms. Content length is %s, left to read %s bytes.\nHeaders: %s",
 									timeoutDuration.toMillis(), contentLength, remaining,

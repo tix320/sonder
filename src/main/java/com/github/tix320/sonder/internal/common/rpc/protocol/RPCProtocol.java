@@ -23,7 +23,6 @@ import com.github.tix320.kiwi.api.reactive.observable.Subscription;
 import com.github.tix320.kiwi.api.reactive.publisher.BufferedPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
-import com.github.tix320.skimp.api.check.Try;
 import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.object.None;
 import com.github.tix320.sonder.api.common.communication.*;
@@ -178,8 +177,14 @@ public abstract class RPCProtocol implements Protocol {
 		switch (method.getRequestDataType()) {
 			case ARGUMENTS:
 				builder.header(RPCHeaders.CONTENT_TYPE, ContentType.ARGUMENTS);
-				byte[] content = Try.supply(() -> JSON_MAPPER.writeValueAsBytes(simpleArgs))
-						.getOrElseThrow(e -> new RPCProtocolException("Cannot convert arguments to JSON", e));
+				byte[] content;
+				try {
+					content = JSON_MAPPER.writeValueAsBytes(simpleArgs);
+				}
+				catch (JsonProcessingException e) {
+					throw new RPCProtocolException("Cannot convert arguments to JSON", e);
+				}
+
 				transferToSend = new StaticTransfer(builder.build(), content);
 				break;
 			case BINARY:

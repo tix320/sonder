@@ -12,7 +12,6 @@ import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
-import com.github.tix320.skimp.api.check.Try;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
@@ -109,7 +108,12 @@ public final class SocketServerConnection implements ServerConnection {
 							packConsumer.accept(pack);
 						}
 						finally {
-							Try.runOrRethrow(contentChannel::readRemainingInVain);
+							try {
+								contentChannel.readRemainingInVain();
+							}
+							catch (IOException e) {
+								e.printStackTrace();
+							}
 						}
 					});
 					if (contentChannel instanceof LimitedReadableByteChannel) {
@@ -146,7 +150,12 @@ public final class SocketServerConnection implements ServerConnection {
 		synchronized (this) {
 			boolean changed = this.state.compareAndSetValue(State.RUNNING, State.INITIAL);
 			if (changed) {
-				Try.run(() -> channel.close()).onFailure(Throwable::printStackTrace);
+				try {
+					channel.close();
+				}
+				catch (IOException e) {
+					e.printStackTrace();
+				}
 				this.channel = null;
 				eventDispatcher.fire(new ConnectionClosedEvent());
 			}

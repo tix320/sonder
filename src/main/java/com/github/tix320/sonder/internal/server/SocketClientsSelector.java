@@ -15,7 +15,6 @@ import java.util.function.LongFunction;
 
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
-import com.github.tix320.skimp.api.check.Try;
 import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.object.None;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
@@ -63,7 +62,7 @@ public final class SocketClientsSelector implements ClientsSelector {
 	}
 
 	public void run(Consumer<ClientPack> packConsumer) throws IOException {
-		Selector selector = Try.supplyOrRethrow(Selector::open);
+		Selector selector = Selector.open();
 		ServerSocketChannel serverChannel = ServerSocketChannel.open();
 		serverChannel.bind(address);
 		serverChannel.configureBlocking(false);
@@ -253,7 +252,12 @@ public final class SocketClientsSelector implements ClientsSelector {
 					packConsumer.accept(clientPack);
 				}
 				finally {
-					Try.runOrRethrow(contentChannel::readRemainingInVain);
+					try {
+						contentChannel.readRemainingInVain();
+					}
+					catch (IOException e) {
+						e.printStackTrace();
+					}
 				}
 			});
 			if (contentChannel instanceof LimitedReadableByteChannel) {
