@@ -17,7 +17,6 @@ import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolConfigu
 import com.github.tix320.sonder.internal.common.rpc.protocol.ProtocolConfig;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol.OriginInvocationHandler;
-import com.github.tix320.sonder.internal.common.util.ClassFinder;
 
 import static java.util.function.Predicate.not;
 
@@ -43,55 +42,6 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 		endpointInstances = new HashMap<>();
 		originExtraArgExtractors = new ArrayList<>();
 		endpointExtraArgInjectors = new ArrayList<>();
-	}
-
-	/**
-	 * Scan packages to find origin interfaces {@link Origin} and endpoint classes {@link Endpoint}
-	 *
-	 * @param packagesToScan packages to scan.
-	 *
-	 * @return self
-	 */
-	public final T scanOriginPackages(String... packagesToScan) {
-		Class<?>[] originClasses = ClassFinder.getPackageClasses(packagesToScan)
-				.stream()
-				.filter(aClass -> aClass.isAnnotationPresent(Origin.class))
-				.toArray(Class[]::new);
-
-		return registerOriginInterfaces(originClasses);
-	}
-
-	/**
-	 * Set packages to find endpoint classes {@link Endpoint}
-	 *
-	 * @param packagesToScan packages to scan.
-	 *
-	 * @return self
-	 */
-	public final T scanEndpointPackages(String... packagesToScan) {
-		Class<?>[] endpointClasses = ClassFinder.getPackageClasses(packagesToScan)
-				.stream()
-				.filter(aClass -> aClass.isAnnotationPresent(Endpoint.class))
-				.toArray(Class[]::new);
-		return registerEndpointClasses(endpointClasses);
-	}
-
-	/**
-	 * Set packages to find endpoint classes {@link Endpoint}
-	 *
-	 * @param packagesToScan packages to scan.
-	 * @param factory        to create founded class instances.
-	 *
-	 * @return self
-	 */
-	public final T scanEndpointPackages(List<String> packagesToScan, Function<Class<?>, Object> factory) {
-		List<Object> instances = ClassFinder.getPackageClasses(packagesToScan.toArray(String[]::new))
-				.stream()
-				.filter(aClass -> aClass.isAnnotationPresent(Endpoint.class))
-				.map(factory)
-				.collect(Collectors.toList());
-
-		return registerEndpointInstances(instances);
 	}
 
 	/**
