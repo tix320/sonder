@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Java, Maven
+        uses: actions/setup-java@v1
+        with:
+          java-version: 11
+          server-id: ossrh
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Extract last version tag
+        uses: oprypin/find-latest-tag@v1
+        with:
+          repository: ${{ github.repository }}
+          prefix: v
+        id: previoustag
+
+      - name: Retreive version from pom
+        shell: bash
+        run: echo "##[set-output name=version;]$(echo $(mvn help:evaluate -Dexpression=project.version -q -DforceStdout))"
+        id: retreive_version
+
+      - name: Resolve new tag name
+        shell: bash
+        run: echo "##[set-output name=tag;]$(echo v${{ steps.retreive_version.outputs.version }})"
+        id: resolve_new_tag_name
+
+      - name: Release
+        if: ${{ steps.previoustag.outputs.tag != steps.resolve_new_tag_name.outputs.tag }}
+        run: mvn deploy --no-transfer-progress
+        env:
+          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+
+      - name: Create Tag
+        if: ${{ steps.previoustag.outputs.tag != steps.resolve_new_tag_name.outputs.tag }}
+        uses: negz/create-tag@v1
+        with:
+          version: ${{ steps.resolve_new_tag_name.outputs.tag }}
+          message: Release ${{ steps.resolve_new_tag_name.outputs.tag }}
+          token: ${{ secrets.GITHUB_TOKEN }}
