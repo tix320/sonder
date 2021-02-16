@@ -6,8 +6,8 @@ module com.github.tix.sonder {
 	requires transitive com.fasterxml.jackson.databind;
 	requires transitive com.fasterxml.jackson.annotation;
 
+	exports com.github.tix320.sonder.api.common;
 	exports com.github.tix320.sonder.api.common.communication;
-	exports com.github.tix320.sonder.api.common.event;
 	exports com.github.tix320.sonder.api.common.rpc;
 	exports com.github.tix320.sonder.api.common.rpc.extra;
 	exports com.github.tix320.sonder.api.client;

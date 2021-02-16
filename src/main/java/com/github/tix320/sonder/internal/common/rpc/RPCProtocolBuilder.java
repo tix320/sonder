@@ -4,19 +4,20 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
+import java.time.Duration;
 import java.util.*;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.function.LongFunction;
 
+import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Origin;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 import com.github.tix320.sonder.internal.common.rpc.exception.RPCProtocolConfigurationException;
-import com.github.tix320.sonder.internal.common.rpc.protocol.ProtocolConfig;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol.OriginInvocationHandler;
+import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocolConfig;
 
 import static java.util.function.Predicate.not;
 
@@ -33,6 +34,8 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 
 	private final List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors;
 
+	private LongFunction<Duration> contentTimeoutDurationFactory;
+
 	private final OriginInvocationHandler originInvocationHandler = new OriginInvocationHandler();
 
 	private boolean built = false;
@@ -42,6 +45,10 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 		endpointInstances = new HashMap<>();
 		originExtraArgExtractors = new ArrayList<>();
 		endpointExtraArgInjectors = new ArrayList<>();
+		this.contentTimeoutDurationFactory = contentLength -> {
+			long timout = Math.max((long) Math.ceil(contentLength * 5D / 1024 / 1024), 1); // 5sec for 1MB
+			return Duration.ofSeconds(timout);
+		};
 	}
 
 	/**
@@ -62,7 +69,7 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 
 		this.originInstances.putAll(originInstances);
 
-		return (T) this;
+		return getThis();
 	}
 
 	/**
@@ -74,7 +81,7 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 	 */
 	public final T processOriginInstances(Consumer<Map<Class<?>, Object>> consumer) {
 		consumer.accept(Map.copyOf(this.originInstances));
-		return (T) this;
+		return getThis();
 	}
 
 	/**
@@ -91,7 +98,7 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 			endpointInstances.put(clazz, instance);
 		}
 
-		return (T) this;
+		return getThis();
 	}
 
 	/**
@@ -107,7 +114,7 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 			endpointInstances.put(instance.getClass(), instance);
 		}
 
-		return (T) this;
+		return getThis();
 	}
 
 	/**
@@ -119,7 +126,7 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 	 */
 	public final T registerOriginExtraArgExtractor(OriginExtraArgExtractor<?, ?>... extractors) {
 		this.originExtraArgExtractors.addAll(Arrays.asList(extractors));
-		return (T) this;
+		return getThis();
 	}
 
 	/**
@@ -131,7 +138,23 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 	 */
 	public final T registerEndpointExtraArgInjector(EndpointExtraArgInjector<?, ?>... injectors) {
 		this.endpointExtraArgInjectors.addAll(Arrays.asList(injectors));
-		return (T) this;
+		return getThis();
+	}
+
+
+	/**
+	 * Set timeout factory for transfer content receiving.
+	 * If content will not fully received in this duration, then transferring will be reset.
+	 *
+	 * @param factory to create timeout for every transfer content. ('contentLength' to 'timeout')
+	 *
+	 * @return self
+	 *
+	 * @see Transfer
+	 */
+	public T contentTimeoutDurationFactory(LongFunction<Duration> factory) {
+		contentTimeoutDurationFactory = factory;
+		return getThis();
 	}
 
 	public final R build() {
@@ -140,8 +163,8 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 		}
 		built = true;
 
-		ProtocolConfig protocolConfig = new ProtocolConfig(originInstances, endpointInstances, originExtraArgExtractors,
-				endpointExtraArgInjectors);
+		RPCProtocolConfig protocolConfig = new RPCProtocolConfig(originInstances, endpointInstances,
+				originExtraArgExtractors, endpointExtraArgInjectors, contentTimeoutDurationFactory);
 
 		R protocol = this.build(protocolConfig);
 
@@ -149,7 +172,12 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 		return protocol;
 	}
 
-	protected abstract R build(ProtocolConfig protocolConfig);
+	protected abstract R build(RPCProtocolConfig protocolConfig);
+
+	@SuppressWarnings("unchecked")
+	private T getThis() {
+		return (T) this;
+	}
 
 	private Object createInstance(Class<?> clazz) throws RPCProtocolConfigurationException {
 		Constructor<?> declaredConstructor;
@@ -157,14 +185,11 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 			declaredConstructor = clazz.getDeclaredConstructor();
 			declaredConstructor.setAccessible(true);
 			return declaredConstructor.newInstance();
-		}
-		catch (NoSuchMethodException e) {
+		} catch (NoSuchMethodException e) {
 			throw new RPCProtocolConfigurationException(String.format("No-arg constructor not found in %s", clazz));
-		}
-		catch (IllegalAccessException | InstantiationException e) {
+		} catch (IllegalAccessException | InstantiationException e) {
 			throw new RPCProtocolConfigurationException(String.format("Cannot construct instance of %s", clazz), e);
-		}
-		catch (InvocationTargetException e) {
+		} catch (InvocationTargetException e) {
 			throw new RPCProtocolConfigurationException(String.format("Cannot construct instance of %s", clazz),
 					e.getTargetException());
 		}
@@ -182,8 +207,7 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 		if (isOrigin && isEndpoint) {
 			throw new RPCProtocolConfigurationException(
 					String.format("%s cannot have both @%s and @%s annotations", clazz, Origin.class, Endpoint.class));
-		}
-		else if (!isOrigin) {
+		} else if (!isOrigin) {
 			throw new RPCProtocolConfigurationException(
 					String.format("%s does not have @%s annotation", clazz, Origin.class));
 		}
@@ -203,8 +227,7 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 		if (isOrigin && isEndpoint) {
 			throw new RPCProtocolConfigurationException(
 					String.format("%s cannot have both @%s and @%s annotations", clazz, Origin.class, Endpoint.class));
-		}
-		else if (!isEndpoint) {
+		} else if (!isEndpoint) {
 			throw new RPCProtocolConfigurationException(
 					String.format("%s does not have @%s annotation", clazz, Endpoint.class));
 		}

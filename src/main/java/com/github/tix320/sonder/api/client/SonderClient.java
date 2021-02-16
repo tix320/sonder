@@ -5,21 +5,18 @@ import java.net.InetSocketAddress;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
-import com.github.tix320.skimp.api.thread.Threads;
-import com.github.tix320.sonder.api.client.event.ConnectionClosedEvent;
-import com.github.tix320.sonder.api.client.event.ConnectionEstablishedEvent;
+import com.github.tix320.skimp.api.interval.Interval;
+import com.github.tix320.skimp.api.interval.IntervalRepeater;
+import com.github.tix320.skimp.api.object.None;
+import com.github.tix320.sonder.api.client.event.ClientEvents;
 import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocolBuilder;
 import com.github.tix320.sonder.api.common.communication.*;
-import com.github.tix320.sonder.api.common.event.EventListener;
-import com.github.tix320.sonder.internal.client.ServerConnection;
+import com.github.tix320.sonder.internal.client.SocketServerConnection;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.event.EventDispatcher;
 
 /**
  * Entry point class for your socket client.
@@ -43,11 +40,11 @@ public final class SonderClient {
 
 	private final Map<String, ClientSideProtocol> protocols;
 
-	private final ServerConnection connection;
+	private final SocketServerConnection connection;
 
-	private final EventDispatcher eventDispatcher;
+	private final ClientEvents clientEvents;
 
-	private final boolean autoReconnect;
+	private final Interval connectInterval;
 
 	/**
 	 * Prepare client creating for this socket address.
@@ -64,31 +61,45 @@ public final class SonderClient {
 		return new ClientRPCProtocolBuilder();
 	}
 
-	SonderClient(ServerConnection connection, Map<String, ClientSideProtocol> protocols,
-				 EventDispatcher eventDispatcher, boolean autoReconnect) {
-		this.connection = connection;
+	SonderClient(InetSocketAddress address, Map<String, ClientSideProtocol> protocols, Interval connectInterval) {
+		this.connection = new SocketServerConnection(address, pack -> {
+			Transfer transfer = convertDataPackToTransfer(pack);
+			processTransfer(transfer);
+		});
 		this.protocols = Collections.unmodifiableMap(protocols);
-		this.eventDispatcher = eventDispatcher;
-		this.autoReconnect = autoReconnect;
+		this.connectInterval = connectInterval;
+		this.clientEvents = connection::state;
 	}
 
 	public void connect() throws IOException {
-		connectToServer();
-
-		eventDispatcher.on(ConnectionClosedEvent.class).toMono().subscribe(connectionClosedEvent -> {
-			System.err.println("SONDER: Connection closed.");
-			System.err.println("SONDER: Resetting protocols...");
-			protocols.forEach((protocolName, protocol) -> protocol.reset());
-			if (autoReconnect) {
-				System.err.println("SONDER: Auto Reconnect is ON, trying to connect...");
-				tryReconnect();
-				eventDispatcher.fire(new ConnectionEstablishedEvent());
-			}
-		});
-
 		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
+		if (this.connectInterval == null) {
+			connection.connect();
 
-		eventDispatcher.fire(new ConnectionEstablishedEvent());
+		} else {
+			connection.state().conditionalSubscribe(connectionState -> {
+				switch (connectionState) {
+					case IDLE:
+						while (true) {
+							Interval interval = this.connectInterval.copyByInitialState();
+							boolean connected = tryConnect(interval);
+							if (connected) {
+								break;
+							}
+						}
+						break;
+					case CONNECTED:
+						System.out.println("SONDER: Connected.");
+						break;
+					case CLOSED:
+						System.out.println("SONDER: Connection closed.");
+						return false;
+				}
+
+				return true;
+			});
+
+		}
 	}
 
 	public void stop() throws IOException {
@@ -99,8 +110,8 @@ public final class SonderClient {
 		}
 	}
 
-	public EventListener getEventListener() {
-		return eventDispatcher;
+	public ClientEvents events() {
+		return clientEvents;
 	}
 
 	private void initProtocol(ClientSideProtocol protocol) {
@@ -110,7 +121,7 @@ public final class SonderClient {
 			connection.send(pack);
 		};
 
-		protocol.init(transferTunnel, eventDispatcher);
+		protocol.init(transferTunnel, clientEvents);
 	}
 
 	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
@@ -122,8 +133,7 @@ public final class SonderClient {
 		byte[] headers;
 		try {
 			headers = JSON_MAPPER.writeValueAsBytes(transfer.getHeaders());
-		}
-		catch (JsonProcessingException e) {
+		} catch (JsonProcessingException e) {
 			throw new IllegalStateException("Cannot write JSON", e);
 		}
 
@@ -131,12 +141,11 @@ public final class SonderClient {
 		return new Pack(headers, channel);
 	}
 
-	private Transfer convertDataPackToTransfer(Pack pack) {
+	private static Transfer convertDataPackToTransfer(Pack pack) {
 		Headers headers;
 		try {
 			headers = JSON_MAPPER.readValue(pack.getHeaders(), Headers.class);
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
 		CertainReadableByteChannel channel = pack.channel();
@@ -152,39 +161,28 @@ public final class SonderClient {
 		}
 		try {
 			protocol.handleIncomingTransfer(transfer);
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
 	}
 
-	private void connectToServer() throws IOException {
-		Consumer<Pack> packConsumer = pack -> {
-			Transfer transfer = convertDataPackToTransfer(pack);
-			processTransfer(transfer);
-		};
-
-		connection.connect(packConsumer);
-	}
-
-	private void tryReconnect() {
+	private boolean tryConnect(Interval interval) {
 		AtomicInteger count = new AtomicInteger(1);
-		Threads.createLoopDaemonThread(() -> {
+		IntervalRepeater<None> repeater = IntervalRepeater.of(() -> {
+			System.out.printf("SONDER: Try connect %s...%n", count.getAndIncrement());
 			try {
-				Thread.sleep(5000);
-			}
-			catch (InterruptedException e) {
-				throw new IllegalStateException(e);
-			}
-			System.err.printf("SONDER: Try connect %s...%n", count.getAndIncrement());
-			try {
-				connectToServer();
-				System.err.println("SONDER: Connected.");
-				throw new BreakLoopException();
-			}
-			catch (IOException e) {
+				connection.connect();
+			} catch (IOException e) {
 				e.printStackTrace();
+				System.err.println("SONDER: Connection fail.");
 			}
-		}).start();
+
+		}, interval);
+
+		try {
+			return repeater.doUntilSuccess(5).isPresent();
+		} catch (InterruptedException e) {
+			throw new IllegalStateException(e);
+		}
 	}
 }

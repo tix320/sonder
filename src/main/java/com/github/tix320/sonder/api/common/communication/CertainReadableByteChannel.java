@@ -3,6 +3,9 @@ package com.github.tix320.sonder.api.common.communication;
 import java.io.IOException;
 import java.nio.channels.ReadableByteChannel;
 
+import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.skimp.api.object.None;
+
 /**
  * Channel for transferring content part in transfer objects {@link Transfer}.
  * Channel hold information about content length and remaining length.
@@ -11,6 +14,8 @@ import java.nio.channels.ReadableByteChannel;
  * @author Tigran Sargsyan on 23-Mar-20.
  */
 public interface CertainReadableByteChannel extends ReadableByteChannel {
+
+	MonoObservable<None> onFinish();
 
 	/**
 	 * Get length of content

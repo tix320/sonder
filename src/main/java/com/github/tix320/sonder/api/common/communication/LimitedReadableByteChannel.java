@@ -6,6 +6,7 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ReadableByteChannel;
 
 import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.skimp.api.object.None;
 
@@ -19,7 +20,7 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 
 	private boolean isOpen;
 
-	private final Publisher<None> finishEvent;
+	private final MonoPublisher<None> finishEvent;
 
 	public LimitedReadableByteChannel(ReadableByteChannel channel, long limit) {
 		if (limit <= 0) {
@@ -30,7 +31,7 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 		this.channel = channel;
 		this.remaining = limit;
 		this.isOpen = true;
-		this.finishEvent = Publisher.buffered(1);
+		this.finishEvent = Publisher.mono();
 	}
 
 	@Override
@@ -72,6 +73,7 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 		isOpen = false;
 	}
 
+	@Override
 	public MonoObservable<None> onFinish() {
 		return finishEvent.asObservable().toMono();
 	}
@@ -110,6 +112,10 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 	}
 
 	public synchronized void readRemainingInVain() throws IOException {
+		if (isFinished()) {
+			return;
+		}
+
 		ByteBuffer buffer = ByteBuffer.allocate(1024 * 64);
 		while (remaining > 0) {
 			int read = channel.read(buffer);

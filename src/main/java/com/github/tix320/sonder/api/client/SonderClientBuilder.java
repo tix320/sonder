@@ -1,16 +1,11 @@
 package com.github.tix320.sonder.api.client;
 
 import java.net.InetSocketAddress;
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.LongFunction;
 
+import com.github.tix320.skimp.api.interval.Interval;
 import com.github.tix320.sonder.api.common.communication.Protocol;
-import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.internal.client.SocketServerConnection;
-import com.github.tix320.sonder.internal.common.event.EventDispatcher;
-import com.github.tix320.sonder.internal.common.event.SimpleEventDispatcher;
 
 /**
  * Builder for socket client {@link SonderClient}.
@@ -21,11 +16,7 @@ public final class SonderClientBuilder {
 
 	private final Map<String, ClientSideProtocol> protocols;
 
-	private LongFunction<Duration> contentTimeoutDurationFactory;
-
-	private boolean autoReconnect;
-
-	private final EventDispatcher sonderEventDispatcher = new SimpleEventDispatcher();
+	private Interval connectInterval;
 
 	SonderClientBuilder(InetSocketAddress inetSocketAddress) {
 		if (inetSocketAddress.getAddress().isAnyLocalAddress()) {
@@ -33,11 +24,7 @@ public final class SonderClientBuilder {
 		}
 		this.inetSocketAddress = inetSocketAddress;
 		this.protocols = new HashMap<>();
-		this.contentTimeoutDurationFactory = contentLength -> {
-			long timout = Math.max((long) Math.ceil(contentLength * (60D / 1024 / 1024 / 1024)), 1);
-			return Duration.ofSeconds(timout);
-		};
-		this.autoReconnect = false;
+		this.connectInterval = null;
 	}
 
 	/**
@@ -58,31 +45,14 @@ public final class SonderClientBuilder {
 	}
 
 	/**
-	 * Set timeout factory for transfer {@link Transfer} content receiving.
-	 * If content will not fully received in this duration, then transferring will be reset.
+	 * Set auto reconnect ability.
 	 *
-	 * @param factory to create timeout for every transfer content. ('contentLength' to 'timeout')
-	 *
-	 * @return self
-	 *
-	 * @see Transfer
-	 */
-	public SonderClientBuilder contentTimeoutDurationFactory(LongFunction<Duration> factory) {
-		contentTimeoutDurationFactory = factory;
-		return this;
-	}
-
-	/**
-	 * Set auto reconnect ability, default false.
-	 *
-	 * @param autoReconnect true for ON, false otherwise.
+	 * @param connectInterval interval for connecting/reconnecting.
 	 *
 	 * @return self
-	 *
-	 * @see Transfer
 	 */
-	public SonderClientBuilder autoReconnect(boolean autoReconnect) {
-		this.autoReconnect = autoReconnect;
+	public SonderClientBuilder autoReconnect(Interval connectInterval) {
+		this.connectInterval = connectInterval;
 		return this;
 	}
 
@@ -92,8 +62,6 @@ public final class SonderClientBuilder {
 	 * @return client instance.
 	 */
 	public SonderClient build() {
-		return new SonderClient(
-				new SocketServerConnection(inetSocketAddress, contentTimeoutDurationFactory, sonderEventDispatcher),
-				protocols, sonderEventDispatcher, autoReconnect);
+		return new SonderClient(inetSocketAddress, protocols, connectInterval);
 	}
 }

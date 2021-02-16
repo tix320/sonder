@@ -12,12 +12,11 @@ import com.github.tix320.skimp.api.object.CantorPair;
 import com.github.tix320.sonder.api.common.communication.ChannelTransfer;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.api.common.event.EventListener;
 import com.github.tix320.sonder.api.server.ServerSideProtocol;
 import com.github.tix320.sonder.api.server.TransferTunnel;
-import com.github.tix320.sonder.api.server.event.ClientConnectionClosedEvent;
-import com.github.tix320.sonder.internal.common.rpc.protocol.ProtocolConfig;
+import com.github.tix320.sonder.api.server.event.ServerEvents;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
+import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocolConfig;
 import com.github.tix320.sonder.internal.server.rpc.extra.ServerEndpointMethodClientIdInjector;
 import com.github.tix320.sonder.internal.server.rpc.extra.ServerOriginMethodClientIdExtractor;
 
@@ -30,18 +29,17 @@ public final class ServerRPCProtocol extends RPCProtocol implements ServerSidePr
 
 	private TransferTunnel transferTunnel;
 
-	ServerRPCProtocol(ProtocolConfig protocolConfig) {
+	ServerRPCProtocol(RPCProtocolConfig protocolConfig) {
 		super(protocolConfig.add(List.of(new ServerOriginMethodClientIdExtractor()),
 				List.of(new ServerEndpointMethodClientIdInjector())));
 		this.realSubscriptions = new ConcurrentHashMap<>();
 	}
 
 	@Override
-	public void init(TransferTunnel transferTunnel, EventListener eventListener) {
+	public void init(TransferTunnel transferTunnel, ServerEvents serverEvents) {
 		synchronized (this) { // also for memory effects
 			this.transferTunnel = transferTunnel;
-			eventListener.on(ClientConnectionClosedEvent.class)
-					.subscribe(event -> cleanupSubscriptionsOfClient(event.getClientId()));
+			serverEvents.deadConnections().subscribe(client -> cleanupSubscriptionsOfClient(client.getId()));
 		}
 	}
 
