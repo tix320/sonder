@@ -1,7 +1,9 @@
 package com.github.tix320.sonder.internal.common.rpc.protocol;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -11,7 +13,7 @@ import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
 /**
  * @author Tigran Sargsyan on 25-Aug-20
  */
-public final class ProtocolConfig {
+public final class RPCProtocolConfig {
 
 	private final Map<Class<?>, Object> originInstances;
 
@@ -21,13 +23,17 @@ public final class ProtocolConfig {
 
 	private final List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors;
 
-	public ProtocolConfig(Map<Class<?>, Object> originInstances, Map<Class<?>, Object> endpointInstances,
-						  List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors,
-						  List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors) {
+	private final LongFunction<Duration> contentTimeoutDurationFactory;
+
+	public RPCProtocolConfig(Map<Class<?>, Object> originInstances, Map<Class<?>, Object> endpointInstances,
+							 List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors,
+							 List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors,
+							 LongFunction<Duration> contentTimeoutDurationFactory) {
 		this.originInstances = Map.copyOf(originInstances);
 		this.endpointInstances = Map.copyOf(endpointInstances);
 		this.originExtraArgExtractors = List.copyOf(originExtraArgExtractors);
 		this.endpointExtraArgInjectors = List.copyOf(endpointExtraArgInjectors);
+		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 	}
 
 	public Map<Class<?>, Object> getOriginInstances() {
@@ -46,15 +52,15 @@ public final class ProtocolConfig {
 		return endpointExtraArgInjectors;
 	}
 
-	public ProtocolConfig add(List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors,
-							  List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors) {
+	public RPCProtocolConfig add(List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors,
+								 List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors) {
 		originExtraArgExtractors = Stream.concat(this.originExtraArgExtractors.stream(),
 				originExtraArgExtractors.stream()).collect(Collectors.toUnmodifiableList());
 
 		endpointExtraArgInjectors = Stream.concat(this.endpointExtraArgInjectors.stream(),
 				endpointExtraArgInjectors.stream()).collect(Collectors.toUnmodifiableList());
 
-		return new ProtocolConfig(originInstances, endpointInstances, originExtraArgExtractors,
-				endpointExtraArgInjectors);
+		return new RPCProtocolConfig(originInstances, endpointInstances, originExtraArgExtractors,
+				endpointExtraArgInjectors, contentTimeoutDurationFactory);
 	}
 }

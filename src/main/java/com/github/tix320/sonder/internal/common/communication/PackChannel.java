@@ -9,22 +9,15 @@ import java.time.Duration;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.LongFunction;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.EmptyReadableByteChannel;
-import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
 
 public final class PackChannel implements Channel {
 
 	private static final byte[] PROTOCOL_HEADER_BYTES = {
 			105, 99, 111, 110, 116, 114, 111, 108};
-
-	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
 	private static final int HEADERS_LENGTH_BYTES = 4;
 
@@ -37,8 +30,6 @@ public final class PackChannel implements Channel {
 	private final ByteBuffer headersLengthBuffer;
 
 	private final ByteBuffer contentLengthBuffer;
-
-	private final LongFunction<Duration> contentTimeoutDurationFactory;
 
 	private final AtomicReference<State> state;
 
@@ -56,15 +47,14 @@ public final class PackChannel implements Channel {
 		resetWriteContentBuffer();
 	}
 
-	private final Lock readLock = new ReentrantLock();
-	private final Lock writeLock = new ReentrantLock();
+	private final Object readLock = new Object();
+	private final Object writeLock = new Object();
 
-	public PackChannel(ByteChannel channel, LongFunction<Duration> contentTimeoutDurationFactory) {
+	public PackChannel(ByteChannel channel) {
 		this.channel = channel;
 		this.protocolHeaderBuffer = ByteBuffer.allocateDirect(PROTOCOL_HEADER_BYTES.length);
 		this.headersLengthBuffer = ByteBuffer.allocateDirect(HEADERS_LENGTH_BYTES);
 		this.contentLengthBuffer = ByteBuffer.allocateDirect(CONTENT_LENGTH_BYTES);
-		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 		this.headersBuffer = null;
 		this.lastReadContentLength = 0;
 		this.writeQueue = new LinkedList<>();
@@ -73,67 +63,56 @@ public final class PackChannel implements Channel {
 	}
 
 	public boolean write(Pack pack) throws IOException {
-		writeLock.lock();
-		try {
-			if (lastWriteMetaData != null) {
-				writeQueue.add(pack);
-				return false;
+		synchronized (writeLock) {
+			try {
+				if (lastWriteMetaData != null) {
+					writeQueue.add(pack);
+					return false;
+				} else {
+					WriteMetaData lastWriteMetaData = writePack(pack);
+					changeLastWriteMetaDataTo(lastWriteMetaData);
+					return lastWriteMetaData == null;
+				}
+			} catch (IOException e) {
+				close();
+				throw e;
+			} catch (Throwable e) {
+				close();
+				throw new IllegalStateException("Error occurs while writing pack", e);
 			}
-			else {
-				WriteMetaData lastWriteMetaData = writePack(pack);
-				changeLastWriteMetaDataTo(lastWriteMetaData);
-				return lastWriteMetaData == null;
-			}
-		}
-		catch (IOException e) {
-			close();
-			throw e;
-		}
-		catch (Throwable e) {
-			close();
-			throw new IllegalStateException("Error occurs while writing pack", e);
-		}
-		finally {
-			writeLock.unlock();
 		}
 	}
 
 	public boolean writeLastPack() throws IOException {
-		writeLock.lock();
-		try {
-			if (lastWriteMetaData == null) {
-				return true;
-			}
-			else {
-				WriteMetaData writeMetaData = writeFromMetadata(this.lastWriteMetaData);
-				if (writeMetaData != null) {
-					return false;
-				}
-				else {
-					while (!writeQueue.isEmpty()) {
-						Pack pack = writeQueue.poll();
-						WriteMetaData metaData = writePack(pack);
-						if (metaData != null) {
-							changeLastWriteMetaDataTo(metaData);
-							return false;
-						}
-					}
-
-					changeLastWriteMetaDataTo(null);
+		synchronized (writeLock) {
+			try {
+				if (lastWriteMetaData == null) {
 					return true;
+				} else {
+					WriteMetaData writeMetaData = writeFromMetadata(this.lastWriteMetaData);
+					if (writeMetaData != null) {
+						return false;
+					} else {
+						while (!writeQueue.isEmpty()) {
+							Pack pack = writeQueue.poll();
+							WriteMetaData metaData = writePack(pack);
+							if (metaData != null) {
+								changeLastWriteMetaDataTo(metaData);
+								return false;
+							}
+						}
+
+						changeLastWriteMetaDataTo(null);
+						return true;
+					}
 				}
+			} catch (IOException e) {
+				close();
+				throw e;
+			} catch (Throwable e) {
+				close();
+				throw new IllegalStateException("Error occurs while writing pack", e);
 			}
-		}
-		catch (IOException e) {
-			close();
-			throw e;
-		}
-		catch (Throwable e) {
-			close();
-			throw new IllegalStateException("Error occurs while writing pack", e);
-		}
-		finally {
-			writeLock.unlock();
 		}
 	}
 
@@ -146,25 +125,20 @@ public final class PackChannel implements Channel {
 		if (state.get() == State.last()) {
 			return null;
 		}
-		readLock.lock();
-		try {
-			return consume();
-		}
-		catch (InvalidPackException e) {
-			resetRead();
-			e.printStackTrace();
-			return null;
-		}
-		catch (IOException e) {
-			close();
-			throw e;
-		}
-		catch (Throwable e) {
-			close();
-			throw new IllegalStateException("Error occurs while consuming pack", e);
-		}
-		finally {
-			readLock.unlock();
+		synchronized (readLock) {
+			try {
+				return consume();
+			} catch (InvalidPackException e) {
+				resetRead();
+				e.printStackTrace();
+				return null;
+			} catch (IOException e) {
+				close();
+				throw e;
+			} catch (Throwable e) {
+				close();
+				throw new IllegalStateException("Error occurs while consuming pack", e);
+			}
 		}
 	}
 
@@ -212,8 +186,7 @@ public final class PackChannel implements Channel {
 			if (contentWriteBuffer.hasRemaining()) {
 				writeMetaData.changeRemainingContentBytes(remainingBytes);
 				return writeMetaData;
-			}
-			else if (remainingBytes == 0) {
+			} else if (remainingBytes == 0) {
 				return null;
 			}
 
@@ -312,44 +285,30 @@ public final class PackChannel implements Channel {
 
 			CertainReadableByteChannel channel = EmptyReadableByteChannel.SELF;
 			return new Pack(headers, channel);
-		}
-		else {
+		} else {
 			LimitedReadableByteChannel limitedChannel = new LimitedReadableByteChannel(this.channel, contentLength);
 
-			Duration timeoutDuration = contentTimeoutDurationFactory.apply(contentLength);
+			setChannelFinishedHandler(limitedChannel);
 
-			Pack pack = new Pack(headers, limitedChannel);
+			return new Pack(headers, limitedChannel);
+		}
+	}
 
-			limitedChannel.onFinish().map(none -> true).getOnTimout(timeoutDuration, () -> false).subscribe(success -> {
-				readLock.lock();
-				try {
-					if (!success) {
-						limitedChannel.close();
-						long remaining = limitedChannel.getRemaining();
-						if (remaining != 0) {
-							String headersString;
-							try {
-								headersString = JSON_MAPPER.readValue(headers, Headers.class).toString();
-							}
-							catch (IOException e) {
-								e.printStackTrace();
-								headersString = "Unknown headers";
-							}
-							new TimeoutException(String.format(
-									"The provided channel is not was fully read long time: %sms. Content length is %s, left to read %s bytes.\nHeaders: %s",
-									timeoutDuration.toMillis(), contentLength, remaining,
-									headersString)).printStackTrace();
-						}
-					}
+	private void setChannelFinishedHandler(LimitedReadableByteChannel channel) {
+		long warningTimeoutSeconds = Math.max((long) Math.ceil(channel.getContentLength() * 5D / 1024 / 1024),
+				1); // 5sec for 1MB
+		Duration warningTimeout = Duration.ofSeconds(warningTimeoutSeconds);
+
+		channel.onFinish().map(none -> true).getOnTimout(warningTimeout, () -> false).subscribe(success -> {
+			if (success) {
+				synchronized (readLock) {
 					resetRead();
 				}
-				finally {
-					readLock.unlock();
-				}
-			});
-
-			return pack;
-		}
+			} else {
+				System.out.println("SONDER WARNING: Content channel not finished in 5 minutes");
+				setChannelFinishedHandler(channel);
+			}
+		});
 	}
 
 	private void resetRead() {

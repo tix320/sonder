@@ -7,10 +7,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.github.tix320.kiwi.api.reactive.observable.Subscription;
 import com.github.tix320.sonder.api.client.ClientSideProtocol;
 import com.github.tix320.sonder.api.client.TransferTunnel;
+import com.github.tix320.sonder.api.client.event.ClientEvents;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.api.common.event.EventListener;
-import com.github.tix320.sonder.internal.common.rpc.protocol.ProtocolConfig;
+import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocolConfig;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RemoteSubscriptionPublisher;
 
@@ -23,13 +23,13 @@ public final class ClientRPCProtocol extends RPCProtocol implements ClientSidePr
 
 	private TransferTunnel transferTunnel;
 
-	ClientRPCProtocol(ProtocolConfig protocolConfig) {
+	ClientRPCProtocol(RPCProtocolConfig protocolConfig) {
 		super(protocolConfig);
 		this.realSubscriptions = new ConcurrentHashMap<>();
 	}
 
 	@Override
-	public void init(TransferTunnel transferTunnel, EventListener eventListener) {
+	public void init(TransferTunnel transferTunnel, ClientEvents clientEvents) {
 		synchronized (this) { // also for memory effects
 			this.transferTunnel = transferTunnel;
 		}

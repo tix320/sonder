@@ -62,7 +62,7 @@ public abstract class RPCProtocol implements Protocol {
 
 	private final IDGenerator responseKeyGenerator;
 
-	public RPCProtocol(ProtocolConfig protocolConfig) {
+	public RPCProtocol(RPCProtocolConfig protocolConfig) {
 		this.originExtraArgExtractors = protocolConfig.getOriginExtraArgExtractors()
 				.stream()
 				.collect(toUnmodifiableMap(

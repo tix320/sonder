@@ -7,17 +7,17 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
+import com.github.tix320.sonder.api.common.Client;
 import com.github.tix320.sonder.api.common.communication.*;
-import com.github.tix320.sonder.api.common.event.EventListener;
+import com.github.tix320.sonder.api.server.event.ServerEvents;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocolBuilder;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.event.EventDispatcher;
-import com.github.tix320.sonder.internal.server.ClientsSelector;
-import com.github.tix320.sonder.internal.server.ClientsSelector.ClientPack;
+import com.github.tix320.sonder.internal.server.SocketClientsSelector;
 
 /**
  * Entry point class for your socket server.
@@ -41,9 +41,9 @@ public final class SonderServer {
 
 	private final Map<String, ServerSideProtocol> protocols;
 
-	private final ClientsSelector clientsSelector;
+	private final SocketClientsSelector clientsSelector;
 
-	private final EventDispatcher eventDispatcher;
+	private final ServerEvents serverEvents;
 
 	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
@@ -62,11 +62,23 @@ public final class SonderServer {
 		return new ServerRPCProtocolBuilder();
 	}
 
-	SonderServer(ClientsSelector clientsSelector, Map<String, ServerSideProtocol> protocols,
-				 EventDispatcher eventDispatcher) {
-		this.clientsSelector = clientsSelector;
+	SonderServer(InetSocketAddress address, int workersCoreCount, Map<String, ServerSideProtocol> protocols) {
+		this.clientsSelector = new SocketClientsSelector(address, workersCoreCount, (clientId, pack) -> {
+			Transfer transfer = convertDataPackToTransfer(pack);
+			processTransfer(clientId, transfer);
+		});
 		this.protocols = new ConcurrentHashMap<>(protocols);
-		this.eventDispatcher = eventDispatcher;
+		this.serverEvents = new ServerEvents() {
+			@Override
+			public Observable<Client> newConnections() {
+				return clientsSelector.newClients();
+			}
+
+			@Override
+			public Observable<Client> deadConnections() {
+				return clientsSelector.deadClients();
+			}
+		};
 	}
 
 	public void start() throws IOException {
@@ -75,10 +87,7 @@ public final class SonderServer {
 			throw new IllegalStateException("Already started");
 		}
 
-		clientsSelector.run(clientPack -> {
-			Transfer transfer = convertDataPackToTransfer(clientPack.getPack());
-			processTransfer(clientPack.getClientId(), transfer);
-		});
+		clientsSelector.run();
 		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
 	}
 
@@ -91,18 +100,18 @@ public final class SonderServer {
 		}
 	}
 
-	public EventListener getEventListener() {
-		return eventDispatcher;
+	public ServerEvents events() {
+		return serverEvents;
 	}
 
 	private void initProtocol(ServerSideProtocol protocol) {
 		TransferTunnel transferTunnel = ((clientId, transfer) -> {
 			transfer = setProtocolHeader(transfer, protocol.getName());
-			ClientPack pack = transferToClientPack(clientId, transfer);
-			clientsSelector.send(pack);
+			Pack pack = transferToClientPack(transfer);
+			clientsSelector.send(clientId, pack);
 		});
 
-		protocol.init(transferTunnel, eventDispatcher);
+		protocol.init(transferTunnel, serverEvents);
 	}
 
 	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
@@ -110,19 +119,18 @@ public final class SonderServer {
 				transfer.channel());
 	}
 
-	private ClientPack transferToClientPack(long clientId, Transfer transfer) {
+	private Pack transferToClientPack(Transfer transfer) {
 		byte[] headers = serializeHeaders(transfer.getHeaders());
 
 		CertainReadableByteChannel channel = transfer.channel();
-		return new ClientPack(clientId, new Pack(headers, channel));
+		return new Pack(headers, channel);
 	}
 
 	private byte[] serializeHeaders(Headers headers) {
 		byte[] headerBytes;
 		try {
 			headerBytes = JSON_MAPPER.writeValueAsBytes(headers);
-		}
-		catch (JsonProcessingException e) {
+		} catch (JsonProcessingException e) {
 			throw new IllegalStateException("Cannot write JSON", e);
 		}
 
@@ -133,8 +141,7 @@ public final class SonderServer {
 		Headers headers;
 		try {
 			headers = JSON_MAPPER.readValue(pack.getHeaders(), Headers.class);
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			throw new IllegalStateException("Cannot parse JSON", e);
 		}
 		CertainReadableByteChannel channel = pack.channel();
@@ -151,8 +158,7 @@ public final class SonderServer {
 		}
 		try {
 			protocol.handleIncomingTransfer(clientId, transfer);
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
 	}
