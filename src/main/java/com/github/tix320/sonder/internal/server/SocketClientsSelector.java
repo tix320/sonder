@@ -245,8 +245,8 @@ public final class SocketClientsSelector implements Closeable {
 			runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack));
 
 			ChannelUtils.setChannelFinishedWarningHandler(contentChannel,
-					duration -> String.format("SONDER WARNING: %s not finished in %s",
-							CertainReadableByteChannel.class.getSimpleName(), duration));
+					duration -> String.format("SONDER WARNING: Client: %s - %s not finished in %s",
+							clientConnection.client, CertainReadableByteChannel.class.getSimpleName(), duration));
 
 			contentChannel.completeness().subscribe(none -> {
 				try {

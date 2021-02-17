@@ -301,6 +301,7 @@ public final class PackChannel implements Channel {
 
 		channel.completeness().map(none -> true).getOnTimout(warningTimeout, () -> false).subscribe(success -> {
 			if (success) {
+				channel.close();
 				synchronized (readLock) {
 					resetRead();
 				}

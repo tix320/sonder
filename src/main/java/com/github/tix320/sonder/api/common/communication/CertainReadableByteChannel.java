@@ -55,4 +55,7 @@ public interface CertainReadableByteChannel extends ReadableByteChannel {
 	 * @return observable
 	 */
 	MonoObservable<None> completeness();
+
+	@Override
+	void close();
 }
