@@ -299,7 +299,7 @@ public final class PackChannel implements Channel {
 				1); // 5sec for 1MB
 		Duration warningTimeout = Duration.ofSeconds(warningTimeoutSeconds);
 
-		channel.onFinish().map(none -> true).getOnTimout(warningTimeout, () -> false).subscribe(success -> {
+		channel.completeness().map(none -> true).getOnTimout(warningTimeout, () -> false).subscribe(success -> {
 			if (success) {
 				synchronized (readLock) {
 					resetRead();

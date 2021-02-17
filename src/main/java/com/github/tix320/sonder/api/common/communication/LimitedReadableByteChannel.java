@@ -5,22 +5,15 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ReadableByteChannel;
 
-import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
-import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
-import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
-import com.github.tix320.skimp.api.object.None;
+import com.github.tix320.sonder.internal.common.communication.BaseCertainReadableByteChannel;
 
-public final class LimitedReadableByteChannel implements CertainReadableByteChannel {
+public final class LimitedReadableByteChannel extends BaseCertainReadableByteChannel {
 
-	private final ReadableByteChannel channel;
+	protected final ReadableByteChannel channel;
 
 	private final long limit;
 
-	private long remaining;
-
-	private boolean isOpen;
-
-	private final MonoPublisher<None> finishEvent;
+	protected long remaining;
 
 	public LimitedReadableByteChannel(ReadableByteChannel channel, long limit) {
 		if (limit <= 0) {
@@ -30,8 +23,6 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 		this.limit = limit;
 		this.channel = channel;
 		this.remaining = limit;
-		this.isOpen = true;
-		this.finishEvent = Publisher.mono();
 	}
 
 	@Override
@@ -40,7 +31,7 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 			throw new ClosedChannelException();
 		}
 
-		if (isFinished()) {
+		if (isCompleted()) {
 			return -1;
 		}
 
@@ -56,39 +47,30 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 		dst.limit(limit);
 		this.remaining -= bytes;
 
-		if (isFinished()) {
-			finishEvent.publish(None.SELF);
+		if (isCompleted()) {
+			fireCompleted();
 		}
 
 		return bytes;
 	}
 
 	@Override
-	public synchronized boolean isOpen() {
-		return isOpen;
-	}
-
-	@Override
-	public synchronized void close() {
-		isOpen = false;
-	}
-
-	@Override
-	public MonoObservable<None> onFinish() {
-		return finishEvent.asObservable().toMono();
-	}
-
-	@Override
-	public synchronized long getContentLength() {
+	public long getContentLength() {
 		return limit;
 	}
 
-	public synchronized long getRemaining() {
-		return remaining;
+	public long getRemaining() {
+		synchronized (this) {
+			return remaining;
+		}
 	}
 
 	@Override
 	public synchronized byte[] readAll() throws IOException {
+		if (!isOpen()) {
+			throw new ClosedChannelException();
+		}
+
 		if (limit > Integer.MAX_VALUE) {
 			throw new UnsupportedOperationException(
 					"Cannot read all bytes, due there are larger than Integer.MAX_VALUE");
@@ -100,19 +82,20 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 
 		ByteBuffer buffer = ByteBuffer.allocate((int) limit);
 		while (buffer.hasRemaining()) {
-			int read = read(buffer);
+			int read = channel.read(buffer);
 			if (read < 0) {
 				throw new IllegalStateException(
 						String.format("Content channel ended, but still remaining %s bytes", buffer.remaining()));
 			}
 		}
 
-		finishEvent.publish(None.SELF);
+		fireCompleted();
 		return buffer.array();
 	}
 
+	@Override
 	public synchronized void readRemainingInVain() throws IOException {
-		if (isFinished()) {
+		if (isCompleted()) {
 			return;
 		}
 
@@ -126,22 +109,17 @@ public final class LimitedReadableByteChannel implements CertainReadableByteChan
 			buffer.clear();
 		}
 
-		finishEvent.publish(None.SELF);
-		close();
+		fireCompleted();
 	}
 
-	private boolean isFinished() {
-		return remaining == 0;
+	protected boolean isCompleted() {
+		synchronized (this) {
+			return remaining == 0;
+		}
 	}
 
 	@Override
 	public String toString() {
-		return "LimitedReadableByteChannel"
-			   + super.hashCode()
-			   + " {remaining="
-			   + remaining
-			   + ", isOpen="
-			   + isOpen
-			   + '}';
+		return "LimitedReadableByteChannel{" + ", limit=" + limit + ", remaining=" + remaining + '}';
 	}
 }

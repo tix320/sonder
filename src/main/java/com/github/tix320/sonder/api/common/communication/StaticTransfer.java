@@ -21,7 +21,7 @@ public final class StaticTransfer implements Transfer {
 	}
 
 	public CertainReadableByteChannel channel() {
-		return new ReadableByteArrayChannel(content);
+		return new ByteArrayReadableChannel(content);
 	}
 
 	@Override
