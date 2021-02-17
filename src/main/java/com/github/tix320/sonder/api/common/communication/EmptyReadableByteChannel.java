@@ -3,35 +3,19 @@ package com.github.tix320.sonder.api.common.communication;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.skimp.api.object.None;
+import com.github.tix320.sonder.internal.common.communication.BaseCertainReadableByteChannel;
 
-public final class EmptyReadableByteChannel implements CertainReadableByteChannel {
+public final class EmptyReadableByteChannel extends BaseCertainReadableByteChannel {
 
 	public static final EmptyReadableByteChannel SELF = new EmptyReadableByteChannel();
 
 	private EmptyReadableByteChannel() {
+		fireCompleted();
 	}
 
 	@Override
 	public int read(ByteBuffer dst) throws IOException {
 		return -1;
-	}
-
-	@Override
-	public boolean isOpen() {
-		return true;
-	}
-
-	@Override
-	public void close() throws IOException {
-
-	}
-
-	@Override
-	public MonoObservable<None> onFinish() {
-		return Observable.of(None.SELF);
 	}
 
 	@Override

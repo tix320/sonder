@@ -21,6 +21,7 @@ import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.common.Client;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
+import com.github.tix320.sonder.internal.common.ChannelUtils;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
 import com.github.tix320.sonder.internal.common.communication.Pack;
@@ -241,20 +242,13 @@ public final class SocketClientsSelector implements Closeable {
 			}
 		} else {
 			CertainReadableByteChannel contentChannel = pack.channel();
-			runAsync(() -> {
-				try {
-					packConsumer.accept(clientConnection.client.getId(), pack);
-				} finally {
-					try {
-						contentChannel.readRemainingInVain();
-					} catch (IOException e) {
-						e.printStackTrace();
-						closeClientConnection(clientConnection);
-					}
-				}
-			});
+			runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack));
 
-			contentChannel.onFinish().subscribe(none -> {
+			ChannelUtils.setChannelFinishedWarningHandler(contentChannel,
+					duration -> String.format("SONDER WARNING: %s not finished in %s",
+							CertainReadableByteChannel.class.getSimpleName(), duration));
+
+			contentChannel.completeness().subscribe(none -> {
 				try {
 					selectionKey.interestOpsOr(SelectionKey.OP_READ);
 					selector.wakeup();

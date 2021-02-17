@@ -15,8 +15,6 @@ import com.github.tix320.skimp.api.object.None;
  */
 public interface CertainReadableByteChannel extends ReadableByteChannel {
 
-	MonoObservable<None> onFinish();
-
 	/**
 	 * Get length of content
 	 *
@@ -50,4 +48,11 @@ public interface CertainReadableByteChannel extends ReadableByteChannel {
 	 * @throws IOException if any IO errors occurs
 	 */
 	void readRemainingInVain() throws IOException;
+
+	/**
+	 * Observable to subscribe completed state, i.e. all bytes was read.
+	 *
+	 * @return observable
+	 */
+	MonoObservable<None> completeness();
 }
