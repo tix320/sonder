@@ -112,7 +112,9 @@ public final class SocketServerConnection {
 				if (pack != null) {
 					CountDownLatch latch = new CountDownLatch(1);
 					CertainReadableByteChannel contentChannel = pack.channel();
-					runAsync(() -> packConsumer.accept(pack));
+					runAsync(() -> {
+						packConsumer.accept(pack);
+					});
 
 					ChannelUtils.setChannelFinishedWarningHandler(contentChannel,
 							duration -> String.format("SONDER WARNING: %s not finished in %s",

@@ -31,7 +31,7 @@ public abstract class BaseCertainReadableByteChannel implements CertainReadableB
 	}
 
 	@Override
-	public final void close() throws IOException {
+	public final void close() {
 		synchronized (this) {
 			if (isOpen) {
 				isOpen = false;
