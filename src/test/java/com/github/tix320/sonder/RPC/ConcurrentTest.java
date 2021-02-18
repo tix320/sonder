@@ -13,6 +13,9 @@ import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.server.SonderServer;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static java.util.stream.Collectors.toSet;
@@ -26,13 +29,15 @@ public class ConcurrentTest {
 	private static final String HOST = "localhost";
 	private static final int PORT = 33335;
 
+	SonderServer sonderServer;
+
 	@Test
 	public void test() throws IOException, InterruptedException {
 		ServerRPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
 				.registerEndpointClasses(ServerEndpoint.class)
 				.build();
 
-		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT))
+		 sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT))
 				.registerProtocol(rpcProtocol)
 				.build();
 
@@ -60,7 +65,7 @@ public class ConcurrentTest {
 			protocol.getOrigin(ClientService.class).getStringLength("f".repeat(i)).subscribe(responses::add);
 		}
 
-		Thread.sleep(2000);
+		Thread.sleep(5000);
 
 		Set<Integer> expectedResponses = IntStream.range(1, usersCount + 1).boxed().collect(toSet());
 		assertEquals(expectedResponses, responses);
@@ -68,6 +73,10 @@ public class ConcurrentTest {
 		for (SonderClient client : clients) {
 			client.stop();
 		}
+	}
+
+	@AfterEach
+	public void cleanup() throws IOException {
 		sonderServer.stop();
 	}
 }
