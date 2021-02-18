@@ -7,13 +7,12 @@ import java.nio.channels.Channel;
 import java.nio.channels.ClosedChannelException;
 import java.util.LinkedList;
 import java.util.Queue;
-import java.util.concurrent.atomic.AtomicReference;
 
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.EmptyReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
 
-public final class PackChannel implements Channel {
+public final class SonderProtocolChannel implements Channel {
 
 	private static final byte[] PROTOCOL_HEADER_BYTES = {
 			105, 99, 111, 110, 116, 114, 111, 108};
@@ -30,7 +29,7 @@ public final class PackChannel implements Channel {
 
 	private final ByteBuffer contentLengthBuffer;
 
-	private final AtomicReference<State> state;
+	private State state;
 
 	private ByteBuffer headersBuffer;
 
@@ -49,7 +48,7 @@ public final class PackChannel implements Channel {
 	private final Object readLock = new Object();
 	private final Object writeLock = new Object();
 
-	public PackChannel(ByteChannel channel) {
+	public SonderProtocolChannel(ByteChannel channel) {
 		this.channel = channel;
 		this.protocolHeaderBuffer = ByteBuffer.allocateDirect(PROTOCOL_HEADER_BYTES.length);
 		this.headersLengthBuffer = ByteBuffer.allocateDirect(HEADERS_LENGTH_BYTES);
@@ -58,7 +57,7 @@ public final class PackChannel implements Channel {
 		this.lastReadContentLength = 0;
 		this.writeQueue = new LinkedList<>();
 		this.lastWriteMetaData = null;
-		this.state = new AtomicReference<>(State.PROTOCOL_HEADER);
+		this.state =State.PROTOCOL_HEADER;
 	}
 
 	public boolean write(Pack pack) throws IOException {
@@ -121,7 +120,7 @@ public final class PackChannel implements Channel {
 	 * @throws InvalidPackException If invalid pack is consumed
 	 */
 	public Pack read() throws IOException, InvalidPackException {
-		if (state.get() == State.last()) {
+		if (state == State.CONTENT) {
 			return null;
 		}
 		synchronized (readLock) {
@@ -212,7 +211,7 @@ public final class PackChannel implements Channel {
 	private Pack consume() throws IOException {
 		cycle:
 		while (true) {
-			State state = this.state.get();
+			State state = this.state;
 			switch (state) {
 				case PROTOCOL_HEADER:
 					readToBuffer(protocolHeaderBuffer);
@@ -224,7 +223,7 @@ public final class PackChannel implements Channel {
 					protocolHeaderBuffer.flip();
 					checkHeader();
 
-					this.state.updateAndGet(State::next);
+					this.state = this.state.next();
 					break;
 				case HEADERS_LENGTH:
 					readToBuffer(headersLengthBuffer);
@@ -239,7 +238,7 @@ public final class PackChannel implements Channel {
 						throw new InvalidPackException(String.format("Invalid headers length: %s", headersLength));
 					}
 
-					this.state.updateAndGet(State::next);
+					this.state = this.state.next();
 					headersBuffer = ByteBuffer.allocate(headersLength);
 					break;
 				case CONTENT_LENGTH:
@@ -256,7 +255,7 @@ public final class PackChannel implements Channel {
 						throw new InvalidPackException(String.format("Invalid content length: %s", contentLength));
 					}
 
-					this.state.updateAndGet(State::next);
+					this.state = this.state.next();
 					break;
 				case HEADERS:
 					ByteBuffer buffer = headersBuffer;
@@ -268,7 +267,7 @@ public final class PackChannel implements Channel {
 
 					byte[] headers = buffer.array();
 
-					this.state.updateAndGet(State::next);
+					this.state = this.state.next();
 					return constructPack(headers, this.lastReadContentLength);
 				default:
 					throw new IllegalStateException(state.name());
@@ -300,7 +299,7 @@ public final class PackChannel implements Channel {
 	}
 
 	private void resetRead() {
-		state.set(State.first());
+		state = State.first();
 		protocolHeaderBuffer.clear();
 		headersLengthBuffer.clear();
 		contentLengthBuffer.clear();
@@ -370,10 +369,6 @@ public final class PackChannel implements Channel {
 
 		public static State first() {
 			return PROTOCOL_HEADER;
-		}
-
-		public static State last() {
-			return CONTENT;
 		}
 	}
 

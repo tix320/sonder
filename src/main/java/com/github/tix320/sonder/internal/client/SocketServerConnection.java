@@ -17,7 +17,7 @@ import com.github.tix320.sonder.api.client.ConnectionState;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.internal.common.ChannelUtils;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.communication.PackChannel;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
 
 public final class SocketServerConnection {
@@ -29,7 +29,7 @@ public final class SocketServerConnection {
 
 	private final Consumer<Pack> packConsumer;
 
-	private volatile PackChannel channel;
+	private volatile SonderProtocolChannel channel;
 
 	private volatile LoopThread thread;
 
@@ -54,7 +54,7 @@ public final class SocketServerConnection {
 				throw new IllegalStateException("Already running");
 			}
 
-			this.channel = new PackChannel(socketChannel);
+			this.channel = new SonderProtocolChannel(socketChannel);
 			this.thread = createLoopThread();
 			this.thread.start();
 		}

@@ -24,7 +24,7 @@ import com.github.tix320.sonder.api.common.communication.CertainReadableByteChan
 import com.github.tix320.sonder.internal.common.ChannelUtils;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.communication.PackChannel;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
 
 public final class SocketClientsSelector implements Closeable {
@@ -96,7 +96,7 @@ public final class SocketClientsSelector implements Closeable {
 
 			ClientConnection clientConnection = (ClientConnection) selectionKey.attachment();
 
-			PackChannel channel = clientConnection.channel;
+			SonderProtocolChannel channel = clientConnection.channel;
 			try {
 				boolean success = channel.write(pack);
 				if (!success) {
@@ -191,11 +191,11 @@ public final class SocketClientsSelector implements Closeable {
 		SocketChannel clientChannel = serverChannel.accept();
 		clientChannel.configureBlocking(false);
 		long clientId = clientIdGenerator.next();
-		PackChannel packChannel = new PackChannel(clientChannel);
+		SonderProtocolChannel sonderProtocolChannel = new SonderProtocolChannel(clientChannel);
 
 		InetSocketAddress remoteAddress = (InetSocketAddress) clientChannel.getRemoteAddress();
 		Client client = new Client(clientId, remoteAddress);
-		ClientConnection clientConnection = new ClientConnection(client, packChannel);
+		ClientConnection clientConnection = new ClientConnection(client, sonderProtocolChannel);
 
 		SelectionKey selectionKey = clientChannel.register(selector, SelectionKey.OP_READ, clientConnection);
 
@@ -206,7 +206,7 @@ public final class SocketClientsSelector implements Closeable {
 
 	private void read(SelectionKey selectionKey) {
 		ClientConnection clientConnection = (ClientConnection) selectionKey.attachment();
-		PackChannel channel = clientConnection.channel;
+		SonderProtocolChannel channel = clientConnection.channel;
 		Pack pack;
 		try {
 			pack = channel.read();
@@ -246,7 +246,7 @@ public final class SocketClientsSelector implements Closeable {
 
 	private void write(SelectionKey selectionKey) {
 		ClientConnection clientConnection = (ClientConnection) selectionKey.attachment();
-		PackChannel channel = clientConnection.channel;
+		SonderProtocolChannel channel = clientConnection.channel;
 
 		try {
 			boolean success = channel.writeLastPack();
@@ -288,8 +288,8 @@ public final class SocketClientsSelector implements Closeable {
 			//noinspection SynchronizationOnLocalVariableOrMethodParameter
 			synchronized (selectionKey) {
 				try {
-					PackChannel packChannel = clientConnection.channel;
-					packChannel.close();
+					SonderProtocolChannel sonderProtocolChannel = clientConnection.channel;
+					sonderProtocolChannel.close();
 				} catch (IOException e) {
 					new SocketConnectionException(String.format("An error occurs while closing channel of client %s",
 							clientConnection.client), e).printStackTrace();
@@ -316,9 +316,9 @@ public final class SocketClientsSelector implements Closeable {
 
 	private static class ClientConnection {
 		private final Client client;
-		private final PackChannel channel;
+		private final SonderProtocolChannel channel;
 
-		private ClientConnection(Client client, PackChannel channel) {
+		private ClientConnection(Client client, SonderProtocolChannel channel) {
 			this.client = client;
 			this.channel = channel;
 		}
