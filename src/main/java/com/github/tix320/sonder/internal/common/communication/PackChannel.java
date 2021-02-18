@@ -5,7 +5,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
 import java.nio.channels.Channel;
 import java.nio.channels.ClosedChannelException;
-import java.time.Duration;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicReference;
@@ -210,7 +209,7 @@ public final class PackChannel implements Channel {
 		this.lastWriteMetaData = writeMetaData;
 	}
 
-	private Pack consume() throws IOException, InvalidPackException {
+	private Pack consume() throws IOException {
 		cycle:
 		while (true) {
 			State state = this.state.get();
@@ -288,28 +287,16 @@ public final class PackChannel implements Channel {
 		} else {
 			LimitedReadableByteChannel limitedChannel = new LimitedReadableByteChannel(this.channel, contentLength);
 
-			setChannelFinishedHandler(limitedChannel);
-
-			return new Pack(headers, limitedChannel);
-		}
-	}
-
-	private void setChannelFinishedHandler(LimitedReadableByteChannel channel) {
-		long warningTimeoutSeconds = Math.max((long) Math.ceil(channel.getContentLength() * 5D / 1024 / 1024),
-				1); // 5sec for 1MB
-		Duration warningTimeout = Duration.ofSeconds(warningTimeoutSeconds);
-
-		channel.completeness().map(none -> true).getOnTimout(warningTimeout, () -> false).subscribe(success -> {
-			if (success) {
-				channel.close();
+			limitedChannel.completeness().subscribe(none -> {
+				limitedChannel.close();
 				synchronized (readLock) {
 					resetRead();
 				}
-			} else {
-				System.out.println("SONDER WARNING: Content channel not finished in 5 minutes");
-				setChannelFinishedHandler(channel);
-			}
-		});
+			});
+
+
+			return new Pack(headers, limitedChannel);
+		}
 	}
 
 	private void resetRead() {
@@ -333,7 +320,7 @@ public final class PackChannel implements Channel {
 		}
 	}
 
-	private void checkHeader() {
+	private void checkHeader() throws InvalidPackException {
 		ByteBuffer buffer = this.protocolHeaderBuffer;
 		int end = PROTOCOL_HEADER_BYTES.length;
 		int index = 0;

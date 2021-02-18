@@ -23,7 +23,6 @@ import com.github.tix320.sonder.api.common.Client;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.internal.common.ChannelUtils;
 import com.github.tix320.sonder.internal.common.State;
-import com.github.tix320.sonder.internal.common.communication.InvalidPackException;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.PackChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
@@ -101,8 +100,7 @@ public final class SocketClientsSelector implements Closeable {
 			try {
 				boolean success = channel.write(pack);
 				if (!success) {
-					selectionKey.interestOpsOr(SelectionKey.OP_WRITE);
-					selector.wakeup();
+					interestOpsOrWithWakeup(selectionKey, SelectionKey.OP_WRITE);
 				}
 			} catch (SocketException e) {
 				closeClientConnection(clientConnection);
@@ -169,10 +167,10 @@ public final class SocketClientsSelector implements Closeable {
 							e.printStackTrace();
 						}
 					} else if (selectionKey.isReadable()) {
-						selectionKey.interestOpsAnd(~SelectionKey.OP_READ);
+						interestOpsAndWithWakeup(selectionKey, ~SelectionKey.OP_READ);
 						runAsync(() -> read(selectionKey));
 					} else if (selectionKey.isWritable()) {
-						selectionKey.interestOpsAnd(~SelectionKey.OP_WRITE);
+						interestOpsAndWithWakeup(selectionKey, ~SelectionKey.OP_WRITE);
 						runAsync(() -> write(selectionKey));
 					} else {
 						selectionKey.cancel();
@@ -203,11 +201,10 @@ public final class SocketClientsSelector implements Closeable {
 
 		selectionKeysById.put(clientId, selectionKey);
 
-
 		newClientsPublisher.publish(client);
 	}
 
-	private void read(SelectionKey selectionKey) throws InvalidPackException {
+	private void read(SelectionKey selectionKey) {
 		ClientConnection clientConnection = (ClientConnection) selectionKey.attachment();
 		PackChannel channel = clientConnection.channel;
 		Pack pack;
@@ -234,12 +231,7 @@ public final class SocketClientsSelector implements Closeable {
 		}
 
 		if (pack == null) {
-			try {
-				selectionKey.interestOpsOr(SelectionKey.OP_READ);
-				selector.wakeup();
-			} catch (CancelledKeyException e) {
-				// bye key
-			}
+			interestOpsOrWithWakeup(selectionKey, SelectionKey.OP_READ);
 		} else {
 			CertainReadableByteChannel contentChannel = pack.channel();
 			runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack));
@@ -248,14 +240,7 @@ public final class SocketClientsSelector implements Closeable {
 					duration -> String.format("SONDER WARNING: Client: %s - %s not finished in %s",
 							clientConnection.client, CertainReadableByteChannel.class.getSimpleName(), duration));
 
-			contentChannel.completeness().subscribe(none -> {
-				try {
-					selectionKey.interestOpsOr(SelectionKey.OP_READ);
-					selector.wakeup();
-				} catch (CancelledKeyException e) {
-					// bye key
-				}
-			});
+			contentChannel.completeness().subscribe(none -> interestOpsOrWithWakeup(selectionKey, SelectionKey.OP_READ));
 		}
 	}
 
@@ -266,11 +251,8 @@ public final class SocketClientsSelector implements Closeable {
 		try {
 			boolean success = channel.writeLastPack();
 			if (!success) {
-				selectionKey.interestOpsOr(SelectionKey.OP_WRITE);
-				selector.wakeup();
+				interestOpsOrWithWakeup(selectionKey, SelectionKey.OP_WRITE);
 			}
-		} catch (CancelledKeyException e) {
-			// bye key
 		} catch (IOException e) {
 			if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
 				throw new SocketConnectionException(
@@ -278,6 +260,24 @@ public final class SocketClientsSelector implements Closeable {
 			}
 
 			closeClientConnection(clientConnection);
+		}
+	}
+
+	private void interestOpsOrWithWakeup(SelectionKey selectionKey, int op) {
+		try {
+			selectionKey.interestOpsOr(op);
+			selector.wakeup();
+		} catch (CancelledKeyException | ClosedSelectorException e) {
+			// bye key
+		}
+	}
+
+	private void interestOpsAndWithWakeup(SelectionKey selectionKey, int op) {
+		try {
+			selectionKey.interestOpsAnd(op);
+			selector.wakeup();
+		} catch (CancelledKeyException | ClosedSelectorException e) {
+			// bye key
 		}
 	}
 
