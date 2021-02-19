@@ -100,7 +100,7 @@ public final class SocketClientsSelector implements Closeable {
 			try {
 				boolean success = channel.write(pack);
 				if (!success) {
-					interestOpsOrWithWakeup(selectionKey, SelectionKey.OP_WRITE);
+					enableOpsAndWakeup(selectionKey, SelectionKey.OP_WRITE);
 				}
 			} catch (SocketException e) {
 				closeClientConnection(clientConnection);
@@ -167,10 +167,10 @@ public final class SocketClientsSelector implements Closeable {
 							e.printStackTrace();
 						}
 					} else if (selectionKey.isReadable()) {
-						interestOpsAndWithWakeup(selectionKey, ~SelectionKey.OP_READ);
+						disableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
 						runAsync(() -> read(selectionKey));
 					} else if (selectionKey.isWritable()) {
-						interestOpsAndWithWakeup(selectionKey, ~SelectionKey.OP_WRITE);
+						disableOpsAndWakeup(selectionKey, SelectionKey.OP_WRITE);
 						runAsync(() -> write(selectionKey));
 					} else {
 						selectionKey.cancel();
@@ -231,7 +231,7 @@ public final class SocketClientsSelector implements Closeable {
 		}
 
 		if (pack == null) {
-			interestOpsOrWithWakeup(selectionKey, SelectionKey.OP_READ);
+			enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
 		} else {
 			CertainReadableByteChannel contentChannel = pack.channel();
 			runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack));
@@ -240,7 +240,7 @@ public final class SocketClientsSelector implements Closeable {
 					duration -> String.format("SONDER WARNING: Client: %s - %s not finished in %s",
 							clientConnection.client, CertainReadableByteChannel.class.getSimpleName(), duration));
 
-			contentChannel.completeness().subscribe(none -> interestOpsOrWithWakeup(selectionKey, SelectionKey.OP_READ));
+			contentChannel.completeness().subscribe(none -> enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ));
 		}
 	}
 
@@ -251,7 +251,7 @@ public final class SocketClientsSelector implements Closeable {
 		try {
 			boolean success = channel.writeLastPack();
 			if (!success) {
-				interestOpsOrWithWakeup(selectionKey, SelectionKey.OP_WRITE);
+				enableOpsAndWakeup(selectionKey, SelectionKey.OP_WRITE);
 			}
 		} catch (IOException e) {
 			if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
@@ -263,7 +263,7 @@ public final class SocketClientsSelector implements Closeable {
 		}
 	}
 
-	private void interestOpsOrWithWakeup(SelectionKey selectionKey, int op) {
+	private void enableOpsAndWakeup(SelectionKey selectionKey, int op) {
 		try {
 			selectionKey.interestOpsOr(op);
 			selector.wakeup();
@@ -272,9 +272,9 @@ public final class SocketClientsSelector implements Closeable {
 		}
 	}
 
-	private void interestOpsAndWithWakeup(SelectionKey selectionKey, int op) {
+	private void disableOpsAndWakeup(SelectionKey selectionKey, int op) {
 		try {
-			selectionKey.interestOpsAnd(op);
+			selectionKey.interestOpsAnd(~op);
 			selector.wakeup();
 		} catch (CancelledKeyException | ClosedSelectorException e) {
 			// bye key
