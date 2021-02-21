@@ -5,12 +5,15 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
 import java.nio.channels.Channel;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SelectionKey;
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.EmptyReadableByteChannel;
-import com.github.tix320.sonder.api.common.communication.LimitedReadableByteChannel;
 
 public final class SonderProtocolChannel implements Channel {
 
@@ -23,21 +26,17 @@ public final class SonderProtocolChannel implements Channel {
 
 	private final ByteChannel channel;
 
-	private final ByteBuffer protocolHeaderBuffer;
+	private volatile ReadMetaData lastReadMetaData;
 
-	private final ByteBuffer headersLengthBuffer;
+	private final ByteBuffer protocolHeaderBuffer = ByteBuffer.allocateDirect(PROTOCOL_HEADER_BYTES.length);
 
-	private final ByteBuffer contentLengthBuffer;
+	private final ByteBuffer headersLengthBuffer = ByteBuffer.allocateDirect(HEADERS_LENGTH_BYTES);
 
-	private State state;
-
-	private ByteBuffer headersBuffer;
-
-	private long lastReadContentLength;
+	private final ByteBuffer contentLengthBuffer = ByteBuffer.allocateDirect(CONTENT_LENGTH_BYTES);
 
 	private final Queue<Pack> writeQueue;
 
-	private WriteMetaData lastWriteMetaData;
+	private volatile WriteMetaData lastWriteMetaData;
 
 	private final ByteBuffer writeContentBuffer = ByteBuffer.allocateDirect(1024 * 64);
 
@@ -50,14 +49,9 @@ public final class SonderProtocolChannel implements Channel {
 
 	public SonderProtocolChannel(ByteChannel channel) {
 		this.channel = channel;
-		this.protocolHeaderBuffer = ByteBuffer.allocateDirect(PROTOCOL_HEADER_BYTES.length);
-		this.headersLengthBuffer = ByteBuffer.allocateDirect(HEADERS_LENGTH_BYTES);
-		this.contentLengthBuffer = ByteBuffer.allocateDirect(CONTENT_LENGTH_BYTES);
-		this.headersBuffer = null;
-		this.lastReadContentLength = 0;
 		this.writeQueue = new LinkedList<>();
 		this.lastWriteMetaData = null;
-		this.state =State.PROTOCOL_HEADER;
+		this.lastReadMetaData = null;
 	}
 
 	public boolean write(Pack pack) throws IOException {
@@ -116,22 +110,23 @@ public final class SonderProtocolChannel implements Channel {
 
 
 	/**
-	 * @throws IOException          If any I/O error occurs
-	 * @throws InvalidPackException If invalid pack is consumed
+	 * @throws IOException                    If any I/O error occurs
+	 * @throws SonderProtocolException        If invalid pack is consumed
+	 * @throws PackNotReadyException          If pack not ready fully yet
+	 * @throws ContentReadInProgressException If pack content read in progress
 	 */
-	public Pack read() throws IOException, InvalidPackException {
-		if (state == State.CONTENT) {
-			return null;
-		}
+	public ReceivedPacket read() throws IOException, PackNotReadyException, ContentReadInProgressException {
 		synchronized (readLock) {
+			if (lastReadMetaData == null) {
+				lastReadMetaData = new ReadMetaData();
+			}
 			try {
 				return consume();
-			} catch (InvalidPackException e) {
-				resetRead();
-				e.printStackTrace();
-				return null;
 			} catch (IOException e) {
 				close();
+				throw e;
+			} catch (PackNotReadyException | ContentReadInProgressException e) {
+
 				throw e;
 			} catch (Throwable e) {
 				close();
@@ -194,7 +189,7 @@ public final class SonderProtocolChannel implements Channel {
 			contentWriteBuffer.limit(limit);
 			int count = contentChannel.read(contentWriteBuffer);
 			if (count < 0) {
-				throw new InvalidPackException(
+				throw new SonderProtocolException(
 						String.format("Content channel ended, but still remaining %s bytes", remainingBytes));
 			}
 			contentWriteBuffer.flip();
@@ -208,102 +203,139 @@ public final class SonderProtocolChannel implements Channel {
 		this.lastWriteMetaData = writeMetaData;
 	}
 
-	private Pack consume() throws IOException {
-		cycle:
-		while (true) {
-			State state = this.state;
-			switch (state) {
-				case PROTOCOL_HEADER:
-					readToBuffer(protocolHeaderBuffer);
+	private ReceivedPacket consume() throws IOException, PackNotReadyException, ContentReadInProgressException {
+		synchronized (readLock) {
+			while (true) {
+				ReadMetaData readMetaData = this.lastReadMetaData;
+				switch (readMetaData.state) {
+					case PROTOCOL_HEADER:
+						ByteBuffer protocolHeaderBuffer = readMetaData.getProtocolHeaderBuffer();
+						readToBuffer(protocolHeaderBuffer);
 
-					if (protocolHeaderBuffer.hasRemaining()) {
-						break cycle;
-					}
+						if (protocolHeaderBuffer.hasRemaining()) {
+							throw new PackNotReadyException();
+						}
 
-					protocolHeaderBuffer.flip();
-					checkHeader();
+						protocolHeaderBuffer.flip();
+						checkHeader();
 
-					this.state = this.state.next();
-					break;
-				case HEADERS_LENGTH:
-					readToBuffer(headersLengthBuffer);
+						readMetaData.toNextState();
+						break;
+					case HEADERS_LENGTH:
+						ByteBuffer headersLengthBuffer = readMetaData.getHeadersLengthBuffer();
+						readToBuffer(headersLengthBuffer);
 
-					if (headersLengthBuffer.hasRemaining()) {
-						break cycle;
-					}
+						if (headersLengthBuffer.hasRemaining()) {
+							throw new PackNotReadyException();
+						}
 
-					headersLengthBuffer.flip();
-					int headersLength = headersLengthBuffer.getInt();
-					if (headersLength <= 0) {
-						throw new InvalidPackException(String.format("Invalid headers length: %s", headersLength));
-					}
+						headersLengthBuffer.flip();
+						int headersLength = headersLengthBuffer.getInt();
+						if (headersLength <= 0) {
+							throw new SonderProtocolException(
+									String.format("Invalid headers length: %s", headersLength));
+						}
 
-					this.state = this.state.next();
-					headersBuffer = ByteBuffer.allocate(headersLength);
-					break;
-				case CONTENT_LENGTH:
-					readToBuffer(contentLengthBuffer);
+						readMetaData.toNextState();
+						readMetaData.allocateHeadersBuffer(headersLength);
+						break;
+					case CONTENT_LENGTH:
+						ByteBuffer contentLengthBuffer = readMetaData.getContentLengthBuffer();
+						readToBuffer(contentLengthBuffer);
 
-					if (contentLengthBuffer.hasRemaining()) {
-						break cycle;
-					}
+						if (contentLengthBuffer.hasRemaining()) {
+							throw new PackNotReadyException();
+						}
 
-					contentLengthBuffer.flip();
-					long contentLength = contentLengthBuffer.getLong();
-					this.lastReadContentLength = contentLength;
-					if (contentLength < 0) {
-						throw new InvalidPackException(String.format("Invalid content length: %s", contentLength));
-					}
+						contentLengthBuffer.flip();
+						long contentLength = contentLengthBuffer.getLong();
+						readMetaData.setContentLength(contentLength);
+						if (contentLength < 0) {
+							throw new SonderProtocolException(
+									String.format("Invalid content length: %s", contentLength));
+						}
 
-					this.state = this.state.next();
-					break;
-				case HEADERS:
-					ByteBuffer buffer = headersBuffer;
-					readToBuffer(buffer);
+						readMetaData.toNextState();
+						break;
+					case HEADERS:
+						ByteBuffer buffer = readMetaData.headersBuffer;
+						readToBuffer(buffer);
 
-					if (buffer.hasRemaining()) {
-						break cycle;
-					}
+						if (buffer.hasRemaining()) {
+							throw new PackNotReadyException();
+						}
 
-					byte[] headers = buffer.array();
+						byte[] headers = buffer.array();
 
-					this.state = this.state.next();
-					return constructPack(headers, this.lastReadContentLength);
-				default:
-					throw new IllegalStateException(state.name());
+						readMetaData.toNextState();
+						return constructPack(headers, readMetaData.contentLength);
+					case CONTENT:
+						readMetaData.contentChannel.notifyForAvailability();
+						throw new ContentReadInProgressException();
+					default:
+						throw new IllegalStateException(readMetaData.state.name());
+				}
 			}
 		}
-
-		return null;
 	}
 
-	private Pack constructPack(byte[] headers, long contentLength) {
+	private ReceivedPacket constructPack(byte[] headers, long contentLength) {
 		if (contentLength == 0) {
 			resetRead();
 
 			CertainReadableByteChannel channel = EmptyReadableByteChannel.SELF;
-			return new Pack(headers, channel);
-		} else {
-			LimitedReadableByteChannel limitedChannel = new LimitedReadableByteChannel(this.channel, contentLength);
+			Pack pack = new Pack(headers, channel);
+			return new ReceivedPacket() {
+				@Override
+				public Pack getPack() {
+					return pack;
+				}
 
-			limitedChannel.completeness().subscribe(none -> {
-				limitedChannel.close();
+				@Override
+				public Observable<PacketState> state() {
+					return Observable.of(PacketState.COMPLETED);
+				}
+			};
+		} else {
+			Publisher<PacketState> packetStatePublisher = Publisher.simple();
+
+			BlockingCertainReadableByteChannel contentChannel = new BlockingCertainReadableByteChannel(this.channel,
+					contentLength);
+
+			lastReadMetaData.setContentChannel(contentChannel);
+
+			contentChannel.emptiness().subscribe(none -> packetStatePublisher.publish(PacketState.EMPTY));
+
+			contentChannel.completeness().subscribe(none -> {
 				synchronized (readLock) {
+					contentChannel.close();
+					packetStatePublisher.publish(PacketState.COMPLETED);
+					packetStatePublisher.complete();
 					resetRead();
 				}
 			});
 
+			Pack pack = new Pack(headers, contentChannel);
 
-			return new Pack(headers, limitedChannel);
+			return new ReceivedPacket() {
+				@Override
+				public Pack getPack() {
+					return pack;
+				}
+
+				@Override
+				public Observable<PacketState> state() {
+					return packetStatePublisher.asObservable();
+				}
+			};
 		}
 	}
 
 	private void resetRead() {
-		state = State.first();
-		protocolHeaderBuffer.clear();
-		headersLengthBuffer.clear();
-		contentLengthBuffer.clear();
-		headersBuffer = null;
+		synchronized (readLock) {
+			lastReadMetaData.reset();
+			lastReadMetaData = null;
+		}
 	}
 
 	private void resetWriteContentBuffer() {
@@ -319,14 +351,14 @@ public final class SonderProtocolChannel implements Channel {
 		}
 	}
 
-	private void checkHeader() throws InvalidPackException {
-		ByteBuffer buffer = this.protocolHeaderBuffer;
+	private void checkHeader() throws SonderProtocolException {
+		ByteBuffer buffer = lastReadMetaData.getProtocolHeaderBuffer();
 		int end = PROTOCOL_HEADER_BYTES.length;
 		int index = 0;
 		for (int i = 0; i < end; i++) {
 			if (buffer.get() != PROTOCOL_HEADER_BYTES[index++]) {
 				buffer.rewind();
-				throw new InvalidPackException("Invalid protocol header");
+				throw new SonderProtocolException("Invalid protocol header");
 			}
 		}
 
@@ -369,6 +401,59 @@ public final class SonderProtocolChannel implements Channel {
 
 		public static State first() {
 			return PROTOCOL_HEADER;
+		}
+	}
+
+	private final class ReadMetaData {
+
+		private volatile State state;
+		private volatile ByteBuffer headersBuffer;
+		private volatile long contentLength;
+		private volatile BlockingCertainReadableByteChannel contentChannel;
+
+		public ReadMetaData() {
+			this.state = State.PROTOCOL_HEADER;
+			this.headersBuffer = null;
+			this.contentLength = -1;
+			this.contentChannel = null;
+		}
+
+		public void toNextState() {
+			this.state = state.next();
+		}
+
+		public void allocateHeadersBuffer(int headersLength) {
+			this.headersBuffer = ByteBuffer.allocate(headersLength);
+		}
+
+		public void setContentLength(long contentLength) {
+			this.contentLength = contentLength;
+		}
+
+		public void setContentChannel(BlockingCertainReadableByteChannel channel) {
+			this.contentChannel = channel;
+		}
+
+		public ByteBuffer getProtocolHeaderBuffer() {
+			return protocolHeaderBuffer;
+		}
+
+		public ByteBuffer getHeadersLengthBuffer() {
+			return headersLengthBuffer;
+		}
+
+		public ByteBuffer getContentLengthBuffer() {
+			return contentLengthBuffer;
+		}
+
+		public void reset() {
+			this.state = State.PROTOCOL_HEADER;
+			this.headersBuffer = null;
+			this.contentLength = -1;
+			this.contentChannel = null;
+			protocolHeaderBuffer.clear();
+			headersLengthBuffer.clear();
+			contentLengthBuffer.clear();
 		}
 	}
 
@@ -425,5 +510,29 @@ public final class SonderProtocolChannel implements Channel {
 
 			return buffer;
 		}
+	}
+
+	public static final class PackNotReadyException extends Exception {
+
+		public PackNotReadyException() {
+		}
+	}
+
+	public static final class ContentReadInProgressException extends Exception {
+
+		public ContentReadInProgressException() {
+		}
+	}
+
+	public interface ReceivedPacket {
+
+		Pack getPack();
+
+		Observable<PacketState> state();
+	}
+
+	public enum PacketState {
+		EMPTY,
+		COMPLETED
 	}
 }

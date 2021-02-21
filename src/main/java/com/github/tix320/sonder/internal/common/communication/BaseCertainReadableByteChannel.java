@@ -1,7 +1,5 @@
 package com.github.tix320.sonder.internal.common.communication;
 
-import java.io.IOException;
-
 import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
@@ -25,9 +23,7 @@ public abstract class BaseCertainReadableByteChannel implements CertainReadableB
 
 	@Override
 	public final boolean isOpen() {
-		synchronized (this) {
-			return isOpen;
-		}
+		return isOpen;
 	}
 
 	@Override

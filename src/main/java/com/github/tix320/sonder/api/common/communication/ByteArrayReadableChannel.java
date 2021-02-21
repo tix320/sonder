@@ -10,7 +10,7 @@ public final class ByteArrayReadableChannel extends BaseCertainReadableByteChann
 
 	private final byte[] array;
 
-	private int position;
+	private volatile int position;
 
 	public ByteArrayReadableChannel(byte[] array) {
 		this.array = array;
@@ -50,9 +50,7 @@ public final class ByteArrayReadableChannel extends BaseCertainReadableByteChann
 
 	@Override
 	public long getRemaining() {
-		synchronized (this) {
-			return array.length - position;
-		}
+		return array.length - position;
 	}
 
 	@Override

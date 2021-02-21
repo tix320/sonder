@@ -7,13 +7,13 @@ import java.nio.channels.ReadableByteChannel;
 
 import com.github.tix320.sonder.internal.common.communication.BaseCertainReadableByteChannel;
 
-public final class LimitedReadableByteChannel extends BaseCertainReadableByteChannel {
+public class LimitedReadableByteChannel extends BaseCertainReadableByteChannel {
 
 	protected final ReadableByteChannel channel;
 
 	private final long limit;
 
-	protected long remaining;
+	protected volatile long remaining;
 
 	public LimitedReadableByteChannel(ReadableByteChannel channel, long limit) {
 		if (limit <= 0) {
@@ -55,18 +55,16 @@ public final class LimitedReadableByteChannel extends BaseCertainReadableByteCha
 	}
 
 	@Override
-	public long getContentLength() {
+	public final long getContentLength() {
 		return limit;
 	}
 
-	public long getRemaining() {
-		synchronized (this) {
-			return remaining;
-		}
+	public final long getRemaining() {
+		return remaining;
 	}
 
 	@Override
-	public synchronized byte[] readAll() throws IOException {
+	public final synchronized byte[] readAll() throws IOException {
 		if (!isOpen()) {
 			throw new ClosedChannelException();
 		}
@@ -82,40 +80,27 @@ public final class LimitedReadableByteChannel extends BaseCertainReadableByteCha
 
 		ByteBuffer buffer = ByteBuffer.allocate((int) limit);
 		while (buffer.hasRemaining()) {
-			int read = channel.read(buffer);
+			int read = read(buffer);
 			if (read < 0) {
 				throw new IllegalStateException(
 						String.format("Content channel ended, but still remaining %s bytes", buffer.remaining()));
 			}
 		}
 
-		fireCompleted();
 		return buffer.array();
 	}
 
 	@Override
-	public synchronized void readRemainingInVain() throws IOException {
-		if (isCompleted()) {
-			return;
-		}
-
+	public final synchronized void readRemainingInVain() throws IOException {
 		ByteBuffer buffer = ByteBuffer.allocate(1024 * 64);
-		while (remaining > 0) {
-			int read = channel.read(buffer);
-			if (read < 0) {
-				break;
-			}
-			remaining -= read;
+
+		while (read(buffer) != -1) {
 			buffer.clear();
 		}
-
-		fireCompleted();
 	}
 
-	protected boolean isCompleted() {
-		synchronized (this) {
-			return remaining == 0;
-		}
+	private boolean isCompleted() {
+		return remaining == 0;
 	}
 
 	@Override

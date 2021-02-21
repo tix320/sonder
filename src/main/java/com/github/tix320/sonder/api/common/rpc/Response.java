@@ -40,4 +40,9 @@ public final class Response<T> {
 	public boolean isError() {
 		return !isSuccess;
 	}
+
+	@Override
+	public String toString() {
+		return "Response{" + "value=" + value + ", isSuccess=" + isSuccess + '}';
+	}
 }

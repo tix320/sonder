@@ -2,9 +2,9 @@ package com.github.tix320.sonder.internal.common.communication;
 
 import java.io.IOException;
 
-public final class InvalidPackException extends IOException {
+public final class SonderProtocolException extends IOException {
 
-	public InvalidPackException(String message) {
+	public SonderProtocolException(String message) {
 		super(message);
 	}
 }

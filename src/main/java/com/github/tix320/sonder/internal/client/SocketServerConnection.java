@@ -14,11 +14,12 @@ import com.github.tix320.skimp.api.thread.LoopThread;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.client.ConnectionState;
-import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
-import com.github.tix320.sonder.internal.common.ChannelUtils;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ContentReadInProgressException;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackNotReadyException;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPacket;
 
 public final class SocketServerConnection {
 
@@ -107,24 +108,32 @@ public final class SocketServerConnection {
 	private LoopThread createLoopThread() {
 		return Threads.createLoopThread(() -> {
 			try {
-				Pack pack = channel.read();
+				ReceivedPacket pack = channel.read();
+				CountDownLatch latch = new CountDownLatch(1);
 
-				if (pack != null) {
-					CountDownLatch latch = new CountDownLatch(1);
-					CertainReadableByteChannel contentChannel = pack.channel();
-					runAsync(() -> packConsumer.accept(pack));
-
-					ChannelUtils.setChannelFinishedWarningHandler(contentChannel,
-							duration -> String.format("SONDER WARNING: %s not completed in %s",
-									CertainReadableByteChannel.class.getSimpleName(), duration));
-
-					contentChannel.completeness().subscribe(none -> latch.countDown());
-
-					try {
-						latch.await();
-					} catch (InterruptedException e) {
-						throw new BreakLoopException();
+				pack.state().subscribe(state -> {
+					switch (state) {
+						case EMPTY:
+							throw new IllegalStateException("Client is non-blocking");
+						case COMPLETED:
+							latch.countDown();
+							break;
+						default:
+							throw new IllegalStateException("Unexpected value: " + state);
 					}
+				});
+
+
+				runAsync(() -> packConsumer.accept(pack.getPack()));
+
+				// ChannelUtils.setChannelFinishedWarningHandler(contentChannel,
+				// 		duration -> String.format("SONDER WARNING: %s not completed in %s",
+				// 				CertainReadableByteChannel.class.getSimpleName(), duration));
+
+				try {
+					latch.await();
+				} catch (InterruptedException e) {
+					throw new BreakLoopException();
 				}
 
 			} catch (ClosedChannelException e) {
@@ -137,6 +146,10 @@ public final class SocketServerConnection {
 				}
 
 				throw new BreakLoopException();
+			} catch (PackNotReadyException ignored) {
+				// client side channel is blocking, so we are continue next read
+			} catch (ContentReadInProgressException ignored) {
+				throw new IllegalStateException("Because of we are sleep until channel state is COMPLETED");
 			}
 		});
 	}
