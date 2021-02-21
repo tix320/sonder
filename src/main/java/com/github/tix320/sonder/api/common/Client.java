@@ -6,7 +6,7 @@ import java.net.InetSocketAddress;
  * @author : Tigran Sargsyan
  * @since : 14.02.2021
  **/
-public class Client {
+public final class Client {
 
 	private final long id;
 

@@ -20,12 +20,13 @@ import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.common.Client;
-import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
-import com.github.tix320.sonder.internal.common.ChannelUtils;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
-import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ContentReadInProgressException;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackNotReadyException;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPacket;
 
 public final class SocketClientsSelector implements Closeable {
 
@@ -207,7 +208,7 @@ public final class SocketClientsSelector implements Closeable {
 	private void read(SelectionKey selectionKey) {
 		ClientConnection clientConnection = (ClientConnection) selectionKey.attachment();
 		SonderProtocolChannel channel = clientConnection.channel;
-		Pack pack;
+		ReceivedPacket pack;
 		try {
 			pack = channel.read();
 		} catch (ClosedChannelException e) {
@@ -228,20 +229,31 @@ public final class SocketClientsSelector implements Closeable {
 			}
 
 			return;
-		}
-
-		if (pack == null) {
+		} catch (PackNotReadyException e) {
 			enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
-		} else {
-			CertainReadableByteChannel contentChannel = pack.channel();
-			runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack));
-
-			ChannelUtils.setChannelFinishedWarningHandler(contentChannel,
-					duration -> String.format("SONDER WARNING: Client: %s - %s not finished in %s",
-							clientConnection.client, CertainReadableByteChannel.class.getSimpleName(), duration));
-
-			contentChannel.completeness().subscribe(none -> enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ));
+			return;
+		} catch (ContentReadInProgressException e) {
+			return;
 		}
+
+		pack.state().subscribe(state -> {
+			switch (state) {
+				case EMPTY:
+				case COMPLETED:
+					enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
+					break;
+
+				default:
+					throw new IllegalStateException("Unexpected value: " + state);
+			}
+		});
+
+
+		// ChannelUtils.setChannelFinishedWarningHandler(blockingChannel,
+		// 		duration -> String.format("SONDER WARNING: Client: %s - %s not finished in %s",
+		// 				clientConnection.client, CertainReadableByteChannel.class.getSimpleName(), duration));
+
+		runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack.getPack()));
 	}
 
 	private void write(SelectionKey selectionKey) {
