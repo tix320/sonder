@@ -36,15 +36,20 @@ public class LimitedReadableByteChannel extends BaseCertainReadableByteChannel {
 		}
 
 		int needToRead = dst.remaining();
-		long remaining = this.remaining;
 
 		int limit = dst.limit();
-		if (remaining < needToRead) {
-			dst.limit(dst.position() + (int) remaining);
+		if (this.remaining < needToRead) {
+			dst.limit(dst.position() + (int) this.remaining);
 		}
 
 		int bytes = channel.read(dst);
-		dst.limit(limit);
+
+		if (bytes == -1) {
+			throw new IOException(
+					String.format("Wrapped channel ended, but still remaining %s bytes", this.remaining));
+		}
+
+		dst.limit(limit); // reset limit to initial
 		this.remaining -= bytes;
 
 		if (isCompleted()) {
@@ -81,9 +86,9 @@ public class LimitedReadableByteChannel extends BaseCertainReadableByteChannel {
 		ByteBuffer buffer = ByteBuffer.allocate((int) limit);
 		while (buffer.hasRemaining()) {
 			int read = read(buffer);
-			if (read < 0) {
-				throw new IllegalStateException(
-						String.format("Content channel ended, but still remaining %s bytes", buffer.remaining()));
+			if (read == -1) {
+				throw new IOException(
+						String.format("Wrapped channel ended, but still remaining %s bytes", buffer.remaining()));
 			}
 		}
 
