@@ -79,7 +79,7 @@ class ClientTest {
 		});
 
 		// connect to server
-		sonderClient.connect();
+		sonderClient.start();
 
 		// Get RPC interface for some request
 		ClientOrigin clientOrigin = rpcProtocol.getOrigin(ClientOrigin.class);

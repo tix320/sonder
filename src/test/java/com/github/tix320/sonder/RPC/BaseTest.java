@@ -38,7 +38,7 @@ public abstract class BaseTest {
 				.registerProtocol(this.rpcProtocol)
 				.build();
 
-		sonderClient.connect();
+		sonderClient.start();
 	}
 
 	@AfterEach
