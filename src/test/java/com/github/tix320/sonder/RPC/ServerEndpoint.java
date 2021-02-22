@@ -37,12 +37,12 @@ public class ServerEndpoint {
 
 	@Endpoint
 	public None throwAnyException() {
-		throw new RuntimeException();
+		throw new RuntimeException("any-exception");
 	}
 
 	@Endpoint
 	public None throwAnyExceptionWithoutHandle() {
-		throw new RuntimeException();
+		throw new RuntimeException("without-handle");
 	}
 
 	@Endpoint
