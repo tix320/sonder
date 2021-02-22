@@ -23,6 +23,7 @@ import com.github.tix320.kiwi.api.reactive.observable.Subscription;
 import com.github.tix320.kiwi.api.reactive.publisher.BufferedPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
+import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.object.None;
 import com.github.tix320.sonder.api.common.communication.*;
@@ -305,7 +306,7 @@ public abstract class RPCProtocol implements Protocol {
 				responsePublisher.publish(new Response<>(exception, false));
 			}
 			else {
-				new UnhandledErrorResponseException(exception).printStackTrace();
+				ExceptionUtils.applyToUncaughtExceptionHandler(new UnhandledErrorResponseException(exception));
 			}
 		}
 	}
