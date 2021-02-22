@@ -13,9 +13,7 @@ import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.server.SonderServer;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static java.util.stream.Collectors.toSet;
@@ -37,9 +35,7 @@ public class ConcurrentTest {
 				.registerEndpointClasses(ServerEndpoint.class)
 				.build();
 
-		 sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT))
-				.registerProtocol(rpcProtocol)
-				.build();
+		sonderServer = SonderServer.forAddress(new InetSocketAddress(PORT)).registerProtocol(rpcProtocol).build();
 
 		sonderServer.start();
 
@@ -58,7 +54,7 @@ public class ConcurrentTest {
 					.registerProtocol(protocol)
 					.build();
 
-			sonderClient.connect();
+			sonderClient.start();
 
 			clients.add(sonderClient);
 

@@ -23,7 +23,7 @@ public class EndpointCustomInstanceTest {
 	public static SonderClient sonderClient;
 
 	@Test
-	public void test() throws InterruptedException, IOException {
+	public void test(SonderClient sonderClient) throws InterruptedException, IOException {
 		ServerEndpoint serverEndpoint = new ServerEndpoint();
 		serverEndpoint.forTest = 5;
 
@@ -39,9 +39,9 @@ public class EndpointCustomInstanceTest {
 				.registerOriginInterfaces(ClientService.class)
 				.build();
 
-		sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT)).registerProtocol(protocol).build();
+		sonderClient;
 
-		sonderClient.connect();
+		sonderClient.start();
 
 		AtomicInteger holder = new AtomicInteger();
 		protocol.getOrigin(ClientService.class).testFactory().subscribe(holder::set);

@@ -248,11 +248,6 @@ public final class SocketClientsSelector implements Closeable {
 			}
 		});
 
-
-		// ChannelUtils.setChannelFinishedWarningHandler(blockingChannel,
-		// 		duration -> String.format("SONDER WARNING: Client: %s - %s not finished in %s",
-		// 				clientConnection.client, CertainReadableByteChannel.class.getSimpleName(), duration));
-
 		runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack.getPack()));
 	}
 

@@ -126,10 +126,6 @@ public final class SocketServerConnection {
 
 				runAsync(() -> packConsumer.accept(pack.getPack()));
 
-				// ChannelUtils.setChannelFinishedWarningHandler(contentChannel,
-				// 		duration -> String.format("SONDER WARNING: %s not completed in %s",
-				// 				CertainReadableByteChannel.class.getSimpleName(), duration));
-
 				try {
 					latch.await();
 				} catch (InterruptedException e) {

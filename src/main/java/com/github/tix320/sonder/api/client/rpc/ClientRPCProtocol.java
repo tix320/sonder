@@ -10,8 +10,8 @@ import com.github.tix320.sonder.api.client.TransferTunnel;
 import com.github.tix320.sonder.api.client.event.ClientEvents;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocolConfig;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
+import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocolConfig;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RemoteSubscriptionPublisher;
 
 /**
@@ -44,7 +44,9 @@ public final class ClientRPCProtocol extends RPCProtocol implements ClientSidePr
 
 			remoteSubscriptionPublishers.values().forEach(RemoteSubscriptionPublisher::closePublisher);
 			remoteSubscriptionPublishers.clear();
-			this.transferTunnel = null;
+
+			realSubscriptions.values().forEach(Subscription::unsubscribe);
+			realSubscriptions.clear();
 		}
 	}
 

@@ -3,18 +3,17 @@ package com.github.tix320.sonder.api.server;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.property.Property;
-import com.github.tix320.kiwi.api.reactive.property.StateProperty;
+import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.sonder.api.common.Client;
-import com.github.tix320.sonder.api.common.communication.*;
+import com.github.tix320.sonder.api.common.communication.Headers;
+import com.github.tix320.sonder.api.common.communication.Protocol;
+import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.server.event.ServerEvents;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocolBuilder;
+import com.github.tix320.sonder.internal.common.SonderSide;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.server.SocketClientsSelector;
@@ -35,17 +34,11 @@ import com.github.tix320.sonder.internal.server.SocketClientsSelector;
  * @see Protocol
  * @see Transfer
  */
-public final class SonderServer {
-
-	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-
-	private final Map<String, ServerSideProtocol> protocols;
+public final class SonderServer extends SonderSide<ServerSideProtocol> {
 
 	private final SocketClientsSelector clientsSelector;
 
 	private final ServerEvents serverEvents;
-
-	private final StateProperty<State> state = Property.forState(State.INITIAL);
 
 	/**
 	 * Prepare server creating for this socket address.
@@ -63,11 +56,8 @@ public final class SonderServer {
 	}
 
 	SonderServer(InetSocketAddress address, int workersCoreCount, Map<String, ServerSideProtocol> protocols) {
-		this.clientsSelector = new SocketClientsSelector(address, workersCoreCount, (clientId, pack) -> {
-			Transfer transfer = convertDataPackToTransfer(pack);
-			processTransfer(clientId, transfer);
-		});
-		this.protocols = new ConcurrentHashMap<>(protocols);
+		super(protocols);
+		this.clientsSelector = new SocketClientsSelector(address, workersCoreCount, this::handlePack);
 		this.serverEvents = new ServerEvents() {
 			@Override
 			public Observable<Client> newConnections() {
@@ -82,21 +72,24 @@ public final class SonderServer {
 	}
 
 	public void start() throws IOException {
-		boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
+		boolean changed = state.compareAndSet(State.INITIAL, State.RUNNING);
 		if (!changed) {
 			throw new IllegalStateException("Already started");
 		}
 
 		clientsSelector.run();
-		protocols.forEach((protocolName, protocol) -> initProtocol(protocol));
+		protocols().forEach(protocol -> protocol.init(new TransferTunnelImpl(protocol.getName()), serverEvents));
 	}
 
-	public void stop() throws IOException {
-		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
+	public void stop() {
+		boolean changed = state.compareAndSet(State.RUNNING, State.CLOSED);
 
 		if (changed) {
-			state.close();
-			clientsSelector.close();
+			try {
+				clientsSelector.close();
+			} catch (IOException ignored) {
+
+			}
 		}
 	}
 
@@ -104,62 +97,33 @@ public final class SonderServer {
 		return serverEvents;
 	}
 
-	private void initProtocol(ServerSideProtocol protocol) {
-		TransferTunnel transferTunnel = ((clientId, transfer) -> {
-			transfer = setProtocolHeader(transfer, protocol.getName());
-			Pack pack = transferToClientPack(transfer);
-			clientsSelector.send(clientId, pack);
-		});
-
-		protocol.init(transferTunnel, serverEvents);
-	}
-
-	private Transfer setProtocolHeader(Transfer transfer, String protocolName) {
-		return new ChannelTransfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
-				transfer.channel());
-	}
-
-	private Pack transferToClientPack(Transfer transfer) {
-		byte[] headers = serializeHeaders(transfer.getHeaders());
-
-		CertainReadableByteChannel channel = transfer.channel();
-		return new Pack(headers, channel);
-	}
-
-	private byte[] serializeHeaders(Headers headers) {
-		byte[] headerBytes;
+	private void handlePack(Long clientId, Pack pack) {
 		try {
-			headerBytes = JSON_MAPPER.writeValueAsBytes(headers);
-		} catch (JsonProcessingException e) {
-			throw new IllegalStateException("Cannot write JSON", e);
-		}
-
-		return headerBytes;
-	}
-
-	private Transfer convertDataPackToTransfer(Pack pack) {
-		Headers headers;
-		try {
-			headers = JSON_MAPPER.readValue(pack.getHeaders(), Headers.class);
-		} catch (IOException e) {
-			throw new IllegalStateException("Cannot parse JSON", e);
-		}
-		CertainReadableByteChannel channel = pack.channel();
-
-		return new ChannelTransfer(headers, channel);
-	}
-
-	private void processTransfer(long clientId, Transfer transfer) {
-		String protocolName = transfer.getHeaders().getNonNullString(Headers.PROTOCOL);
-
-		ServerSideProtocol protocol = protocols.get(protocolName);
-		if (protocol == null) {
-			throw new IllegalStateException(String.format("Protocol %s not found", protocolName));
-		}
-		try {
+			Transfer transfer = convertPackToTransfer(pack);
+			ServerSideProtocol protocol = findProtocol(transfer.getHeaders());
 			protocol.handleIncomingTransfer(clientId, transfer);
-		} catch (IOException e) {
-			throw new RuntimeException(e);
+		} catch (Throwable e) {
+			try {
+				pack.channel().readRemainingInVain();
+			} catch (IOException ignored) {
+			}
+			ExceptionUtils.applyToUncaughtExceptionHandler(e);
+		}
+	}
+
+	private final class TransferTunnelImpl implements TransferTunnel {
+
+		private final String protocolName;
+
+		private TransferTunnelImpl(String protocolName) {
+			this.protocolName = protocolName;
+		}
+
+		@Override
+		public void send(long clientId, Transfer transfer) {
+			transfer = setProtocolHeader(transfer, protocolName);
+			Pack pack = convertTransferToPack(transfer);
+			clientsSelector.send(clientId, pack);
 		}
 	}
 }
