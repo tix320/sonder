@@ -9,7 +9,6 @@ import com.github.tix320.sonder.api.client.event.ClientEvents;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.StaticTransfer;
 import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.api.server.event.ServerEvents;
 
 public class ClientTextProtocol implements ClientSideProtocol {
 
@@ -27,11 +26,11 @@ public class ClientTextProtocol implements ClientSideProtocol {
 
 	@Override
 	public void handleIncomingTransfer(Transfer transfer) throws IOException {
-		Headers headers = transfer.getHeaders();
+		Headers headers = transfer.headers();
 		String charset = headers.getNonNullString("charset"); // Get the charset for decoding content
 		long fromClientId = headers.getNonNullLong("from-id");
 
-		byte[] bytes = transfer.channel().readAll(); // read all content to byte array
+		byte[] bytes = transfer.contentChannel().readAll(); // read all content to byte array
 
 		String text = new String(bytes, charset); // convert bytes to string according to charset
 

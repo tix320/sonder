@@ -52,9 +52,9 @@ public abstract class SonderSide<P extends Protocol> {
 	}
 
 	protected static Pack convertTransferToPack(Transfer transfer) {
-		byte[] headers = serializeHeaders(transfer.getHeaders());
+		byte[] headers = serializeHeaders(transfer.headers());
 
-		return new Pack(headers, transfer.channel());
+		return new Pack(headers, transfer.contentChannel());
 	}
 
 	private static byte[] serializeHeaders(Headers headers) {
@@ -74,7 +74,7 @@ public abstract class SonderSide<P extends Protocol> {
 	}
 
 	protected static Transfer setProtocolHeader(Transfer transfer, String protocolName) {
-		return new ChannelTransfer(transfer.getHeaders().compose().header(Headers.PROTOCOL, protocolName).build(),
-				transfer.channel());
+		return new ChannelTransfer(transfer.headers().compose().header(Headers.PROTOCOL, protocolName).build(),
+				transfer.contentChannel());
 	}
 }

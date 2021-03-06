@@ -19,11 +19,11 @@ public final class StaticTransfer implements Transfer {
 		this.content = content;
 	}
 
-	public Headers getHeaders() {
+	public Headers headers() {
 		return headers;
 	}
 
-	public FiniteReadableByteChannel channel() {
+	public FiniteReadableByteChannel contentChannel() {
 		return new ByteArrayReadableChannel(content);
 	}
 

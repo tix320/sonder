@@ -7,7 +7,7 @@ import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
 import com.github.tix320.skimp.api.object.None;
 
 /**
- * Channel hold information about content length and remaining length.
+ * Finite Channel hold information about content length and remaining length.
  * Maximum bytes, which you can read, is equal to content length, after this it will be empty.
  *
  * @author Tigran Sargsyan on 23-Mar-20.

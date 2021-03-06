@@ -14,7 +14,7 @@ public interface Transfer {
 	 *
 	 * @return headers
 	 */
-	Headers getHeaders();
+	Headers headers();
 
 	/**
 	 * Get channel of transfer content.
@@ -23,5 +23,5 @@ public interface Transfer {
 	 *
 	 * @see FiniteReadableByteChannel
 	 */
-	FiniteReadableByteChannel channel();
+	FiniteReadableByteChannel contentChannel();
 }
