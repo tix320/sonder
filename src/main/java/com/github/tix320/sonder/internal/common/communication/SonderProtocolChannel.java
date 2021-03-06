@@ -21,7 +21,7 @@ public final class SonderProtocolChannel implements Channel {
 
 	private final ByteChannel sourceChannel;
 
-	private volatile ReadMetaData lastReadMetaData;
+	private volatile ReadMetaData currentReadMetaData;
 
 	private final ByteBuffer protocolHeaderBuffer = ByteBuffer.allocateDirect(PROTOCOL_HEADER_BYTES.length);
 
@@ -31,13 +31,9 @@ public final class SonderProtocolChannel implements Channel {
 
 	private final Queue<Pack> writeQueue;
 
-	private volatile WriteMetaData lastWriteMetaData;
+	private volatile WriteMetaData currentWriteMetaData;
 
 	private final ByteBuffer writeContentBuffer = ByteBuffer.allocateDirect(1024 * 64);
-
-	{
-		resetWriteContentBuffer();
-	}
 
 	private final Object readLock = new Object();
 	private final Object writeLock = new Object();
@@ -45,20 +41,23 @@ public final class SonderProtocolChannel implements Channel {
 	public SonderProtocolChannel(ByteChannel sourceChannel) {
 		this.sourceChannel = sourceChannel;
 		this.writeQueue = new LinkedList<>();
-		this.lastWriteMetaData = null;
-		this.lastReadMetaData = null;
+		this.currentWriteMetaData = null;
+		this.currentReadMetaData = null;
 	}
 
 	public boolean tryWrite(Pack pack) throws IOException {
 		synchronized (writeLock) {
 			try {
-				if (lastWriteMetaData != null) {
+				if (currentWriteMetaData != null) { // already other pack write in progress, just put in queue
 					writeQueue.add(pack);
 					return false;
 				} else {
-					WriteMetaData lastWriteMetaData = writePack(pack);
-					changeLastWriteMetaDataTo(lastWriteMetaData);
-					return lastWriteMetaData == null;
+					WriteMetaData writeMetaData = new WriteMetaData(pack);
+					boolean complete = writeFromMetadata(writeMetaData);
+					if (!complete) {
+						this.currentWriteMetaData = writeMetaData;
+					}
+					return complete;
 				}
 			} catch (IOException e) {
 				close();
@@ -73,23 +72,24 @@ public final class SonderProtocolChannel implements Channel {
 	public boolean continueWriting() throws IOException {
 		synchronized (writeLock) {
 			try {
-				if (lastWriteMetaData == null) {
+				if (currentWriteMetaData == null) {
 					return true;
 				} else {
-					WriteMetaData writeMetaData = writeFromMetadata(this.lastWriteMetaData);
-					if (writeMetaData != null) {
+					boolean complete = writeFromMetadata(this.currentWriteMetaData);
+					if (!complete) {
 						return false;
 					} else {
 						while (!writeQueue.isEmpty()) {
 							Pack pack = writeQueue.poll();
-							WriteMetaData metaData = writePack(pack);
-							if (metaData != null) {
-								changeLastWriteMetaDataTo(metaData);
+							WriteMetaData writeMetaData = new WriteMetaData(pack);
+							complete = writeFromMetadata(writeMetaData);
+							if (!complete) {
+								this.currentWriteMetaData = writeMetaData;
 								return false;
 							}
 						}
 
-						changeLastWriteMetaDataTo(null);
+						this.currentWriteMetaData = null;
 						return true;
 					}
 				}
@@ -112,8 +112,8 @@ public final class SonderProtocolChannel implements Channel {
 	 */
 	public ReceivedPack tryRead() throws IOException, PackNotReadyException, PackAlreadyReadException {
 		synchronized (readLock) {
-			if (lastReadMetaData == null) {
-				lastReadMetaData = new ReadMetaData();
+			if (currentReadMetaData == null) {
+				currentReadMetaData = new ReadMetaData();
 			}
 			try {
 				return consume();
@@ -131,7 +131,7 @@ public final class SonderProtocolChannel implements Channel {
 
 	public void resetReadState() {
 		synchronized (readLock) {
-			lastReadMetaData = null;
+			currentReadMetaData = null;
 		}
 	}
 
@@ -149,12 +149,7 @@ public final class SonderProtocolChannel implements Channel {
 		sourceChannel.close();
 	}
 
-	private WriteMetaData writePack(Pack pack) throws IOException {
-		WriteMetaData writeMetaData = new WriteMetaData(pack);
-		return writeFromMetadata(writeMetaData);
-	}
-
-	private WriteMetaData writeFromMetadata(WriteMetaData writeMetaData) throws IOException {
+	private boolean writeFromMetadata(WriteMetaData writeMetaData) throws IOException {
 		FiniteReadableByteChannel contentChannel = writeMetaData.getContentChannel();
 
 		ByteBuffer headersBuffer = writeMetaData.getHeadersBuffer();
@@ -162,7 +157,7 @@ public final class SonderProtocolChannel implements Channel {
 		while (headersBuffer.hasRemaining()) {
 			int writeCount = this.sourceChannel.write(headersBuffer);
 			if (writeCount == 0) {
-				return writeMetaData;
+				return false;
 			}
 		}
 
@@ -170,47 +165,55 @@ public final class SonderProtocolChannel implements Channel {
 
 		long remainingBytes = writeMetaData.getRemainingContentBytes();
 
-		while (remainingBytes != 0) {
+		boolean completed;
+		while (true) {
 			if (contentWriteBuffer.hasRemaining()) {
 				int writeCount = this.sourceChannel.write(contentWriteBuffer);
 				if (writeCount == 0) {
-					writeMetaData.changeRemainingContentBytes(remainingBytes);
-					return writeMetaData;
+					completed = false;
+					break;
 				}
 				remainingBytes -= writeCount;
+
+				if (remainingBytes == 0) {
+					completed = true;
+					break;
+				}
 			}
 
 			if (contentWriteBuffer.hasRemaining()) {
-				writeMetaData.changeRemainingContentBytes(remainingBytes);
-				return writeMetaData;
-			} else if (remainingBytes == 0) {
-				return null;
+				completed = false;
+				break;
 			}
-
-			contentWriteBuffer.position(0);
 
 			int limit = (int) Math.min(contentWriteBuffer.capacity(), remainingBytes);
+			contentWriteBuffer.position(0);
 			contentWriteBuffer.limit(limit);
+
 			int count = contentChannel.read(contentWriteBuffer);
-			if (count < 0) {
-				throw new SonderProtocolException(
+			if (count == 0) {
+				try {
+					//noinspection BusyWait
+					Thread.sleep(200);
+				} catch (InterruptedException e) {
+					throw new IOException("Interrupted while read", e);
+				}
+			} else if (count == -1) {
+				throw new IOException(
 						String.format("Content channel ended, but still remaining %s bytes", remainingBytes));
+			} else {
+				contentWriteBuffer.flip();
 			}
-			contentWriteBuffer.flip();
 		}
 
-		return null;
-	}
-
-	private void changeLastWriteMetaDataTo(WriteMetaData writeMetaData) {
-		resetWriteContentBuffer();
-		this.lastWriteMetaData = writeMetaData;
+		writeMetaData.changeRemainingContentBytes(remainingBytes);
+		return completed;
 	}
 
 	private ReceivedPack consume() throws IOException, PackNotReadyException, PackAlreadyReadException {
 		synchronized (readLock) {
 			while (true) {
-				ReadMetaData readMetaData = this.lastReadMetaData;
+				ReadMetaData readMetaData = this.currentReadMetaData;
 				switch (readMetaData.state) {
 					case PROTOCOL_HEADER:
 						boolean success = readProtocolHeaderPart(readMetaData.getProtocolHeaderBuffer());
@@ -316,11 +319,6 @@ public final class SonderProtocolChannel implements Channel {
 		}
 
 		return headersBuffer.array();
-	}
-
-	private void resetWriteContentBuffer() {
-		writeContentBuffer.position(0);
-		writeContentBuffer.limit(0);
 	}
 
 	private void readToBuffer(ByteBuffer byteBuffer) throws IOException {
@@ -433,6 +431,8 @@ public final class SonderProtocolChannel implements Channel {
 			this.contentChannel = contentChannel;
 			this.headersBuffer = headersBuffer;
 			this.remainingContentBytes = contentLength;
+			writeContentBuffer.position(0);
+			writeContentBuffer.limit(0);
 		}
 
 		public ByteBuffer getContentBuffer() {

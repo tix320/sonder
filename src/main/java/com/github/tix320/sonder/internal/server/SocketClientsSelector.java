@@ -30,7 +30,7 @@ import com.github.tix320.sonder.internal.common.communication.SonderProtocolChan
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackAlreadyReadException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackNotReadyException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPack;
-import com.github.tix320.sonder.internal.common.communication.channel.BlockingReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.channel.BlockingReadableByteChannel;
 import com.github.tix320.sonder.internal.common.communication.channel.CleanableFiniteReadableByteChannel;
 
 public final class SocketClientsSelector implements Closeable {
