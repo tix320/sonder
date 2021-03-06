@@ -51,9 +51,9 @@ public final class ServerRPCProtocol extends RPCProtocol implements ServerSidePr
 		SubscriptionRemover subscriptionRemover = responseKey -> realSubscriptions.remove(
 				new CantorPair(clientId, responseKey));
 
-		Headers headers = transfer.getHeaders();
+		Headers headers = transfer.headers();
 		headers = headers.compose().header(ServerRPCHeaders.SOURCE_CLIENT_ID, clientId).build();
-		transfer = new ChannelTransfer(headers, transfer.channel());
+		transfer = new ChannelTransfer(headers, transfer.contentChannel());
 
 		handleIncomingTransfer(transfer, transferSender, subscriptionAdder, subscriptionRemover);
 	}

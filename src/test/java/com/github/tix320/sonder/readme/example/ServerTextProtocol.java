@@ -20,12 +20,12 @@ public class ServerTextProtocol implements ServerSideProtocol {
 
 	@Override
 	public void handleIncomingTransfer(long clientId, Transfer transfer) throws IOException {
-		Headers headers = transfer.getHeaders();
+		Headers headers = transfer.headers();
 		long toClientId = headers.getNonNullLong("to-id");
 
 		Headers newHeaders = headers.compose().header("from-id", clientId).build();
 
-		transfer = new ChannelTransfer(newHeaders, transfer.channel());
+		transfer = new ChannelTransfer(newHeaders, transfer.contentChannel());
 		transferTunnel.send(toClientId, transfer);
 	}
 

@@ -100,7 +100,7 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 	private void handlePack(Long clientId, Pack pack) {
 		try {
 			Transfer transfer = convertPackToTransfer(pack);
-			ServerSideProtocol protocol = findProtocol(transfer.getHeaders());
+			ServerSideProtocol protocol = findProtocol(transfer.headers());
 			protocol.handleIncomingTransfer(clientId, transfer);
 		} catch (Throwable e) {
 			try {

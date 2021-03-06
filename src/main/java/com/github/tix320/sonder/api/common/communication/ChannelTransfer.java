@@ -17,12 +17,12 @@ public final class ChannelTransfer implements Transfer {
 	}
 
 	@Override
-	public Headers getHeaders() {
+	public Headers headers() {
 		return headers;
 	}
 
 	@Override
-	public FiniteReadableByteChannel channel() {
+	public FiniteReadableByteChannel contentChannel() {
 		return channel;
 	}
 
