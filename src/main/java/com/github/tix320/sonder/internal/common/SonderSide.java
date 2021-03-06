@@ -48,7 +48,7 @@ public abstract class SonderSide<P extends Protocol> {
 	protected static Transfer convertPackToTransfer(Pack pack) {
 		Headers headers = deserializeHeaders(pack.getHeaders());
 
-		return new ChannelTransfer(headers, pack.channel());
+		return new ChannelTransfer(headers, pack.contentChannel());
 	}
 
 	protected static Pack convertTransferToPack(Transfer transfer) {

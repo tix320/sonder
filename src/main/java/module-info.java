@@ -8,6 +8,7 @@ module com.github.tix.sonder {
 
 	exports com.github.tix320.sonder.api.common;
 	exports com.github.tix320.sonder.api.common.communication;
+	exports com.github.tix320.sonder.api.common.communication.channel;
 	exports com.github.tix320.sonder.api.common.rpc;
 	exports com.github.tix320.sonder.api.common.rpc.extra;
 	exports com.github.tix320.sonder.api.client;

@@ -1,14 +1,14 @@
 package com.github.tix320.sonder.internal.common.communication;
 
-import com.github.tix320.sonder.api.common.communication.CertainReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.channel.FiniteReadableByteChannel;
 
 public final class Pack {
 
 	private final byte[] headers;
 
-	private final CertainReadableByteChannel channel;
+	private final FiniteReadableByteChannel channel;
 
-	public Pack(byte[] headers, CertainReadableByteChannel channel) {
+	public Pack(byte[] headers, FiniteReadableByteChannel channel) {
 		this.headers = headers;
 		this.channel = channel;
 	}
@@ -17,7 +17,7 @@ public final class Pack {
 		return headers;
 	}
 
-	public CertainReadableByteChannel channel() {
+	public FiniteReadableByteChannel contentChannel() {
 		return channel;
 	}
 }

@@ -1,27 +1,27 @@
-package com.github.tix320.sonder.api.common.communication;
+package com.github.tix320.sonder.api.common.communication.channel;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ReadableByteChannel;
 
-import com.github.tix320.sonder.internal.common.communication.BaseCertainReadableByteChannel;
+import com.github.tix320.sonder.internal.common.communication.channel.AbstractFiniteReadableByteChannel;
 
-public class LimitedReadableByteChannel extends BaseCertainReadableByteChannel {
+public final class LimitedReadableByteChannel extends AbstractFiniteReadableByteChannel {
 
-	protected final ReadableByteChannel channel;
+	protected final ReadableByteChannel source;
 
 	private final long limit;
 
 	protected volatile long remaining;
 
-	public LimitedReadableByteChannel(ReadableByteChannel channel, long limit) {
+	public LimitedReadableByteChannel(ReadableByteChannel source, long limit) {
 		if (limit <= 0) {
 			throw new IllegalArgumentException("Limit: " + limit);
 		}
 
 		this.limit = limit;
-		this.channel = channel;
+		this.source = source;
 		this.remaining = limit;
 	}
 
@@ -42,14 +42,17 @@ public class LimitedReadableByteChannel extends BaseCertainReadableByteChannel {
 			dst.limit(dst.position() + (int) this.remaining);
 		}
 
-		int bytes = channel.read(dst);
-
-		if (bytes == -1) {
-			throw new IOException(
-					String.format("Wrapped channel ended, but still remaining %s bytes", this.remaining));
+		int bytes;
+		try {
+			bytes = source.read(dst);
+		} finally {
+			dst.limit(limit); // reset limit to initial
 		}
 
-		dst.limit(limit); // reset limit to initial
+		if (bytes == -1) {
+			throw new IOException(String.format("Wrapped channel ended, but still remaining %s bytes", this.remaining));
+		}
+
 		this.remaining -= bytes;
 
 		if (isCompleted()) {
@@ -57,15 +60,6 @@ public class LimitedReadableByteChannel extends BaseCertainReadableByteChannel {
 		}
 
 		return bytes;
-	}
-
-	@Override
-	public final long getContentLength() {
-		return limit;
-	}
-
-	public final long getRemaining() {
-		return remaining;
 	}
 
 	@Override
@@ -85,23 +79,20 @@ public class LimitedReadableByteChannel extends BaseCertainReadableByteChannel {
 
 		ByteBuffer buffer = ByteBuffer.allocate((int) limit);
 		while (buffer.hasRemaining()) {
-			int read = read(buffer);
-			if (read == -1) {
-				throw new IOException(
-						String.format("Wrapped channel ended, but still remaining %s bytes", buffer.remaining()));
-			}
+			read(buffer);
 		}
 
 		return buffer.array();
 	}
 
 	@Override
-	public final synchronized void readRemainingInVain() throws IOException {
-		ByteBuffer buffer = ByteBuffer.allocate(1024 * 64);
+	public final long getContentLength() {
+		return limit;
+	}
 
-		while (read(buffer) != -1) {
-			buffer.clear();
-		}
+	@Override
+	public final long getRemaining() {
+		return remaining;
 	}
 
 	private boolean isCompleted() {

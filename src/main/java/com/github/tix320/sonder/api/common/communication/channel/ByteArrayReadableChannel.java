@@ -1,12 +1,12 @@
-package com.github.tix320.sonder.api.common.communication;
+package com.github.tix320.sonder.api.common.communication.channel;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
 
-import com.github.tix320.sonder.internal.common.communication.BaseCertainReadableByteChannel;
+import com.github.tix320.sonder.internal.common.communication.channel.AbstractFiniteReadableByteChannel;
 
-public final class ByteArrayReadableChannel extends BaseCertainReadableByteChannel {
+public final class ByteArrayReadableChannel extends AbstractFiniteReadableByteChannel {
 
 	private final byte[] array;
 
@@ -54,23 +54,13 @@ public final class ByteArrayReadableChannel extends BaseCertainReadableByteChann
 	}
 
 	@Override
-	public byte[] readAll() {
-		synchronized (this) {
-			if (position != 0) {
-				throw new IllegalStateException("readAll not allowed, when any bytes already was read");
-			}
-
-			position = array.length;
-			fireCompleted();
-			return array;
+	public synchronized byte[] readAll() {
+		if (position != 0) {
+			throw new IllegalStateException("readAll not allowed, when any bytes already was read");
 		}
-	}
 
-	@Override
-	public void readRemainingInVain() throws IOException {
-		synchronized (this) {
-			position = array.length;
-			fireCompleted();
-		}
+		position = array.length;
+		fireCompleted();
+		return array;
 	}
 }

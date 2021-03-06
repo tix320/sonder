@@ -104,7 +104,7 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 			protocol.handleIncomingTransfer(clientId, transfer);
 		} catch (Throwable e) {
 			try {
-				pack.channel().readRemainingInVain();
+				pack.contentChannel().close();
 			} catch (IOException ignored) {
 			}
 			ExceptionUtils.applyToUncaughtExceptionHandler(e);

@@ -388,7 +388,7 @@ public abstract class RPCProtocol implements Protocol {
 
 		JavaType returnJavaType = originMethod.getReturnJavaType();
 		if (returnJavaType.getRawClass() == None.class) {
-			transfer.channel().readRemainingInVain();
+			transfer.channel().close();
 
 			if (isDualResponse) {
 				responsePublisher.publish(new Response<>(None.SELF, true));

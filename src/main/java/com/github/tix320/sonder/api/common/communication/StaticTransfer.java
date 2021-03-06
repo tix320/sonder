@@ -2,6 +2,9 @@ package com.github.tix320.sonder.api.common.communication;
 
 import java.util.Arrays;
 
+import com.github.tix320.sonder.api.common.communication.channel.ByteArrayReadableChannel;
+import com.github.tix320.sonder.api.common.communication.channel.FiniteReadableByteChannel;
+
 /**
  * The byte array implementation of transfer.
  */
@@ -20,7 +23,7 @@ public final class StaticTransfer implements Transfer {
 		return headers;
 	}
 
-	public CertainReadableByteChannel channel() {
+	public FiniteReadableByteChannel channel() {
 		return new ByteArrayReadableChannel(content);
 	}
 
