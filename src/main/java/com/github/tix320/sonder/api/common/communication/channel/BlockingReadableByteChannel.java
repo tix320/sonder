@@ -1,4 +1,4 @@
-package com.github.tix320.sonder.internal.common.communication.channel;
+package com.github.tix320.sonder.api.common.communication.channel;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -12,6 +12,7 @@ import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
 import com.github.tix320.skimp.api.object.None;
+import com.github.tix320.sonder.internal.common.communication.channel.AbstractCloseableChannel;
 
 /**
  * @author : Tigran Sargsyan

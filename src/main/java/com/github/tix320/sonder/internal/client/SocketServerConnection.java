@@ -73,7 +73,7 @@ public final class SocketServerConnection {
 			boolean success = sonderProtocolChannel.tryWrite(pack);
 			while (!success) {
 				try {
-					Thread.sleep(1000);
+					Thread.sleep(500);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
@@ -84,13 +84,7 @@ public final class SocketServerConnection {
 			throw new SocketConnectionException("Socket connection is closed", e);
 		} catch (IOException e) {
 			resetConnection();
-			try {
-				sonderProtocolChannel.close();
-				throw new SocketConnectionException("The problem is occurred while sending data", e);
-			} catch (IOException ex) {
-				e.printStackTrace();
-				throw new SocketConnectionException("The problem is occurred while closing socket", ex);
-			}
+			throw new SocketConnectionException("The problem is occurred while sending data", e);
 		}
 	}
 
@@ -124,8 +118,7 @@ public final class SocketServerConnection {
 				} else {
 					ByteChannel socketChannel = sonderProtocolChannel.getSourceChannel();
 					contentChannel = new CleanableFiniteReadableByteChannel(
-							new LimitedReadableByteChannel(socketChannel,
-									receivedPack.getContentLength()));
+							new LimitedReadableByteChannel(socketChannel, receivedPack.getContentLength()));
 					contentChannel.completeness().subscribe(none -> {
 						sonderProtocolChannel.resetReadState();
 						latch.countDown();
@@ -153,7 +146,11 @@ public final class SocketServerConnection {
 
 				throw new BreakLoopException();
 			} catch (PackNotReadyException ignored) {
-				// client side channel is blocking, so we are continue next read
+				try {
+					Thread.sleep(100); // wait and continue
+				} catch (InterruptedException e) {
+					throw new BreakLoopException();
+				}
 			} catch (PackAlreadyReadException ignored) {
 				throw new IllegalStateException("Because of we are sleep until channel state is COMPLETED");
 			}
