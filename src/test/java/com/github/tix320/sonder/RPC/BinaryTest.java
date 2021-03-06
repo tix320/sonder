@@ -26,15 +26,15 @@ public class BinaryTest extends BaseTest {
 		AtomicInteger responseHolder = new AtomicInteger();
 
 		rpcService.putByes(new byte[]{10, 20, 30}).subscribe(responseHolder::set);
-		Thread.sleep(300);
+		Thread.sleep(500);
 		assertEquals(60, responseHolder.get());
 
 		rpcService.putByes(new byte[]{50, 60, 70}).subscribe(responseHolder::set);
-		Thread.sleep(300);
+		Thread.sleep(500);
 		assertEquals(180, responseHolder.get());
 
 		rpcService.putByes(new byte[]{23, 12, 32}).subscribe(responseHolder::set);
-		Thread.sleep(300);
+		Thread.sleep(500);
 		assertEquals(67, responseHolder.get());
 	}
 }

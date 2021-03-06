@@ -2,6 +2,7 @@ package com.github.tix320.sonder.internal.client;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.channels.ByteChannel;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.*;
@@ -14,12 +15,16 @@ import com.github.tix320.skimp.api.thread.LoopThread;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.client.ConnectionState;
+import com.github.tix320.sonder.api.common.communication.channel.EmptyReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.channel.FiniteReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.channel.LimitedReadableByteChannel;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel;
-import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ContentReadInProgressException;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackAlreadyReadException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackNotReadyException;
-import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPacket;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPack;
+import com.github.tix320.sonder.internal.common.communication.channel.CleanableFiniteReadableByteChannel;
 
 public final class SocketServerConnection {
 
@@ -30,7 +35,7 @@ public final class SocketServerConnection {
 
 	private final Consumer<Pack> packConsumer;
 
-	private volatile SonderProtocolChannel channel;
+	private volatile SonderProtocolChannel sonderProtocolChannel;
 
 	private volatile LoopThread thread;
 
@@ -55,7 +60,7 @@ public final class SocketServerConnection {
 				throw new IllegalStateException("Already running");
 			}
 
-			this.channel = new SonderProtocolChannel(socketChannel);
+			this.sonderProtocolChannel = new SonderProtocolChannel(socketChannel);
 			this.thread = createLoopThread();
 			this.thread.start();
 		}
@@ -65,14 +70,14 @@ public final class SocketServerConnection {
 		state.checkState(ConnectionState.CONNECTED);
 
 		try {
-			boolean success = channel.write(pack);
+			boolean success = sonderProtocolChannel.tryWrite(pack);
 			while (!success) {
 				try {
 					Thread.sleep(1000);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
-				success = channel.writeLastPack();
+				success = sonderProtocolChannel.continueWriting();
 			}
 		} catch (ClosedChannelException e) {
 			resetConnection();
@@ -80,7 +85,7 @@ public final class SocketServerConnection {
 		} catch (IOException e) {
 			resetConnection();
 			try {
-				channel.close();
+				sonderProtocolChannel.close();
 				throw new SocketConnectionException("The problem is occurred while sending data", e);
 			} catch (IOException ex) {
 				e.printStackTrace();
@@ -95,7 +100,7 @@ public final class SocketServerConnection {
 		if (changed) {
 			workers.shutdown();
 			thread.stop();
-			channel.close();
+			sonderProtocolChannel.close();
 		}
 
 		return changed;
@@ -108,23 +113,28 @@ public final class SocketServerConnection {
 	private LoopThread createLoopThread() {
 		return Threads.createLoopThread(() -> {
 			try {
-				ReceivedPacket pack = channel.read();
+				ReceivedPack receivedPack = sonderProtocolChannel.tryRead();
 				CountDownLatch latch = new CountDownLatch(1);
 
-				pack.state().subscribe(state -> {
-					switch (state) {
-						case EMPTY:
-							throw new IllegalStateException("Client is non-blocking");
-						case COMPLETED:
-							latch.countDown();
-							break;
-						default:
-							throw new IllegalStateException("Unexpected value: " + state);
-					}
-				});
+				FiniteReadableByteChannel contentChannel;
 
+				if (receivedPack.getContentLength() == 0) {
+					contentChannel = EmptyReadableByteChannel.SELF;
+					sonderProtocolChannel.resetReadState();
+				} else {
+					ByteChannel socketChannel = sonderProtocolChannel.getSourceChannel();
+					contentChannel = new CleanableFiniteReadableByteChannel(
+							new LimitedReadableByteChannel(socketChannel,
+									receivedPack.getContentLength()));
+					contentChannel.completeness().subscribe(none -> {
+						sonderProtocolChannel.resetReadState();
+						latch.countDown();
+					});
+				}
 
-				runAsync(() -> packConsumer.accept(pack.getPack()));
+				Pack pack = new Pack(receivedPack.getHeaders(), contentChannel);
+
+				runAsync(() -> packConsumer.accept(pack));
 
 				try {
 					latch.await();
@@ -144,7 +154,7 @@ public final class SocketServerConnection {
 				throw new BreakLoopException();
 			} catch (PackNotReadyException ignored) {
 				// client side channel is blocking, so we are continue next read
-			} catch (ContentReadInProgressException ignored) {
+			} catch (PackAlreadyReadException ignored) {
 				throw new IllegalStateException("Because of we are sleep until channel state is COMPLETED");
 			}
 		});
@@ -156,11 +166,11 @@ public final class SocketServerConnection {
 			if (changed) {
 				try {
 					thread.stop();
-					channel.close();
+					sonderProtocolChannel.close();
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
-				this.channel = null;
+				this.sonderProtocolChannel = null;
 				this.thread = null;
 			}
 		}

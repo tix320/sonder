@@ -20,13 +20,18 @@ import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.common.Client;
+import com.github.tix320.sonder.api.common.communication.channel.EmptyReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.channel.FiniteReadableByteChannel;
+import com.github.tix320.sonder.api.common.communication.channel.LimitedReadableByteChannel;
 import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel;
-import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ContentReadInProgressException;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackAlreadyReadException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackNotReadyException;
-import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPacket;
+import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPack;
+import com.github.tix320.sonder.internal.common.communication.channel.BlockingReadableByteChannel;
+import com.github.tix320.sonder.internal.common.communication.channel.CleanableFiniteReadableByteChannel;
 
 public final class SocketClientsSelector implements Closeable {
 
@@ -99,7 +104,7 @@ public final class SocketClientsSelector implements Closeable {
 
 			SonderProtocolChannel channel = clientConnection.channel;
 			try {
-				boolean success = channel.write(pack);
+				boolean success = channel.tryWrite(pack);
 				if (!success) {
 					enableOpsAndWakeup(selectionKey, SelectionKey.OP_WRITE);
 				}
@@ -207,10 +212,10 @@ public final class SocketClientsSelector implements Closeable {
 
 	private void read(SelectionKey selectionKey) {
 		ClientConnection clientConnection = (ClientConnection) selectionKey.attachment();
-		SonderProtocolChannel channel = clientConnection.channel;
-		ReceivedPacket pack;
+		SonderProtocolChannel sonderProtocolChannel = clientConnection.channel;
+		ReceivedPack receivedPack;
 		try {
-			pack = channel.read();
+			receivedPack = sonderProtocolChannel.tryRead();
 		} catch (ClosedChannelException e) {
 			closeClientConnection(clientConnection);
 			return;
@@ -232,23 +237,38 @@ public final class SocketClientsSelector implements Closeable {
 		} catch (PackNotReadyException e) {
 			enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
 			return;
-		} catch (ContentReadInProgressException e) {
+		} catch (PackAlreadyReadException e) {
+			clientConnection.getBlockingChannel().notifyForAvailability();
 			return;
 		}
 
-		pack.state().subscribe(state -> {
-			switch (state) {
-				case EMPTY:
-				case COMPLETED:
-					enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
-					break;
+		ByteChannel socketChannel = sonderProtocolChannel.getSourceChannel();
 
-				default:
-					throw new IllegalStateException("Unexpected value: " + state);
-			}
-		});
+		BlockingReadableByteChannel blockingWrapperChannel = new BlockingReadableByteChannel(socketChannel);
 
-		runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack.getPack()));
+		clientConnection.setBlockingChannel(blockingWrapperChannel);
+
+		blockingWrapperChannel.emptiness().subscribe(none -> enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ));
+
+		FiniteReadableByteChannel contentChannel;
+
+		if (receivedPack.getContentLength() == 0) {
+			contentChannel = EmptyReadableByteChannel.SELF;
+			sonderProtocolChannel.resetReadState();
+			enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
+		} else {
+			contentChannel = new CleanableFiniteReadableByteChannel(
+					new LimitedReadableByteChannel(blockingWrapperChannel, receivedPack.getContentLength()));
+			contentChannel.completeness().subscribe(none -> {
+				clientConnection.setBlockingChannel(null);
+				sonderProtocolChannel.resetReadState();
+				enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
+			});
+		}
+
+		Pack pack = new Pack(receivedPack.getHeaders(), contentChannel);
+
+		runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack));
 	}
 
 	private void write(SelectionKey selectionKey) {
@@ -256,7 +276,7 @@ public final class SocketClientsSelector implements Closeable {
 		SonderProtocolChannel channel = clientConnection.channel;
 
 		try {
-			boolean success = channel.writeLastPack();
+			boolean success = channel.continueWriting();
 			if (!success) {
 				enableOpsAndWakeup(selectionKey, SelectionKey.OP_WRITE);
 			}
@@ -324,10 +344,19 @@ public final class SocketClientsSelector implements Closeable {
 	private static class ClientConnection {
 		private final Client client;
 		private final SonderProtocolChannel channel;
+		private volatile BlockingReadableByteChannel blockingChannel;
 
 		private ClientConnection(Client client, SonderProtocolChannel channel) {
 			this.client = client;
 			this.channel = channel;
+		}
+
+		public BlockingReadableByteChannel getBlockingChannel() {
+			return blockingChannel;
+		}
+
+		public void setBlockingChannel(BlockingReadableByteChannel blockingChannel) {
+			this.blockingChannel = blockingChannel;
 		}
 	}
 }
