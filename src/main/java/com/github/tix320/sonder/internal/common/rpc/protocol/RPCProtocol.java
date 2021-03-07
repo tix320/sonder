@@ -1,9 +1,11 @@
 package com.github.tix320.sonder.internal.common.rpc.protocol;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.nio.channels.Channels;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -313,7 +315,7 @@ public abstract class RPCProtocol implements Protocol {
 	}
 
 	private void processSubscriptionResult(Transfer transfer,
-										   SubscriptionRemover subscriptionRemover) throws IOException {
+										   SubscriptionRemover subscriptionRemover) {
 		Headers headers = transfer.headers();
 
 		SubscriptionActionType subscriptionActionType = SubscriptionActionType.valueOf(
@@ -361,7 +363,7 @@ public abstract class RPCProtocol implements Protocol {
 				orderId = headers.getNonNullLong(RPCHeaders.SUBSCRIPTION_RESULT_ORDER_ID);
 
 				JavaType returnJavaType = originMethod.getReturnJavaType();
-				Object value = deserializeObject(transfer.contentChannel().readAllBytes(), returnJavaType);
+				Object value = deserializeObject(Channels.newInputStream(transfer.contentChannel()), returnJavaType);
 				remoteSubscriptionPublisher.publish(orderId, value);
 
 				break;
@@ -412,10 +414,10 @@ public abstract class RPCProtocol implements Protocol {
 								String.format("Response content is empty, and it cannot be converted to type %s",
 										returnJavaType));
 					}
-					result = deserializeObject(transfer.contentChannel().readAllBytes(), returnJavaType);
+					result = deserializeObject(Channels.newInputStream(transfer.contentChannel()), returnJavaType);
 					break;
 				case TRANSFER:
-					result = new StaticTransfer(headers, transfer.contentChannel().readAllBytes());
+					result = transfer;
 					break;
 				default:
 					throw new UnsupportedContentTypeException(contentType);
@@ -648,9 +650,10 @@ public abstract class RPCProtocol implements Protocol {
 		}
 	}
 
-	private static Object deserializeObject(byte[] bytes, JavaType expectedType) {
+	private static Object deserializeObject(InputStream inputStream, JavaType expectedType) {
 		try {
-			return JSON_MAPPER.readValue(bytes, expectedType);
+
+			return JSON_MAPPER.readValue(inputStream, expectedType);
 		}
 		catch (IOException e) {
 			throw new IncompatibleTypeException(String.format("Expected type %s cannot deserialized from given bytes",
@@ -741,7 +744,7 @@ public abstract class RPCProtocol implements Protocol {
 
 		@Override
 		public void subscribe(Subscriber<? super Object> subscriber) {
-			observable.subscribe(new Subscriber<Object>() {
+			observable.subscribe(new Subscriber<>() {
 				@Override
 				public boolean onSubscribe(Subscription subscription) {
 					return subscriber.onSubscribe(subscription);
