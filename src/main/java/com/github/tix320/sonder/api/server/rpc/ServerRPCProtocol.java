@@ -32,6 +32,10 @@ public final class ServerRPCProtocol extends RPCProtocol implements ServerSidePr
 		this.realSubscriptions = new ConcurrentHashMap<>();
 	}
 
+	public static ServerRPCProtocolBuilder builder() {
+		return new ServerRPCProtocolBuilder();
+	}
+
 	@Override
 	public void init(TransferTunnel transferTunnel, ServerEvents serverEvents) {
 		synchronized (this) { // also for memory effects

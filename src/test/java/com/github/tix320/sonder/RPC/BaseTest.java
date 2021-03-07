@@ -24,7 +24,7 @@ public abstract class BaseTest {
 	protected ClientRPCProtocol rpcProtocol;
 
 	public void setUp() throws IOException {
-		ServerRPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
+		ServerRPCProtocol rpcProtocol = ServerRPCProtocol.builder()
 				.registerEndpointClasses(ServerEndpoint.class)
 				.build();
 
@@ -32,7 +32,7 @@ public abstract class BaseTest {
 
 		sonderServer.start();
 
-		this.rpcProtocol = SonderClient.getRPCProtocolBuilder().registerOriginInterfaces(ClientService.class).build();
+		this.rpcProtocol = ClientRPCProtocol.builder().registerOriginInterfaces(ClientService.class).build();
 
 		sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT))
 				.registerProtocol(this.rpcProtocol)

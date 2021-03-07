@@ -10,11 +10,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
 
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
+import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
@@ -42,25 +42,23 @@ public final class SocketClientsSelector implements Closeable {
 
 	private final IDGenerator clientIdGenerator;
 
-	private final BiConsumer<Long, Pack> packConsumer;
+	private final PackConsumer packConsumer;
 
 	private volatile Selector selector;
-
 	private volatile ServerSocketChannel serverChannel;
 
 	private final AtomicReference<State> state = new AtomicReference<>(State.INITIAL);
 
 	private final SimplePublisher<Client> newClientsPublisher = Publisher.simple();
-
 	private final SimplePublisher<Client> deadClientsPublisher = Publisher.simple();
 
-	public SocketClientsSelector(InetSocketAddress address, int workersCoreCount, BiConsumer<Long, Pack> packConsumer) {
+	public SocketClientsSelector(InetSocketAddress address, PackConsumer packConsumer) {
 		this.address = address;
 		this.packConsumer = packConsumer;
 		this.selectionKeysById = new ConcurrentHashMap<>();
-		this.clientIdGenerator = new IDGenerator(1); // 1 is important aspect, do not touch!
-		this.workers = new ThreadPoolExecutor(workersCoreCount, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
-				new SynchronousQueue<>(), Threads::daemon);
+		this.clientIdGenerator = new IDGenerator(1);
+		this.workers = new ThreadPoolExecutor(5, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new SynchronousQueue<>(),
+				Threads::daemon);
 	}
 
 	public void run() throws IOException {
@@ -173,7 +171,7 @@ public final class SocketClientsSelector implements Closeable {
 						try {
 							accept();
 						} catch (IOException e) {
-							e.printStackTrace();
+							ExceptionUtils.applyToUncaughtExceptionHandler(e);
 						}
 					} else if (selectionKey.isReadable()) {
 						disableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
@@ -190,23 +188,25 @@ public final class SocketClientsSelector implements Closeable {
 			} catch (ClosedSelectorException e) {
 				throw new BreakLoopException();
 			} catch (IOException e) {
-				new SocketConnectionException("The problem is occurred in selector work", e).printStackTrace();
+				SocketConnectionException socketConnectionException = new SocketConnectionException(
+						"The problem is occurred in selector work", e);
+				ExceptionUtils.applyToUncaughtExceptionHandler(socketConnectionException);
 				throw new BreakLoopException();
 			}
 		}).start();
 	}
 
 	private void accept() throws IOException {
-		SocketChannel clientChannel = serverChannel.accept();
-		clientChannel.configureBlocking(false);
+		SocketChannel socketChannel = serverChannel.accept();
+		socketChannel.configureBlocking(false);
 		long clientId = clientIdGenerator.next();
-		SonderProtocolChannel sonderProtocolChannel = new SonderProtocolChannel(clientChannel);
+		SonderProtocolChannel sonderProtocolChannel = new SonderProtocolChannel(socketChannel);
 
-		InetSocketAddress remoteAddress = (InetSocketAddress) clientChannel.getRemoteAddress();
+		InetSocketAddress remoteAddress = (InetSocketAddress) socketChannel.getRemoteAddress();
 		Client client = new Client(clientId, remoteAddress);
 		ClientConnection clientConnection = new ClientConnection(client, sonderProtocolChannel);
 
-		SelectionKey selectionKey = clientChannel.register(selector, SelectionKey.OP_READ, clientConnection);
+		SelectionKey selectionKey = socketChannel.register(selector, SelectionKey.OP_READ, clientConnection);
 
 		selectionKeysById.put(clientId, selectionKey);
 
@@ -271,7 +271,7 @@ public final class SocketClientsSelector implements Closeable {
 
 		Pack pack = new Pack(receivedPack.getHeaders(), contentChannel);
 
-		runAsync(() -> packConsumer.accept(clientConnection.client.getId(), pack));
+		runAsync(() -> packConsumer.consume(clientConnection.client.getId(), pack));
 	}
 
 	private void write(SelectionKey selectionKey) {
@@ -320,9 +320,8 @@ public final class SocketClientsSelector implements Closeable {
 				try {
 					SonderProtocolChannel sonderProtocolChannel = clientConnection.channel;
 					sonderProtocolChannel.close();
-				} catch (IOException e) {
-					new SocketConnectionException(String.format("An error occurs while closing channel of client %s",
-							clientConnection.client), e).printStackTrace();
+				} catch (IOException ignored) {
+
 				} finally {
 					deadClientsPublisher.publish(clientConnection.client);
 				}
@@ -336,7 +335,7 @@ public final class SocketClientsSelector implements Closeable {
 				try {
 					runnable.run();
 				} catch (Throwable t) {
-					t.printStackTrace();
+					ExceptionUtils.applyToUncaughtExceptionHandler(t);
 				}
 			});
 		} catch (RejectedExecutionException ignored) {
@@ -367,5 +366,10 @@ public final class SocketClientsSelector implements Closeable {
 		INITIAL,
 		RUNNING,
 		CLOSED
+	}
+
+	public interface PackConsumer {
+
+		void consume(long clientId, Pack pack);
 	}
 }

@@ -30,6 +30,8 @@ working and usage please see the [documentation](https://github.com/tix320/sonde
 ##### Example
 
 ```java
+package com.github.tix320.sonder.readme;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
@@ -54,7 +56,7 @@ class ServerTest {
 
 	public static void main(String[] args) throws IOException {
 		// Creating protocol for communication
-		ServerRPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
+		ServerRPCProtocol rpcProtocol = ServerRPCProtocol.builder()
 				.registerEndpointClasses(ServerEndpoint.class)
 				.build();
 
@@ -62,6 +64,14 @@ class ServerTest {
 		SonderServer sonderServer = SonderServer.forAddress(new InetSocketAddress(8888))
 				.registerProtocol(rpcProtocol)
 				.build();
+
+		sonderServer.events()
+				.newConnections()
+				.subscribe(client -> System.out.printf("Client %s connected", client.getId()));
+
+		sonderServer.events()
+				.deadConnections()
+				.subscribe(client -> System.out.printf("Client %s disconnected", client.getId()));
 
 		// start the server
 		sonderServer.start();
@@ -78,7 +88,7 @@ interface ClientOrigin {
 class ClientTest {
 	public static void main(String[] args) throws IOException {
 		// Creating protocol for communication
-		ClientRPCProtocol rpcProtocol = SonderClient.getRPCProtocolBuilder()
+		ClientRPCProtocol rpcProtocol = ClientRPCProtocol.builder()
 				.registerOriginInterfaces(ClientOrigin.class)
 				.build();
 
@@ -86,6 +96,19 @@ class ClientTest {
 		SonderClient sonderClient = SonderClient.forAddress(new InetSocketAddress("localhost", 8888))
 				.registerProtocol(rpcProtocol)
 				.build();
+
+		sonderClient.events().connectionState().subscribe(state -> {
+			switch (state) {
+				case IDLE:
+					System.out.println("Initial state or disconnected");
+				case CONNECTED:
+					System.out.println("Connected to server");
+					break;
+				case CLOSED:
+					System.out.println("Connection closed by user");
+					break;
+			}
+		});
 
 		// connect to server
 		sonderClient.start();

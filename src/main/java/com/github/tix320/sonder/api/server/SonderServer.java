@@ -12,7 +12,6 @@ import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.server.event.ServerEvents;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
-import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocolBuilder;
 import com.github.tix320.sonder.internal.common.SonderSide;
 import com.github.tix320.sonder.internal.common.SonderSideState;
 import com.github.tix320.sonder.internal.common.communication.Pack;
@@ -51,13 +50,9 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 		return new SonderServerBuilder(inetSocketAddress);
 	}
 
-	public static ServerRPCProtocolBuilder getRPCProtocolBuilder() {
-		return new ServerRPCProtocolBuilder();
-	}
-
-	SonderServer(InetSocketAddress address, int workersCoreCount, Map<String, ServerSideProtocol> protocols) {
+	SonderServer(InetSocketAddress address, Map<String, ServerSideProtocol> protocols) {
 		super(protocols);
-		this.clientsSelector = new SocketClientsSelector(address, workersCoreCount, this::handlePack);
+		this.clientsSelector = new SocketClientsSelector(address, this::handlePack);
 		this.serverEvents = new ServerEvents() {
 			@Override
 			public Observable<Client> newConnections() {
@@ -97,7 +92,7 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 		return serverEvents;
 	}
 
-	private void handlePack(Long clientId, Pack pack) {
+	private void handlePack(long clientId, Pack pack) {
 		try {
 			Transfer transfer = convertPackToTransfer(pack);
 			ServerSideProtocol protocol = findProtocol(transfer.headers());

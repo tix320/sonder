@@ -11,7 +11,6 @@ import com.github.tix320.skimp.api.interval.IntervalRepeater;
 import com.github.tix320.skimp.api.object.None;
 import com.github.tix320.sonder.api.client.event.ClientEvents;
 import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
-import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocolBuilder;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
@@ -53,10 +52,6 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 	 */
 	public static SonderClientBuilder forAddress(InetSocketAddress inetSocketAddress) {
 		return new SonderClientBuilder(inetSocketAddress);
-	}
-
-	public static ClientRPCProtocolBuilder getRPCProtocolBuilder() {
-		return new ClientRPCProtocolBuilder();
 	}
 
 	SonderClient(InetSocketAddress address, Map<String, ClientSideProtocol> protocols, Interval connectInterval) {
@@ -141,7 +136,7 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 			try {
 				connection.connect();
 			} catch (IOException e) {
-				e.printStackTrace();
+				ExceptionUtils.applyToUncaughtExceptionHandler(e);
 				System.err.println("SONDER: Connection fail.");
 			}
 
