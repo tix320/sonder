@@ -24,6 +24,7 @@ import com.github.tix320.sonder.internal.common.communication.SonderProtocolChan
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackAlreadyReadException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackNotReadyException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPack;
+import com.github.tix320.sonder.internal.common.communication.channel.BlockingPreventFiniteReadableByteChannel;
 import com.github.tix320.sonder.internal.common.communication.channel.CleanableFiniteReadableByteChannel;
 
 public final class SocketServerConnection {
@@ -66,6 +67,8 @@ public final class SocketServerConnection {
 
 	public void send(Pack pack) {
 		state.checkState(ConnectionState.CONNECTED);
+
+		pack = new Pack(pack.getHeaders(), new BlockingPreventFiniteReadableByteChannel(pack.contentChannel()));
 
 		try {
 			boolean success = sonderProtocolChannel.tryWrite(pack);
