@@ -54,13 +54,20 @@ public final class ByteArrayReadableChannel extends AbstractFiniteReadableByteCh
 	}
 
 	@Override
-	public synchronized byte[] readAll() {
-		if (position != 0) {
-			throw new IllegalStateException("readAll not allowed, when any bytes already was read");
+	public synchronized byte[] readAllBytes() throws IOException {
+		if (!isOpen()) {
+			throw new ClosedChannelException();
 		}
 
+		int remaining = (int) getRemaining();
+		byte[] copy = new byte[remaining];
+
+		System.arraycopy(array, position, copy, 0, remaining);
+
 		position = array.length;
+
 		fireCompleted();
-		return array;
+
+		return copy;
 	}
 }

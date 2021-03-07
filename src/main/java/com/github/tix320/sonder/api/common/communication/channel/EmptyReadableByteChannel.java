@@ -24,7 +24,7 @@ public final class EmptyReadableByteChannel extends AbstractFiniteReadableByteCh
 	}
 
 	@Override
-	public byte[] readAll() throws IOException {
+	public byte[] readAllBytes() throws IOException {
 		if (!isOpen()) {
 			throw new ClosedChannelException();
 		}

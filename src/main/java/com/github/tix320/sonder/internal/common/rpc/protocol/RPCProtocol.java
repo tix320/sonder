@@ -360,7 +360,7 @@ public abstract class RPCProtocol implements Protocol {
 				orderId = headers.getNonNullLong(RPCHeaders.SUBSCRIPTION_RESULT_ORDER_ID);
 
 				JavaType returnJavaType = originMethod.getReturnJavaType();
-				Object value = deserializeObject(transfer.contentChannel().readAll(), returnJavaType);
+				Object value = deserializeObject(transfer.contentChannel().readAllBytes(), returnJavaType);
 				remoteSubscriptionPublisher.publish(orderId, value);
 
 				break;
@@ -403,7 +403,7 @@ public abstract class RPCProtocol implements Protocol {
 			Object result;
 			switch (contentType) {
 				case BINARY:
-					result = transfer.contentChannel().readAll();
+					result = transfer.contentChannel().readAllBytes();
 					break;
 				case ARGUMENTS:
 					if (transfer.contentChannel().getContentLength() == 0) {
@@ -411,10 +411,10 @@ public abstract class RPCProtocol implements Protocol {
 								String.format("Response content is empty, and it cannot be converted to type %s",
 										returnJavaType));
 					}
-					result = deserializeObject(transfer.contentChannel().readAll(), returnJavaType);
+					result = deserializeObject(transfer.contentChannel().readAllBytes(), returnJavaType);
 					break;
 				case TRANSFER:
-					result = new StaticTransfer(headers, transfer.contentChannel().readAll());
+					result = new StaticTransfer(headers, transfer.contentChannel().readAllBytes());
 					break;
 				default:
 					throw new UnsupportedContentTypeException(contentType);
@@ -432,7 +432,7 @@ public abstract class RPCProtocol implements Protocol {
 	private Exception extractExceptionFromErrorResponse(Transfer transfer) throws IOException {
 		Headers headers = transfer.headers();
 
-		byte[] content = transfer.contentChannel().readAll();
+		byte[] content = transfer.contentChannel().readAllBytes();
 
 		ErrorType errorType = ErrorType.valueOf(headers.getNonNullString(RPCHeaders.ERROR_TYPE));
 		switch (errorType) {
@@ -458,7 +458,7 @@ public abstract class RPCProtocol implements Protocol {
 			throw new BadRequestException(errorMessage);
 		}
 
-		byte[] data = transfer.contentChannel().readAll();
+		byte[] data = transfer.contentChannel().readAllBytes();
 
 		return new Object[]{data};
 	}
@@ -467,7 +467,7 @@ public abstract class RPCProtocol implements Protocol {
 		List<Param> simpleParams = endpointMethod.getSimpleParams();
 
 		ArrayNode argsNode;
-		byte[] content = transfer.contentChannel().readAll();
+		byte[] content = transfer.contentChannel().readAllBytes();
 		try {
 			argsNode = JSON_MAPPER.readValue(content, ArrayNode.class);
 		}

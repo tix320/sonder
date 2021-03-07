@@ -29,15 +29,14 @@ public interface FiniteReadableByteChannel extends ReadableByteChannel {
 	long getRemaining();
 
 	/**
-	 * Read all content to byte array if possible.
+	 * Read all remaining bytes to byte array if possible.
 	 *
 	 * @return bytes
 	 *
 	 * @throws IOException                   if any IO errors occurs
 	 * @throws UnsupportedOperationException if content length larger than {@link Integer#MAX_VALUE}
-	 * @throws IllegalStateException         if this method called after any one byte read
 	 */
-	byte[] readAll() throws IOException;
+	byte[] readAllBytes() throws IOException;
 
 	/**
 	 * Observable to subscribe completed state, i.e. all bytes was read.
