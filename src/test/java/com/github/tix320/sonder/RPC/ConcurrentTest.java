@@ -31,7 +31,7 @@ public class ConcurrentTest {
 
 	@Test
 	public void test() throws IOException, InterruptedException {
-		ServerRPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
+		ServerRPCProtocol rpcProtocol = ServerRPCProtocol.builder()
 				.registerEndpointClasses(ServerEndpoint.class)
 				.build();
 
@@ -46,7 +46,7 @@ public class ConcurrentTest {
 		List<SonderClient> clients = new ArrayList<>();
 
 		for (int i = 1; i <= usersCount; i++) {
-			ClientRPCProtocol protocol = SonderClient.getRPCProtocolBuilder()
+			ClientRPCProtocol protocol = ClientRPCProtocol.builder()
 					.registerOriginInterfaces(ClientService.class)
 					.build();
 

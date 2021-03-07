@@ -11,6 +11,7 @@ import java.util.function.Consumer;
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
 import com.github.tix320.kiwi.api.reactive.property.Property;
 import com.github.tix320.kiwi.api.reactive.property.StateProperty;
+import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.skimp.api.thread.LoopThread;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
@@ -76,7 +77,7 @@ public final class SocketServerConnection {
 				try {
 					Thread.sleep(500);
 				} catch (InterruptedException e) {
-					e.printStackTrace();
+					ExceptionUtils.applyToUncaughtExceptionHandler(e);
 				}
 				success = sonderProtocolChannel.continueWriting();
 			}
@@ -140,7 +141,9 @@ public final class SocketServerConnection {
 			} catch (IOException e) {
 				resetConnection();
 				if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
-					new SocketConnectionException("The problem is occurred while reading data", e).printStackTrace();
+					SocketConnectionException socketConnectionException = new SocketConnectionException(
+							"The problem is occurred while reading data", e);
+					ExceptionUtils.applyToUncaughtExceptionHandler(socketConnectionException);
 				}
 
 				throw new BreakLoopException();
@@ -163,8 +166,7 @@ public final class SocketServerConnection {
 				try {
 					thread.stop();
 					sonderProtocolChannel.close();
-				} catch (IOException e) {
-					e.printStackTrace();
+				} catch (IOException ignored) {
 				}
 				this.sonderProtocolChannel = null;
 				this.thread = null;
@@ -178,7 +180,7 @@ public final class SocketServerConnection {
 				try {
 					runnable.run();
 				} catch (Throwable t) {
-					t.printStackTrace();
+					ExceptionUtils.applyToUncaughtExceptionHandler(t);
 				}
 			});
 		} catch (RejectedExecutionException ignored) {

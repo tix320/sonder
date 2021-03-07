@@ -58,6 +58,6 @@ public final class SonderServerBuilder {
 	 * @return server instance.
 	 */
 	public SonderServer build() {
-		return new SonderServer(inetSocketAddress, workersCoreCount, protocols);
+		return new SonderServer(inetSocketAddress, protocols);
 	}
 }

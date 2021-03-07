@@ -24,7 +24,7 @@ class ServerTest {
 
 	public static void main(String[] args) throws IOException {
 		// Creating protocol for communication
-		ServerRPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
+		ServerRPCProtocol rpcProtocol = ServerRPCProtocol.builder()
 				.registerEndpointClasses(ServerEndpoint.class)
 				.build();
 
@@ -56,7 +56,7 @@ interface ClientOrigin {
 class ClientTest {
 	public static void main(String[] args) throws IOException {
 		// Creating protocol for communication
-		ClientRPCProtocol rpcProtocol = SonderClient.getRPCProtocolBuilder()
+		ClientRPCProtocol rpcProtocol = ClientRPCProtocol.builder()
 				.registerOriginInterfaces(ClientOrigin.class)
 				.build();
 

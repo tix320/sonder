@@ -27,7 +27,7 @@ public class EndpointCustomInstanceTest {
 		ServerEndpoint serverEndpoint = new ServerEndpoint();
 		serverEndpoint.forTest = 5;
 
-		ServerRPCProtocol rpcProtocol = SonderServer.getRPCProtocolBuilder()
+		ServerRPCProtocol rpcProtocol = ServerRPCProtocol.builder()
 				.registerEndpointInstances(List.of(serverEndpoint))
 				.build();
 
@@ -35,9 +35,7 @@ public class EndpointCustomInstanceTest {
 
 		sonderServer.start();
 
-		ClientRPCProtocol protocol = SonderClient.getRPCProtocolBuilder()
-				.registerOriginInterfaces(ClientService.class)
-				.build();
+		ClientRPCProtocol protocol = ClientRPCProtocol.builder().registerOriginInterfaces(ClientService.class).build();
 
 		sonderClient = SonderClient.forAddress(new InetSocketAddress(HOST, PORT)).registerProtocol(protocol).build();
 
