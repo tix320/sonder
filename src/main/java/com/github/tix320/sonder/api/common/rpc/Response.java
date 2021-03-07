@@ -9,36 +9,30 @@ public final class Response<T> {
 
 	private final boolean isSuccess;
 
-	public Response(Object value, boolean isSuccess) {
+	public Response(Object value) {
 		this.value = value;
-		this.isSuccess = isSuccess;
+		this.isSuccess = true;
 	}
 
+	public Response(RPCRemoteException value) {
+		this.value = value;
+		this.isSuccess = false;
+	}
+
+	/**
+	 * Returns result if success, fails otherwise.
+	 *
+	 * @return response.
+	 *
+	 * @throws RPCRemoteException if there are error.
+	 */
 	@SuppressWarnings("unchecked")
-	public T getResult() {
+	public T get() throws RPCRemoteException {
 		if (isSuccess) {
 			return (T) value;
+		} else {
+			throw ((RPCRemoteException) value);
 		}
-		else {
-			throw new IllegalStateException("Not value");
-		}
-	}
-
-	public Throwable getError() {
-		if (isSuccess) {
-			throw new IllegalStateException("Not error");
-		}
-		else {
-			return (Throwable) value;
-		}
-	}
-
-	public boolean isSuccess() {
-		return isSuccess;
-	}
-
-	public boolean isError() {
-		return !isSuccess;
 	}
 
 	@Override
