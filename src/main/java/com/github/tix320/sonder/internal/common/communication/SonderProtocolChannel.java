@@ -158,6 +158,12 @@ public final class SonderProtocolChannel implements Channel {
 			int writeCount = this.sourceChannel.write(headersBuffer);
 			if (writeCount == 0) {
 				return false;
+			} else {
+				if (!headersBuffer.hasRemaining()) { // headers was written
+					if (writeMetaData.getRemainingContentBytes() == 0) {
+						return true;
+					}
+				}
 			}
 		}
 

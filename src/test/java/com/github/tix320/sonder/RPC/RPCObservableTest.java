@@ -36,9 +36,21 @@ public class RPCObservableTest extends BaseTest {
 		ServerEndpoint.publisher.publish(5);
 		Thread.sleep(300);
 		assertEquals(List.of(4, 5), list);
+
+
+		for (int i = 0; i <= 10; i++) {
+			ServerEndpoint.publisher.publish(i);
+		}
+		Thread.sleep(1000);
+
+		List<Integer> lastExpected = List.of(4, 5, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+		assertEquals(lastExpected, list);
+
 		subscriptionHolder.get().unsubscribe();
 		Thread.sleep(500);
 		ServerEndpoint.publisher.publish(6);
-		assertEquals(List.of(4, 5), list);
+		Thread.sleep(500);
+
+		assertEquals(lastExpected, list);
 	}
 }
