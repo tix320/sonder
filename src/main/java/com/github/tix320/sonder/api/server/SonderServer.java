@@ -14,7 +14,7 @@ import com.github.tix320.sonder.api.server.event.ServerEvents;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocolBuilder;
 import com.github.tix320.sonder.internal.common.SonderSide;
-import com.github.tix320.sonder.internal.common.State;
+import com.github.tix320.sonder.internal.common.SonderSideState;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.server.SocketClientsSelector;
 
@@ -72,7 +72,7 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 	}
 
 	public void start() throws IOException {
-		boolean changed = state.compareAndSet(State.INITIAL, State.RUNNING);
+		boolean changed = state.compareAndSet(SonderSideState.INITIAL, SonderSideState.RUNNING);
 		if (!changed) {
 			throw new IllegalStateException("Already started");
 		}
@@ -82,7 +82,7 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 	}
 
 	public void stop() {
-		boolean changed = state.compareAndSet(State.RUNNING, State.CLOSED);
+		boolean changed = state.compareAndSet(SonderSideState.RUNNING, SonderSideState.CLOSED);
 
 		if (changed) {
 			try {

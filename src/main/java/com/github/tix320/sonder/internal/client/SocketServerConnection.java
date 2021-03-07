@@ -49,20 +49,18 @@ public final class SocketServerConnection {
 
 	public void connect() throws IOException {
 		synchronized (this) {
-			SocketChannel socketChannel = SocketChannel.open(address);
-			boolean changed = state.compareAndSetValue(ConnectionState.IDLE, ConnectionState.CONNECTED);
-			if (!changed) {
-				try {
-					socketChannel.close();
-				} catch (IOException ignored) {
-				}
+			state.checkState(ConnectionState.IDLE);
 
-				throw new IllegalStateException("Already running");
-			}
+			SocketChannel socketChannel = SocketChannel.open(address);
 
 			this.sonderProtocolChannel = new SonderProtocolChannel(socketChannel);
 			this.thread = createLoopThread();
 			this.thread.start();
+
+			boolean changed = state.compareAndSetValue(ConnectionState.IDLE, ConnectionState.CONNECTED);
+			if (!changed) {
+				throw new IllegalStateException();
+			}
 		}
 	}
 
@@ -88,7 +86,7 @@ public final class SocketServerConnection {
 		}
 	}
 
-	public boolean close() throws IOException {
+	public void close() throws IOException {
 		boolean changed = state.compareAndSetValue(ConnectionState.CONNECTED, ConnectionState.CLOSED);
 
 		if (changed) {
@@ -96,8 +94,6 @@ public final class SocketServerConnection {
 			thread.stop();
 			sonderProtocolChannel.close();
 		}
-
-		return changed;
 	}
 
 	public Observable<ConnectionState> state() {

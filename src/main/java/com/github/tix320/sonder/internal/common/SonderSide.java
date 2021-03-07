@@ -25,7 +25,7 @@ public abstract class SonderSide<P extends Protocol> {
 
 	private final Map<String, P> protocols;
 
-	protected final AtomicReference<State> state = new AtomicReference<>(State.INITIAL);
+	protected final AtomicReference<SonderSideState> state = new AtomicReference<>(SonderSideState.INITIAL);
 
 	protected SonderSide(Map<String, P> protocols) {
 		this.protocols = Map.copyOf(protocols);

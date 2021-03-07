@@ -14,7 +14,7 @@ public final class Response<T> {
 		this.isSuccess = true;
 	}
 
-	public Response(RPCRemoteException value) {
+	public Response(Exception value) {
 		this.value = value;
 		this.isSuccess = false;
 	}
@@ -24,14 +24,14 @@ public final class Response<T> {
 	 *
 	 * @return response.
 	 *
-	 * @throws RPCRemoteException if there are error.
+	 * @throws Exception if there are error.
 	 */
 	@SuppressWarnings("unchecked")
-	public T get() throws RPCRemoteException {
+	public T get() throws Exception {
 		if (isSuccess) {
 			return (T) value;
 		} else {
-			throw ((RPCRemoteException) value);
+			throw ((Exception) value);
 		}
 	}
 
