@@ -89,12 +89,12 @@ public final class SocketClientsSelector implements Closeable {
 	}
 
 	public void send(long clientId, Pack pack) throws ClientClosedException {
-		pack = new Pack(pack.getHeaders(), new BlockingPreventFiniteReadableByteChannel(pack.contentChannel()));
-
 		State state = this.state.get();
 		if (state != State.RUNNING) {
 			throw new IllegalStateException(state.toString());
 		}
+
+		pack = new Pack(pack.getHeaders(), new BlockingPreventFiniteReadableByteChannel(pack.contentChannel()));
 
 		SelectionKey selectionKey = selectionKeysById.get(clientId);
 		if (selectionKey == null) {
