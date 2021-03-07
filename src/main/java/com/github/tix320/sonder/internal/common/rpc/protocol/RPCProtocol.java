@@ -135,18 +135,15 @@ public abstract class RPCProtocol implements Protocol {
 			case INVOCATION:
 				try {
 					processMethodInvocation(transfer, transferSender, subscriptionAdder);
-				}
-				catch (PathNotFoundException e) {
+				} catch (PathNotFoundException e) {
 					Transfer errorTransfer = buildEndpointPathNotFoundErrorTransfer(headers);
 					transferSender.send(errorTransfer);
 					throw e;
-				}
-				catch (BadRequestException e) {
+				} catch (BadRequestException e) {
 					Transfer errorTransfer = buildIncompatibilityRequestAndMethodErrorTransfer(headers, e);
 					transferSender.send(errorTransfer);
 					throw e;
-				}
-				catch (MethodInvocationException e) {
+				} catch (MethodInvocationException e) {
 					Transfer errorTransfer = buildMethodInvocationErrorTransfer(headers, e);
 					transferSender.send(errorTransfer);
 					throw e;
@@ -184,8 +181,7 @@ public abstract class RPCProtocol implements Protocol {
 				byte[] content;
 				try {
 					content = JSON_MAPPER.writeValueAsBytes(simpleArgs);
-				}
-				catch (JsonProcessingException e) {
+				} catch (JsonProcessingException e) {
 					throw new RPCProtocolException("Cannot convert arguments to JSON", e);
 				}
 
@@ -230,7 +226,8 @@ public abstract class RPCProtocol implements Protocol {
 				transfer = new ChannelTransfer(headers, transferToSend.contentChannel());
 
 				BufferedPublisher<Object> dummyPublisher = Publisher.buffered();
-				remoteSubscriptionPublishers.put(responseKey, new RemoteSubscriptionPublisher(dummyPublisher, method));
+				remoteSubscriptionPublishers.put(responseKey,
+						new RemoteSubscriptionPublisher(dummyPublisher, method.getReturnJavaType()));
 
 				Observable<Object> observable = dummyPublisher.asObservable();
 				DummyObservable dummyObservable = new DummyObservable(observable, responseKey, transferSender);
@@ -296,8 +293,7 @@ public abstract class RPCProtocol implements Protocol {
 		if (requestMetadata == null) {
 			throw new RPCProtocolException(
 					String.format("Request metadata not found for response key %s", responseKey));
-		}
-		else {
+		} else {
 			MonoPublisher<Object> responsePublisher = requestMetadata.getResponsePublisher();
 
 			OriginMethod originMethod = requestMetadata.getOriginMethod();
@@ -307,15 +303,13 @@ public abstract class RPCProtocol implements Protocol {
 
 			if (isDualResponse) {
 				responsePublisher.publish(new Response<>(exception));
-			}
-			else {
+			} else {
 				ExceptionUtils.applyToUncaughtExceptionHandler(new UnhandledErrorResponseException(exception));
 			}
 		}
 	}
 
-	private void processSubscriptionResult(Transfer transfer,
-										   SubscriptionRemover subscriptionRemover) {
+	private void processSubscriptionResult(Transfer transfer, SubscriptionRemover subscriptionRemover) {
 		Headers headers = transfer.headers();
 
 		SubscriptionActionType subscriptionActionType = SubscriptionActionType.valueOf(
@@ -353,16 +347,9 @@ public abstract class RPCProtocol implements Protocol {
 					return;
 				}
 
-				OriginMethod originMethod = remoteSubscriptionPublisher.getOriginMethod();
-				if (originMethod.getReturnType() != ReturnType.SUBSCRIPTION) {
-					throw new RPCProtocolException(
-							String.format("Subscription result was received, but origin method %s(%s) not expect it",
-									originMethod.getRawClass().getName(), originMethod.getRawMethod().getName()));
-				}
-
 				orderId = headers.getNonNullLong(RPCHeaders.SUBSCRIPTION_RESULT_ORDER_ID);
 
-				JavaType returnJavaType = originMethod.getReturnJavaType();
+				JavaType returnJavaType = remoteSubscriptionPublisher.getItemType();
 				Object value = deserializeObject(Channels.newInputStream(transfer.contentChannel()), returnJavaType);
 				remoteSubscriptionPublisher.publish(orderId, value);
 
@@ -395,12 +382,10 @@ public abstract class RPCProtocol implements Protocol {
 
 			if (isDualResponse) {
 				responsePublisher.publish(new Response<>(None.SELF));
-			}
-			else {
+			} else {
 				responsePublisher.publish(None.SELF);
 			}
-		}
-		else {
+		} else {
 			ContentType contentType = ContentType.valueOf(headers.getNonNullString(RPCHeaders.CONTENT_TYPE));
 
 			Object result;
@@ -425,8 +410,7 @@ public abstract class RPCProtocol implements Protocol {
 
 			if (isDualResponse) {
 				responsePublisher.publish(new Response<>(result));
-			}
-			else {
+			} else {
 				responsePublisher.publish(result);
 			}
 		}
@@ -473,8 +457,7 @@ public abstract class RPCProtocol implements Protocol {
 		byte[] content = transfer.contentChannel().readAllBytes();
 		try {
 			argsNode = JSON_MAPPER.readValue(content, ArrayNode.class);
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			throw new BadRequestException("Cannot parse bytes to ArrayNode", e);
 		}
 
@@ -484,8 +467,7 @@ public abstract class RPCProtocol implements Protocol {
 			Param param = simpleParams.get(i);
 			try {
 				simpleArgs[i] = JSON_MAPPER.convertValue(argNode, param.getType());
-			}
-			catch (IllegalArgumentException e) {
+			} catch (IllegalArgumentException e) {
 				throw new BadRequestException(
 						String.format("Fail to build object of type `%s` from json %s", param.getType(),
 								argsNode.toPrettyString()), e);
@@ -524,8 +506,7 @@ public abstract class RPCProtocol implements Protocol {
 			try {
 				Object extraArg = extraArgExtractor.extract(method, annotation, headers);
 				extraArgs[i] = extraArg;
-			}
-			catch (Throwable e) {
+			} catch (Throwable e) {
 				throw new ExtraArgExtractionException("An error occurred while extracting extra argument", e);
 			}
 		}
@@ -593,8 +574,7 @@ public abstract class RPCProtocol implements Protocol {
 		byte[] bytes;
 		try {
 			bytes = JSON_MAPPER.writeValueAsBytes(exceptionMessage);
-		}
-		catch (JsonProcessingException e) {
+		} catch (JsonProcessingException e) {
 			throw new IllegalStateException(e);
 		}
 
@@ -613,8 +593,7 @@ public abstract class RPCProtocol implements Protocol {
 		byte[] bytes;
 		try {
 			bytes = JSON_MAPPER.writeValueAsBytes(exceptionMessage);
-		}
-		catch (JsonProcessingException e) {
+		} catch (JsonProcessingException e) {
 			throw new IllegalStateException(e);
 		}
 
@@ -644,8 +623,7 @@ public abstract class RPCProtocol implements Protocol {
 	private static byte[] serializeObject(Object object) {
 		try {
 			return JSON_MAPPER.writeValueAsBytes(object);
-		}
-		catch (JsonProcessingException e) {
+		} catch (JsonProcessingException e) {
 			throw new RPCProtocolException(String.format("Cannot serialize object: %s", object), e);
 		}
 	}
@@ -654,8 +632,7 @@ public abstract class RPCProtocol implements Protocol {
 		try {
 
 			return JSON_MAPPER.readValue(inputStream, expectedType);
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			throw new IncompatibleTypeException(String.format("Expected type %s cannot deserialized from given bytes",
 					expectedType.getGenericSignature()), e);
 		}
@@ -718,8 +695,7 @@ public abstract class RPCProtocol implements Protocol {
 				try {
 					Headers headers = extractor.extract(method, annotation, extraArg.getValue());
 					headersBuilder.headers(headers);
-				}
-				catch (Throwable e) {
+				} catch (Throwable e) {
 					throw new ExtraArgExtractionException("An error occurred while extracting extra argument", e);
 				}
 			}

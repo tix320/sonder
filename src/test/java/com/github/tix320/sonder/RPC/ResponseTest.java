@@ -1,6 +1,7 @@
 package com.github.tix320.sonder.RPC;
 
 import java.io.IOException;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -9,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.github.tix320.sonder.api.common.rpc.RPCRemoteException;
 import com.github.tix320.sonder.internal.common.rpc.exception.MethodInvocationException;
 import com.github.tix320.sonder.internal.common.rpc.protocol.UnhandledErrorResponseException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -20,10 +22,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class ResponseTest extends BaseTest {
 
+	UncaughtExceptionHandler defaultUncaughtExceptionHandler;
+
 	@Override
 	@BeforeEach
 	public void setUp() throws IOException {
 		super.setUp();
+		defaultUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
+	}
+
+	@AfterEach
+	public void cleanup() {
+		Thread.setDefaultUncaughtExceptionHandler(defaultUncaughtExceptionHandler);
 	}
 
 	@Test
