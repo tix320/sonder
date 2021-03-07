@@ -37,7 +37,7 @@ public class ResponseTest extends BaseTest {
 			try {
 				Integer integer = response.get();
 				value.set(integer);
-			} catch (RPCRemoteException e) {
+			} catch (Exception e) {
 				throw new IllegalStateException();
 			}
 
@@ -61,7 +61,7 @@ public class ResponseTest extends BaseTest {
 				//noinspection ResultOfMethodCallIgnored
 				response.get();
 				value.set(10);
-			} catch (RPCRemoteException e) {
+			} catch (Exception e) {
 				errorReturned.set(true);
 			}
 		});

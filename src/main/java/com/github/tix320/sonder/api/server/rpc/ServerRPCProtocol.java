@@ -1,14 +1,11 @@
 package com.github.tix320.sonder.api.server.rpc;
 
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.github.tix320.kiwi.api.reactive.observable.Subscription;
-import com.github.tix320.skimp.api.object.CantorPair;
 import com.github.tix320.sonder.api.common.communication.ChannelTransfer;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Transfer;
@@ -25,7 +22,7 @@ import com.github.tix320.sonder.internal.server.rpc.extra.ServerOriginMethodClie
  */
 public final class ServerRPCProtocol extends RPCProtocol implements ServerSideProtocol {
 
-	private final Map<CantorPair, Subscription> realSubscriptions; // [clientId, responseKey] in CantorPair
+	private final Map<Long, Map<Long, Subscription>> realSubscriptions; // <clientId, <responseKey, Subscription>>
 
 	private TransferTunnel transferTunnel;
 
@@ -46,10 +43,12 @@ public final class ServerRPCProtocol extends RPCProtocol implements ServerSidePr
 	@Override
 	public void handleIncomingTransfer(long clientId, Transfer transfer) throws IOException {
 		TransferSender transferSender = responseTransfer -> transferTunnel.send(clientId, responseTransfer);
-		SubscriptionAdder subscriptionAdder = (responseKey, subscription) -> realSubscriptions.put(
-				new CantorPair(clientId, responseKey), subscription);
-		SubscriptionRemover subscriptionRemover = responseKey -> realSubscriptions.remove(
-				new CantorPair(clientId, responseKey));
+
+		Map<Long, Subscription> clientSubscriptions = realSubscriptions.computeIfAbsent(clientId,
+				aLong -> new ConcurrentHashMap<>());
+
+		SubscriptionAdder subscriptionAdder = clientSubscriptions::put;
+		SubscriptionRemover subscriptionRemover = clientSubscriptions::remove;
 
 		Headers headers = transfer.headers();
 		headers = headers.compose().header(ServerRPCHeaders.SOURCE_CLIENT_ID, clientId).build();
@@ -66,16 +65,9 @@ public final class ServerRPCProtocol extends RPCProtocol implements ServerSidePr
 	}
 
 	private void cleanupSubscriptionsOfClient(long clientIdForDelete) {
-		Iterator<Entry<CantorPair, Subscription>> iterator = realSubscriptions.entrySet().iterator();
-		while (iterator.hasNext()) {
-			Entry<CantorPair, Subscription> entry = iterator.next();
-			CantorPair cantorPair = entry.getKey();
-			long clientId = cantorPair.first();
-			if (clientId == clientIdForDelete) {
-				Subscription subscription = entry.getValue();
-				subscription.unsubscribe();
-				iterator.remove();
-			}
+		Map<Long, Subscription> clientSubscriptions = realSubscriptions.remove(clientIdForDelete);
+		if (clientSubscriptions != null) {
+			clientSubscriptions.clear();
 		}
 	}
 
