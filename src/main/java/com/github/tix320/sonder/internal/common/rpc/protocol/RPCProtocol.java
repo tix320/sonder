@@ -28,6 +28,7 @@ import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.object.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
+import com.github.tix320.sonder.api.common.rpc.RPCRemoteException;
 import com.github.tix320.sonder.api.common.rpc.Response;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
 import com.github.tix320.sonder.api.common.rpc.extra.OriginExtraArgExtractor;
@@ -287,7 +288,7 @@ public abstract class RPCProtocol implements Protocol {
 		Headers headers = transfer.headers();
 		long responseKey = headers.getNonNullLong(RPCHeaders.RESPONSE_KEY);
 
-		Exception exception = extractExceptionFromErrorResponse(transfer);
+		RPCRemoteException exception = extractExceptionFromErrorResponse(transfer);
 
 		RequestMetadata requestMetadata = requestMetadataByResponseKey.remove(responseKey);
 		if (requestMetadata == null) {
@@ -300,10 +301,10 @@ public abstract class RPCProtocol implements Protocol {
 			OriginMethod originMethod = requestMetadata.getOriginMethod();
 			ReturnType returnType = originMethod.getReturnType();
 
-			boolean isAsyncObject = returnType == ReturnType.ASYNC_DUAL_RESPONSE;
+			boolean isDualResponse = returnType == ReturnType.ASYNC_DUAL_RESPONSE;
 
-			if (isAsyncObject) {
-				responsePublisher.publish(new Response<>(exception, false));
+			if (isDualResponse) {
+				responsePublisher.publish(new Response<>(exception));
 			}
 			else {
 				ExceptionUtils.applyToUncaughtExceptionHandler(new UnhandledErrorResponseException(exception));
@@ -391,7 +392,7 @@ public abstract class RPCProtocol implements Protocol {
 			transfer.contentChannel().close();
 
 			if (isDualResponse) {
-				responsePublisher.publish(new Response<>(None.SELF, true));
+				responsePublisher.publish(new Response<>(None.SELF));
 			}
 			else {
 				responsePublisher.publish(None.SELF);
@@ -421,7 +422,7 @@ public abstract class RPCProtocol implements Protocol {
 			}
 
 			if (isDualResponse) {
-				responsePublisher.publish(new Response<>(result, true));
+				responsePublisher.publish(new Response<>(result));
 			}
 			else {
 				responsePublisher.publish(result);
@@ -429,7 +430,7 @@ public abstract class RPCProtocol implements Protocol {
 		}
 	}
 
-	private Exception extractExceptionFromErrorResponse(Transfer transfer) throws IOException {
+	private RPCRemoteException extractExceptionFromErrorResponse(Transfer transfer) throws IOException {
 		Headers headers = transfer.headers();
 
 		byte[] content = transfer.contentChannel().readAllBytes();

@@ -4,14 +4,16 @@ import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import com.github.tix320.sonder.api.common.rpc.RPCRemoteException;
 import com.github.tix320.sonder.internal.common.rpc.exception.MethodInvocationException;
-import com.github.tix320.sonder.internal.common.rpc.exception.RPCRemoteException;
 import com.github.tix320.sonder.internal.common.rpc.protocol.UnhandledErrorResponseException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author Tigran Sargsyan on 14-Jul-20.
@@ -28,13 +30,17 @@ public class ResponseTest extends BaseTest {
 	public void test() throws InterruptedException, IOException {
 		ClientService rpcService = rpcProtocol.getOrigin(ClientService.class);
 
-		AtomicBoolean valueReturned = new AtomicBoolean(false);
+		AtomicInteger value = new AtomicInteger(-1);
 		AtomicBoolean errorReturned = new AtomicBoolean(false);
 
 		rpcService.getAnyValue().subscribe(response -> {
-			if (response.isSuccess()) {
-				valueReturned.set(true);
+			try {
+				Integer integer = response.get();
+				value.set(integer);
+			} catch (RPCRemoteException e) {
+				throw new IllegalStateException();
 			}
+
 		});
 
 		List<Throwable> exceptions = new CopyOnWriteArrayList<>();
@@ -43,29 +49,31 @@ public class ResponseTest extends BaseTest {
 
 		Thread.sleep(1000);
 
-		assertTrue(valueReturned.get());
+		assertEquals(5, value.get());
 
 		// -------------------------------
 
-		valueReturned.set(false);
+		value.set(-1);
 		errorReturned.set(false);
 
 		rpcService.throwAnyException().subscribe(response -> {
-			if (response.isSuccess()) {
-				valueReturned.set(true);
-			} else {
+			try {
+				//noinspection ResultOfMethodCallIgnored
+				response.get();
+				value.set(10);
+			} catch (RPCRemoteException e) {
 				errorReturned.set(true);
 			}
 		});
 
 		Thread.sleep(1000);
 
-		assertFalse(valueReturned.get());
+		assertEquals(-1, value.get());
 		assertTrue(errorReturned.get());
 
 		// -------------------------------
 
-		valueReturned.set(false);
+		value.set(-1);
 		errorReturned.set(false);
 
 		rpcService.throwAnyExceptionWithoutHandle();
