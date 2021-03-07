@@ -24,7 +24,7 @@ public final class BlockingPreventFiniteReadableByteChannel extends AbstractClos
 	public int read(ByteBuffer dst) throws IOException {
 		int read = sourceChannel.read(dst);
 		if (read == 0) {
-			throw new IOException("Non-blocking channel prohibited.");
+			throw new IOException("Non-blocking source channel prohibited.");
 		}
 		return read;
 	}
