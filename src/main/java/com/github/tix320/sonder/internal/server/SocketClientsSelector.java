@@ -9,28 +9,26 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
 import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.property.Property;
-import com.github.tix320.kiwi.api.reactive.property.StateProperty;
 import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
 import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
 import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
 import com.github.tix320.skimp.api.thread.Threads;
 import com.github.tix320.sonder.api.common.Client;
+import com.github.tix320.sonder.api.common.communication.channel.BlockingReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.channel.EmptyReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.channel.FiniteReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.channel.LimitedReadableByteChannel;
-import com.github.tix320.sonder.internal.common.State;
 import com.github.tix320.sonder.internal.common.communication.Pack;
 import com.github.tix320.sonder.internal.common.communication.SocketConnectionException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackAlreadyReadException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackNotReadyException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPack;
-import com.github.tix320.sonder.api.common.communication.channel.BlockingReadableByteChannel;
 import com.github.tix320.sonder.internal.common.communication.channel.CleanableFiniteReadableByteChannel;
 
 public final class SocketClientsSelector implements Closeable {
@@ -49,7 +47,7 @@ public final class SocketClientsSelector implements Closeable {
 
 	private volatile ServerSocketChannel serverChannel;
 
-	private final StateProperty<State> state = Property.forState(State.INITIAL);
+	private final AtomicReference<State> state = new AtomicReference<>(State.INITIAL);
 
 	private final SimplePublisher<Client> newClientsPublisher = Publisher.simple();
 
@@ -72,7 +70,7 @@ public final class SocketClientsSelector implements Closeable {
 			serverChannel.configureBlocking(false);
 			serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
-			boolean changed = state.compareAndSetValue(State.INITIAL, State.RUNNING);
+			boolean changed = state.compareAndSet(State.INITIAL, State.RUNNING);
 			if (!changed) {
 				try {
 					serverChannel.close();
@@ -90,7 +88,10 @@ public final class SocketClientsSelector implements Closeable {
 	}
 
 	public void send(long clientId, Pack pack) throws ClientClosedException {
-		state.checkState(State.RUNNING);
+		State state = this.state.get();
+		if (state != State.RUNNING) {
+			throw new IllegalStateException(state.toString());
+		}
 
 		SelectionKey selectionKey = selectionKeysById.get(clientId);
 		if (selectionKey == null) {
@@ -130,10 +131,9 @@ public final class SocketClientsSelector implements Closeable {
 
 	@Override
 	public void close() throws IOException {
-		boolean changed = state.compareAndSetValue(State.RUNNING, State.CLOSED);
+		boolean changed = state.compareAndSet(State.RUNNING, State.CLOSED);
 
 		if (changed) {
-			state.close();
 			workers.shutdown();
 
 			ServerSocketChannel serverChannel = this.serverChannel;
@@ -358,5 +358,11 @@ public final class SocketClientsSelector implements Closeable {
 		public void setBlockingChannel(BlockingReadableByteChannel blockingChannel) {
 			this.blockingChannel = blockingChannel;
 		}
+	}
+
+	private enum State {
+		INITIAL,
+		RUNNING,
+		CLOSED
 	}
 }
