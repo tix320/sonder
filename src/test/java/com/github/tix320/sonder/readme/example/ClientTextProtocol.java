@@ -30,7 +30,7 @@ public class ClientTextProtocol implements ClientSideProtocol {
 		String charset = headers.getNonNullString("charset"); // Get the charset for decoding content
 		long fromClientId = headers.getNonNullLong("from-id");
 
-		byte[] bytes = transfer.contentChannel().readAll(); // read all content to byte array
+		byte[] bytes = transfer.contentChannel().readAllBytes(); // read all content to byte array
 
 		String text = new String(bytes, charset); // convert bytes to string according to charset
 

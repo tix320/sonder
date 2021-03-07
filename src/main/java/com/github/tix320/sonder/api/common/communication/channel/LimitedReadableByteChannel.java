@@ -63,7 +63,7 @@ public final class LimitedReadableByteChannel extends AbstractFiniteReadableByte
 	}
 
 	@Override
-	public final synchronized byte[] readAll() throws IOException {
+	public final synchronized byte[] readAllBytes() throws IOException {
 		if (!isOpen()) {
 			throw new ClosedChannelException();
 		}
@@ -73,11 +73,7 @@ public final class LimitedReadableByteChannel extends AbstractFiniteReadableByte
 					"Cannot read all bytes, due there are larger than Integer.MAX_VALUE");
 		}
 
-		if (remaining != limit) {
-			throw new IllegalStateException("readAll not allowed, when any bytes already was read");
-		}
-
-		ByteBuffer buffer = ByteBuffer.allocate((int) limit);
+		ByteBuffer buffer = ByteBuffer.allocate((int) remaining);
 		while (buffer.hasRemaining()) {
 			read(buffer);
 		}

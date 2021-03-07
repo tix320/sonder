@@ -31,8 +31,8 @@ public final class CleanableFiniteReadableByteChannel extends AbstractCloseableC
 	}
 
 	@Override
-	public byte[] readAll() throws IOException {
-		return sourceChannel.readAll();
+	public byte[] readAllBytes() throws IOException {
+		return sourceChannel.readAllBytes();
 	}
 
 	@Override
