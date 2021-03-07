@@ -29,6 +29,7 @@ import com.github.tix320.sonder.internal.common.communication.SonderProtocolChan
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackAlreadyReadException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.PackNotReadyException;
 import com.github.tix320.sonder.internal.common.communication.SonderProtocolChannel.ReceivedPack;
+import com.github.tix320.sonder.internal.common.communication.channel.BlockingPreventFiniteReadableByteChannel;
 import com.github.tix320.sonder.internal.common.communication.channel.CleanableFiniteReadableByteChannel;
 
 public final class SocketClientsSelector implements Closeable {
@@ -88,6 +89,8 @@ public final class SocketClientsSelector implements Closeable {
 	}
 
 	public void send(long clientId, Pack pack) throws ClientClosedException {
+		pack = new Pack(pack.getHeaders(), new BlockingPreventFiniteReadableByteChannel(pack.contentChannel()));
+
 		State state = this.state.get();
 		if (state != State.RUNNING) {
 			throw new IllegalStateException(state.toString());
