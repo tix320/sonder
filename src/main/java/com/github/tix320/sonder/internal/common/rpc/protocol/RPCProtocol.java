@@ -341,6 +341,10 @@ public abstract class RPCProtocol implements Protocol {
 			case REGULAR_ITEM:
 				remoteSubscriptionPublisher = remoteSubscriptionPublishers.get(responseKey);
 				if (remoteSubscriptionPublisher == null) {
+					try {
+						transfer.contentChannel().close();
+					} catch (IOException ignored) {
+					}
 					// This may happen, when we are unsubscribe from observable locally, but unsubscription still not reached to other end and he send regular value.
 					// So we are ignoring this case, just log it
 					// System.err.printf("Subscription not found for key %s%n", responseKey);

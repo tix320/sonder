@@ -15,12 +15,9 @@ public final class SonderServerBuilder {
 
 	private final Map<String, ServerSideProtocol> protocols;
 
-	private int workersCoreCount;
-
 	public SonderServerBuilder(InetSocketAddress inetSocketAddress) {
 		this.inetSocketAddress = inetSocketAddress;
 		this.protocols = new HashMap<>();
-		this.workersCoreCount = Runtime.getRuntime().availableProcessors();
 	}
 
 	/**
@@ -37,18 +34,6 @@ public final class SonderServerBuilder {
 		}
 		protocols.put(protocolName, protocol);
 
-		return this;
-	}
-
-	/**
-	 * Set core count of threads, which will be used for handling clients transfers.
-	 *
-	 * @param count core threads count
-	 *
-	 * @return self
-	 */
-	public SonderServerBuilder workersCoreCount(int count) {
-		workersCoreCount = count;
 		return this;
 	}
 

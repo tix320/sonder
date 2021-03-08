@@ -9,7 +9,7 @@ import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.skimp.api.interval.Interval;
 import com.github.tix320.skimp.api.interval.IntervalRepeater;
 import com.github.tix320.skimp.api.object.None;
-import com.github.tix320.sonder.api.client.event.ClientEvents;
+import com.github.tix320.sonder.api.client.event.Events;
 import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Protocol;
@@ -39,7 +39,7 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 
 	private final SocketServerConnection connection;
 
-	private final ClientEvents clientEvents;
+	private final Events events;
 
 	private final Interval connectInterval;
 
@@ -59,7 +59,7 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 		this.connection = new SocketServerConnection(address, this::handlePack);
 
 		this.connectInterval = connectInterval;
-		this.clientEvents = connection::state;
+		this.events = connection::state;
 	}
 
 	public void start() throws IOException {
@@ -68,7 +68,7 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 			throw new IllegalStateException("Already started");
 		}
 
-		protocols().forEach(protocol -> protocol.init(new TransferTunnelImpl(protocol.getName()), clientEvents));
+		protocols().forEach(protocol -> protocol.init(new TransferTunnelImpl(protocol.getName()), events));
 		if (this.connectInterval == null) {
 			connection.connect();
 
@@ -89,6 +89,7 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 						System.out.println("SONDER: Connected.");
 						break;
 					case CLOSED:
+						protocols().forEach(ClientSideProtocol::reset);
 						System.out.println("SONDER: Connection closed.");
 						return false;
 				}
@@ -111,8 +112,8 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 		}
 	}
 
-	public ClientEvents events() {
-		return clientEvents;
+	public Events events() {
+		return events;
 	}
 
 	private void handlePack(Pack pack) {
@@ -131,22 +132,18 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 
 	private boolean tryConnect(Interval interval) {
 		AtomicInteger count = new AtomicInteger(1);
-		IntervalRepeater<None> repeater = IntervalRepeater.of(() -> {
+		IntervalRepeater<None> repeater = IntervalRepeater.of(interval, () -> {
 			System.out.printf("SONDER: Try connect %s...%n", count.getAndIncrement());
 			try {
 				connection.connect();
 			} catch (IOException e) {
-				ExceptionUtils.applyToUncaughtExceptionHandler(e);
 				System.err.println("SONDER: Connection fail.");
+				throw e;
 			}
 
-		}, interval);
+		});
 
-		try {
-			return repeater.doUntilSuccess(5).isPresent();
-		} catch (InterruptedException e) {
-			throw new IllegalStateException(e);
-		}
+		return repeater.doUntilSuccess(5).isPresent();
 	}
 
 	private final class TransferTunnelImpl implements TransferTunnel {

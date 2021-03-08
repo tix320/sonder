@@ -9,13 +9,15 @@ import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
 import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.sonder.api.client.ClientSideProtocol;
 import com.github.tix320.sonder.api.client.TransferTunnel;
-import com.github.tix320.sonder.api.client.event.ClientEvents;
+import com.github.tix320.sonder.api.client.event.Events;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Response;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocolConfig;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RemoteSubscriptionPublisher;
+import com.github.tix320.sonder.internal.common.rpc.protocol.UnhandledErrorResponseException;
+import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod.ReturnType;
 
 /**
@@ -37,7 +39,7 @@ public final class ClientRPCProtocol extends RPCProtocol implements ClientSidePr
 	}
 
 	@Override
-	public void init(TransferTunnel transferTunnel, ClientEvents clientEvents) {
+	public void init(TransferTunnel transferTunnel, Events events) {
 		synchronized (this) { // also for memory effects
 			this.transferTunnel = transferTunnel;
 		}
@@ -50,10 +52,13 @@ public final class ClientRPCProtocol extends RPCProtocol implements ClientSidePr
 				MonoPublisher<Object> responsePublisher = requestMetadata.getResponsePublisher();
 
 				ConnectionResetException connectionResetException = new ConnectionResetException();
-				if (requestMetadata.getOriginMethod().getReturnType() == ReturnType.ASYNC_DUAL_RESPONSE) {
+				ReturnType returnType = requestMetadata.getOriginMethod().getReturnType();
+				if (returnType == ReturnType.ASYNC_DUAL_RESPONSE) {
 					responsePublisher.publish(new Response<>(connectionResetException));
-				} else {
-					ExceptionUtils.applyToUncaughtExceptionHandler(connectionResetException);
+				} else if (returnType != ReturnType.VOID) {
+					OriginMethod originMethod = requestMetadata.getOriginMethod();
+					ExceptionUtils.applyToUncaughtExceptionHandler(
+							new UnhandledErrorResponseException(originMethod.toString(), connectionResetException));
 				}
 
 				responsePublisher.complete();

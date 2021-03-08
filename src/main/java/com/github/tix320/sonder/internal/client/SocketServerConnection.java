@@ -114,16 +114,16 @@ public final class SocketServerConnection {
 
 				if (receivedPack.getContentLength() == 0) {
 					contentChannel = EmptyReadableByteChannel.SELF;
-					sonderProtocolChannel.resetReadState();
 				} else {
 					ByteChannel socketChannel = sonderProtocolChannel.getSourceChannel();
 					contentChannel = new CleanableFiniteReadableByteChannel(
 							new LimitedReadableByteChannel(socketChannel, receivedPack.getContentLength()));
-					contentChannel.completeness().subscribe(none -> {
-						sonderProtocolChannel.resetReadState();
-						latch.countDown();
-					});
 				}
+
+				contentChannel.completeness().subscribe(none -> {
+					sonderProtocolChannel.resetReadState();
+					latch.countDown();
+				});
 
 				Pack pack = new Pack(receivedPack.getHeaders(), contentChannel);
 

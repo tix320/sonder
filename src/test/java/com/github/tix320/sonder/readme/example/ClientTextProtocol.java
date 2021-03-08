@@ -5,7 +5,7 @@ import java.nio.charset.Charset;
 
 import com.github.tix320.sonder.api.client.ClientSideProtocol;
 import com.github.tix320.sonder.api.client.TransferTunnel;
-import com.github.tix320.sonder.api.client.event.ClientEvents;
+import com.github.tix320.sonder.api.client.event.Events;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.StaticTransfer;
 import com.github.tix320.sonder.api.common.communication.Transfer;
@@ -15,7 +15,7 @@ public class ClientTextProtocol implements ClientSideProtocol {
 	private TransferTunnel transferTunnel;
 
 	@Override
-	public void init(TransferTunnel transferTunnel, ClientEvents clientEvents) {
+	public void init(TransferTunnel transferTunnel, Events events) {
 		this.transferTunnel = transferTunnel; // hold transferTunnel for transfers sending in the future
 	}
 

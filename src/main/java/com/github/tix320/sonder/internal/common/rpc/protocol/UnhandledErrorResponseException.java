@@ -8,4 +8,8 @@ public final class UnhandledErrorResponseException extends RuntimeException {
 	public UnhandledErrorResponseException(Throwable cause) {
 		super("See cause", cause);
 	}
+
+	public UnhandledErrorResponseException(String message, Throwable cause) {
+		super(message, cause);
+	}
 }
