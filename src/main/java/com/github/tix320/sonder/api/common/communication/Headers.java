@@ -39,10 +39,6 @@ public final class Headers implements Serializable {
 		this.values = values;
 	}
 
-	public Object get(String key) {
-		return values.get(key);
-	}
-
 	public boolean has(String key) {
 		return values.containsKey(key);
 	}

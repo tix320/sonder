@@ -1,9 +1,7 @@
 package com.github.tix320.sonder.internal.common.rpc.protocol;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.function.LongFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -23,17 +21,13 @@ public final class RPCProtocolConfig {
 
 	private final List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors;
 
-	private final LongFunction<Duration> contentTimeoutDurationFactory;
-
 	public RPCProtocolConfig(Map<Class<?>, Object> originInstances, Map<Class<?>, Object> endpointInstances,
 							 List<OriginExtraArgExtractor<?, ?>> originExtraArgExtractors,
-							 List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors,
-							 LongFunction<Duration> contentTimeoutDurationFactory) {
+							 List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors) {
 		this.originInstances = Map.copyOf(originInstances);
 		this.endpointInstances = Map.copyOf(endpointInstances);
 		this.originExtraArgExtractors = List.copyOf(originExtraArgExtractors);
 		this.endpointExtraArgInjectors = List.copyOf(endpointExtraArgInjectors);
-		this.contentTimeoutDurationFactory = contentTimeoutDurationFactory;
 	}
 
 	public Map<Class<?>, Object> getOriginInstances() {
@@ -61,6 +55,6 @@ public final class RPCProtocolConfig {
 				endpointExtraArgInjectors.stream()).collect(Collectors.toUnmodifiableList());
 
 		return new RPCProtocolConfig(originInstances, endpointInstances, originExtraArgExtractors,
-				endpointExtraArgInjectors, contentTimeoutDurationFactory);
+				endpointExtraArgInjectors);
 	}
 }

@@ -10,7 +10,7 @@ import com.github.tix320.sonder.api.common.Client;
 import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 import com.github.tix320.sonder.api.common.communication.Transfer;
-import com.github.tix320.sonder.api.server.event.ServerEvents;
+import com.github.tix320.sonder.api.server.event.Events;
 import com.github.tix320.sonder.api.server.rpc.ServerRPCProtocol;
 import com.github.tix320.sonder.internal.common.SonderSide;
 import com.github.tix320.sonder.internal.common.SonderSideState;
@@ -37,7 +37,7 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 
 	private final SocketClientsSelector clientsSelector;
 
-	private final ServerEvents serverEvents;
+	private final Events events;
 
 	/**
 	 * Prepare server creating for this socket address.
@@ -53,7 +53,7 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 	SonderServer(InetSocketAddress address, Map<String, ServerSideProtocol> protocols) {
 		super(protocols);
 		this.clientsSelector = new SocketClientsSelector(address, this::handlePack);
-		this.serverEvents = new ServerEvents() {
+		this.events = new Events() {
 			@Override
 			public Observable<Client> newConnections() {
 				return clientsSelector.newClients();
@@ -73,7 +73,7 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 		}
 
 		clientsSelector.run();
-		protocols().forEach(protocol -> protocol.init(new TransferTunnelImpl(protocol.getName()), serverEvents));
+		protocols().forEach(protocol -> protocol.init(new TransferTunnelImpl(protocol.getName()), events));
 	}
 
 	public void stop() {
@@ -88,8 +88,8 @@ public final class SonderServer extends SonderSide<ServerSideProtocol> {
 		}
 	}
 
-	public ServerEvents events() {
-		return serverEvents;
+	public Events events() {
+		return events;
 	}
 
 	private void handlePack(long clientId, Pack pack) {

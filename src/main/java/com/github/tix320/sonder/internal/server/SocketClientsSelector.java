@@ -247,12 +247,6 @@ public final class SocketClientsSelector implements Closeable {
 
 		ByteChannel socketChannel = sonderProtocolChannel.getSourceChannel();
 
-		BlockingReadableByteChannel blockingWrapperChannel = new BlockingReadableByteChannel(socketChannel);
-
-		clientConnection.setBlockingChannel(blockingWrapperChannel);
-
-		blockingWrapperChannel.emptiness().subscribe(none -> enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ));
-
 		FiniteReadableByteChannel contentChannel;
 
 		if (receivedPack.getContentLength() == 0) {
@@ -260,8 +254,15 @@ public final class SocketClientsSelector implements Closeable {
 			sonderProtocolChannel.resetReadState();
 			enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
 		} else {
+			BlockingReadableByteChannel blockingWrapperChannel = new BlockingReadableByteChannel(socketChannel);
+
+			clientConnection.setBlockingChannel(blockingWrapperChannel);
+
+			blockingWrapperChannel.emptiness().subscribe(none -> enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ));
+
 			contentChannel = new CleanableFiniteReadableByteChannel(
 					new LimitedReadableByteChannel(blockingWrapperChannel, receivedPack.getContentLength()));
+
 			contentChannel.completeness().subscribe(none -> {
 				clientConnection.setBlockingChannel(null);
 				sonderProtocolChannel.resetReadState();

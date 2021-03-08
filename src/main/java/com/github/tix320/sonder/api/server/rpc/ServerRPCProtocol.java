@@ -11,7 +11,7 @@ import com.github.tix320.sonder.api.common.communication.Headers;
 import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.server.ServerSideProtocol;
 import com.github.tix320.sonder.api.server.TransferTunnel;
-import com.github.tix320.sonder.api.server.event.ServerEvents;
+import com.github.tix320.sonder.api.server.event.Events;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocol;
 import com.github.tix320.sonder.internal.common.rpc.protocol.RPCProtocolConfig;
 import com.github.tix320.sonder.internal.server.rpc.extra.ServerEndpointMethodClientIdInjector;
@@ -37,10 +37,10 @@ public final class ServerRPCProtocol extends RPCProtocol implements ServerSidePr
 	}
 
 	@Override
-	public void init(TransferTunnel transferTunnel, ServerEvents serverEvents) {
+	public void init(TransferTunnel transferTunnel, Events events) {
 		synchronized (this) { // also for memory effects
 			this.transferTunnel = transferTunnel;
-			serverEvents.deadConnections().subscribe(client -> cleanupSubscriptionsOfClient(client.getId()));
+			events.deadConnections().subscribe(client -> cleanupSubscriptionsOfClient(client.getId()));
 		}
 	}
 

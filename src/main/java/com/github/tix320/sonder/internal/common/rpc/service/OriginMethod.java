@@ -49,4 +49,17 @@ public final class OriginMethod extends ServiceMethod {
 		ASYNC_DUAL_RESPONSE, // value or error
 		SUBSCRIPTION
 	}
+
+	@Override
+	public String toString() {
+		return "OriginMethod{"
+			   + "returnType="
+			   + returnJavaType
+			   + ", path='"
+			   + path
+			   + '\''
+			   + ", rawMethod="
+			   + rawMethod
+			   + '}';
+	}
 }

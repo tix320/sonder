@@ -4,12 +4,9 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
-import java.time.Duration;
 import java.util.*;
 import java.util.function.Consumer;
-import java.util.function.LongFunction;
 
-import com.github.tix320.sonder.api.common.communication.Transfer;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
 import com.github.tix320.sonder.api.common.rpc.Origin;
 import com.github.tix320.sonder.api.common.rpc.extra.EndpointExtraArgInjector;
@@ -34,8 +31,6 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 
 	private final List<EndpointExtraArgInjector<?, ?>> endpointExtraArgInjectors;
 
-	private LongFunction<Duration> contentTimeoutDurationFactory;
-
 	private final OriginInvocationHandler originInvocationHandler = new OriginInvocationHandler();
 
 	private boolean built = false;
@@ -45,10 +40,6 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 		endpointInstances = new HashMap<>();
 		originExtraArgExtractors = new ArrayList<>();
 		endpointExtraArgInjectors = new ArrayList<>();
-		this.contentTimeoutDurationFactory = contentLength -> {
-			long timout = Math.max((long) Math.ceil(contentLength * 5D / 1024 / 1024), 1); // 5sec for 1MB
-			return Duration.ofSeconds(timout);
-		};
 	}
 
 	/**
@@ -141,22 +132,6 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 		return getThis();
 	}
 
-
-	/**
-	 * Set timeout factory for transfer content receiving.
-	 * If content will not fully received in this duration, then transferring will be reset.
-	 *
-	 * @param factory to create timeout for every transfer content. ('contentLength' to 'timeout')
-	 *
-	 * @return self
-	 *
-	 * @see Transfer
-	 */
-	public T contentTimeoutDurationFactory(LongFunction<Duration> factory) {
-		contentTimeoutDurationFactory = factory;
-		return getThis();
-	}
-
 	public final R build() {
 		if (built) {
 			throw new IllegalStateException("Already built");
@@ -164,7 +139,7 @@ public abstract class RPCProtocolBuilder<R extends RPCProtocol, T extends RPCPro
 		built = true;
 
 		RPCProtocolConfig protocolConfig = new RPCProtocolConfig(originInstances, endpointInstances,
-				originExtraArgExtractors, endpointExtraArgInjectors, contentTimeoutDurationFactory);
+				originExtraArgExtractors, endpointExtraArgInjectors);
 
 		R protocol = this.build(protocolConfig);
 
