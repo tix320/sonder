@@ -112,7 +112,7 @@ public final class SocketClientsSelector implements Closeable {
 				}
 			} catch (SocketException e) {
 				closeClientConnection(clientConnection);
-				if (!e.getMessage().contains("Connection reset")) {
+				if (e.getMessage() == null || !e.getMessage().contains("Connection reset")) {
 					throw new SocketConnectionException(
 							String.format("An error occurs while write to client %s", clientConnection.client), e);
 				} else {
@@ -120,7 +120,8 @@ public final class SocketClientsSelector implements Closeable {
 				}
 			} catch (IOException e) {
 				closeClientConnection(clientConnection);
-				if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
+				if (e.getMessage() == null || !e.getMessage()
+						.contains("An existing connection was forcibly closed by the remote host")) {
 					throw new SocketConnectionException(
 							String.format("An error occurs while write to client %s", clientConnection.client), e);
 				} else {
@@ -258,7 +259,8 @@ public final class SocketClientsSelector implements Closeable {
 
 			clientConnection.setBlockingChannel(blockingWrapperChannel);
 
-			blockingWrapperChannel.emptiness().subscribe(none -> enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ));
+			blockingWrapperChannel.emptiness()
+					.subscribe(none -> enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ));
 
 			contentChannel = new CleanableFiniteReadableByteChannel(
 					new LimitedReadableByteChannel(blockingWrapperChannel, receivedPack.getContentLength()));
