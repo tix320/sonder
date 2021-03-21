@@ -140,7 +140,8 @@ public final class SocketServerConnection {
 				throw new BreakLoopException();
 			} catch (IOException e) {
 				resetConnection();
-				if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
+				if (e.getMessage() == null || !e.getMessage()
+						.contains("An existing connection was forcibly closed by the remote host")) {
 					SocketConnectionException socketConnectionException = new SocketConnectionException(
 							"The problem is occurred while reading data", e);
 					ExceptionUtils.applyToUncaughtExceptionHandler(socketConnectionException);
