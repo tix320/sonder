@@ -225,6 +225,8 @@ public abstract class RPCProtocol implements Protocol {
 
 				transfer = new ChannelTransfer(headers, transferToSend.contentChannel());
 
+				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(null, method));
+
 				BufferedPublisher<Object> dummyPublisher = Publisher.buffered();
 				remoteSubscriptionPublishers.put(responseKey,
 						new RemoteSubscriptionPublisher(dummyPublisher, method.getReturnJavaType()));
@@ -301,10 +303,11 @@ public abstract class RPCProtocol implements Protocol {
 
 			boolean isDualResponse = returnType == ReturnType.ASYNC_DUAL_RESPONSE;
 
-			if (isDualResponse) {
+			if (isDualResponse && responsePublisher != null) {
 				responsePublisher.publish(new Response<>(exception));
 			} else {
-				ExceptionUtils.applyToUncaughtExceptionHandler(new UnhandledErrorResponseException(exception));
+				ExceptionUtils.applyToUncaughtExceptionHandler(
+						new UnhandledErrorResponseException(originMethod.toString(), exception));
 			}
 		}
 	}
@@ -738,6 +741,7 @@ public abstract class RPCProtocol implements Protocol {
 				@Override
 				public void onComplete(CompletionType completionType) {
 					remoteSubscriptionPublishers.remove(responseKey);
+					requestMetadataByResponseKey.remove(responseKey);
 					subscriber.onComplete(completionType);
 					if (completionType == CompletionType.UNSUBSCRIPTION) {
 						Headers headers = Headers.builder()
