@@ -11,9 +11,9 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
-import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
+import com.github.tix320.kiwi.observable.Observable;
+import com.github.tix320.kiwi.publisher.Publisher;
+import com.github.tix320.kiwi.publisher.SimplePublisher;
 import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
@@ -74,7 +74,8 @@ public final class SocketClientsSelector implements Closeable {
 				try {
 					serverChannel.close();
 					selector.close();
-				} catch (IOException ignored) {
+				}
+				catch (IOException ignored) {
 				}
 				throw new IllegalStateException("Already running");
 			}
@@ -110,21 +111,25 @@ public final class SocketClientsSelector implements Closeable {
 				if (!success) {
 					enableOpsAndWakeup(selectionKey, SelectionKey.OP_WRITE);
 				}
-			} catch (SocketException e) {
+			}
+			catch (SocketException e) {
 				closeClientConnection(clientConnection);
 				if (e.getMessage() == null || !e.getMessage().contains("Connection reset")) {
 					throw new SocketConnectionException(
 							String.format("An error occurs while write to client %s", clientConnection.client), e);
-				} else {
+				}
+				else {
 					throw new ClientClosedException();
 				}
-			} catch (IOException e) {
+			}
+			catch (IOException e) {
 				closeClientConnection(clientConnection);
 				if (e.getMessage() == null || !e.getMessage()
 						.contains("An existing connection was forcibly closed by the remote host")) {
 					throw new SocketConnectionException(
 							String.format("An error occurs while write to client %s", clientConnection.client), e);
-				} else {
+				}
+				else {
 					throw new ClientClosedException();
 				}
 			}
@@ -142,8 +147,7 @@ public final class SocketClientsSelector implements Closeable {
 			Selector selector = this.selector;
 
 			//noinspection EmptyTryBlock
-			try (serverChannel;
-				 selector) { // guaranteed .close() call for every object
+			try (serverChannel; selector) { // guaranteed .close() call for every object
 
 			}
 		}
@@ -171,24 +175,31 @@ public final class SocketClientsSelector implements Closeable {
 					if (selectionKey.isAcceptable()) {
 						try {
 							accept();
-						} catch (IOException e) {
+						}
+						catch (IOException e) {
 							ExceptionUtils.applyToUncaughtExceptionHandler(e);
 						}
-					} else if (selectionKey.isReadable()) {
+					}
+					else if (selectionKey.isReadable()) {
 						disableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
 						runAsync(() -> read(selectionKey));
-					} else if (selectionKey.isWritable()) {
+					}
+					else if (selectionKey.isWritable()) {
 						disableOpsAndWakeup(selectionKey, SelectionKey.OP_WRITE);
 						runAsync(() -> write(selectionKey));
-					} else {
+					}
+					else {
 						selectionKey.cancel();
 					}
 				}
-			} catch (CancelledKeyException e) {
+			}
+			catch (CancelledKeyException e) {
 				// bye key
-			} catch (ClosedSelectorException e) {
+			}
+			catch (ClosedSelectorException e) {
 				throw new BreakLoopException();
-			} catch (IOException e) {
+			}
+			catch (IOException e) {
 				SocketConnectionException socketConnectionException = new SocketConnectionException(
 						"The problem is occurred in selector work", e);
 				ExceptionUtils.applyToUncaughtExceptionHandler(socketConnectionException);
@@ -220,17 +231,20 @@ public final class SocketClientsSelector implements Closeable {
 		ReceivedPack receivedPack;
 		try {
 			receivedPack = sonderProtocolChannel.tryRead();
-		} catch (ClosedChannelException e) {
+		}
+		catch (ClosedChannelException e) {
 			closeClientConnection(clientConnection);
 			return;
-		} catch (SocketException e) {
+		}
+		catch (SocketException e) {
 			closeClientConnection(clientConnection);
 			if (!e.getMessage().contains("Connection reset")) {
 				throw new SocketConnectionException(
 						String.format("An error occurs while read from client %s", clientConnection.client), e);
 			}
 			return;
-		} catch (IOException e) {
+		}
+		catch (IOException e) {
 			closeClientConnection(clientConnection);
 			if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
 				throw new SocketConnectionException(
@@ -238,10 +252,12 @@ public final class SocketClientsSelector implements Closeable {
 			}
 
 			return;
-		} catch (PackNotReadyException e) {
+		}
+		catch (PackNotReadyException e) {
 			enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
 			return;
-		} catch (PackAlreadyReadException e) {
+		}
+		catch (PackAlreadyReadException e) {
 			clientConnection.getBlockingChannel().notifyForAvailability();
 			return;
 		}
@@ -254,7 +270,8 @@ public final class SocketClientsSelector implements Closeable {
 			contentChannel = EmptyReadableByteChannel.SELF;
 			sonderProtocolChannel.resetReadState();
 			enableOpsAndWakeup(selectionKey, SelectionKey.OP_READ);
-		} else {
+		}
+		else {
 			BlockingReadableByteChannel blockingWrapperChannel = new BlockingReadableByteChannel(socketChannel);
 
 			clientConnection.setBlockingChannel(blockingWrapperChannel);
@@ -286,7 +303,8 @@ public final class SocketClientsSelector implements Closeable {
 			if (!success) {
 				enableOpsAndWakeup(selectionKey, SelectionKey.OP_WRITE);
 			}
-		} catch (IOException e) {
+		}
+		catch (IOException e) {
 			if (!e.getMessage().contains("An existing connection was forcibly closed by the remote host")) {
 				throw new SocketConnectionException(
 						String.format("An error occurs while write to client %s", clientConnection.client), e);
@@ -300,7 +318,8 @@ public final class SocketClientsSelector implements Closeable {
 		try {
 			selectionKey.interestOpsOr(op);
 			selector.wakeup();
-		} catch (CancelledKeyException | ClosedSelectorException e) {
+		}
+		catch (CancelledKeyException | ClosedSelectorException e) {
 			// bye key
 		}
 	}
@@ -309,7 +328,8 @@ public final class SocketClientsSelector implements Closeable {
 		try {
 			selectionKey.interestOpsAnd(~op);
 			selector.wakeup();
-		} catch (CancelledKeyException | ClosedSelectorException e) {
+		}
+		catch (CancelledKeyException | ClosedSelectorException e) {
 			// bye key
 		}
 	}
@@ -323,9 +343,11 @@ public final class SocketClientsSelector implements Closeable {
 				try {
 					SonderProtocolChannel sonderProtocolChannel = clientConnection.channel;
 					sonderProtocolChannel.close();
-				} catch (IOException ignored) {
+				}
+				catch (IOException ignored) {
 
-				} finally {
+				}
+				finally {
 					deadClientsPublisher.publish(clientConnection.client);
 				}
 			}
@@ -337,11 +359,13 @@ public final class SocketClientsSelector implements Closeable {
 			workers.submit(() -> {
 				try {
 					runnable.run();
-				} catch (Throwable t) {
+				}
+				catch (Throwable t) {
 					ExceptionUtils.applyToUncaughtExceptionHandler(t);
 				}
 			});
-		} catch (RejectedExecutionException ignored) {
+		}
+		catch (RejectedExecutionException ignored) {
 			// already closed
 		}
 	}
@@ -366,9 +390,7 @@ public final class SocketClientsSelector implements Closeable {
 	}
 
 	private enum State {
-		INITIAL,
-		RUNNING,
-		CLOSED
+		INITIAL, RUNNING, CLOSED
 	}
 
 	public interface PackConsumer {

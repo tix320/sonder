@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Map;
 
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
+import com.github.tix320.kiwi.observable.Observable;
 import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.sonder.api.common.Client;
 import com.github.tix320.sonder.api.common.communication.Headers;

@@ -5,7 +5,7 @@ import java.util.Map.Entry;
 import java.util.TreeMap;
 
 import com.fasterxml.jackson.databind.JavaType;
-import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
+import com.github.tix320.kiwi.publisher.Publisher;
 
 /**
  * @author Tigran Sargsyan on 22-Mar-20.

@@ -8,9 +8,9 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.property.Property;
-import com.github.tix320.kiwi.api.reactive.property.StateProperty;
+import com.github.tix320.kiwi.observable.Observable;
+import com.github.tix320.kiwi.property.Property;
+import com.github.tix320.kiwi.property.StateProperty;
 import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.skimp.api.thread.LoopThread;
 import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;

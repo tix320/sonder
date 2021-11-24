@@ -3,7 +3,7 @@ package com.github.tix320.sonder.api.common.communication.channel;
 import java.io.IOException;
 import java.nio.channels.ReadableByteChannel;
 
-import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.kiwi.observable.MonoObservable;
 import com.github.tix320.skimp.api.object.None;
 
 /**
@@ -32,7 +32,6 @@ public interface FiniteReadableByteChannel extends ReadableByteChannel {
 	 * Read all remaining bytes to byte array if possible.
 	 *
 	 * @return bytes
-	 *
 	 * @throws IOException                   if any IO errors occurs
 	 * @throws UnsupportedOperationException if content length larger than {@link Integer#MAX_VALUE}
 	 */

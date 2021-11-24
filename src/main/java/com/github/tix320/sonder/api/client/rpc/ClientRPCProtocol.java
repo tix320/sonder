@@ -4,8 +4,8 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.github.tix320.kiwi.api.reactive.observable.Subscription;
-import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
+import com.github.tix320.kiwi.observable.Subscription;
+import com.github.tix320.kiwi.publisher.MonoPublisher;
 import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.sonder.api.client.ClientSideProtocol;
 import com.github.tix320.sonder.api.client.TransferTunnel;
@@ -68,7 +68,7 @@ public final class ClientRPCProtocol extends RPCProtocol implements ClientSidePr
 			remoteSubscriptionPublishers.values().forEach(RemoteSubscriptionPublisher::closePublisher);
 			remoteSubscriptionPublishers.clear();
 
-			realSubscriptions.values().forEach(Subscription::unsubscribe);
+			realSubscriptions.values().forEach(Subscription::cancel);
 			realSubscriptions.clear();
 		}
 	}

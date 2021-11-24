@@ -3,7 +3,7 @@ package com.github.tix320.sonder.internal.common.communication.channel;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.kiwi.observable.MonoObservable;
 import com.github.tix320.skimp.api.object.None;
 import com.github.tix320.sonder.api.common.communication.channel.FiniteReadableByteChannel;
 

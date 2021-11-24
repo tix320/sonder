@@ -18,13 +18,10 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.github.tix320.kiwi.api.reactive.observable.CompletionType;
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
-import com.github.tix320.kiwi.api.reactive.observable.Subscription;
-import com.github.tix320.kiwi.api.reactive.publisher.BufferedPublisher;
-import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
-import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
+import com.github.tix320.kiwi.observable.*;
+import com.github.tix320.kiwi.publisher.BufferedPublisher;
+import com.github.tix320.kiwi.publisher.MonoPublisher;
+import com.github.tix320.kiwi.publisher.Publisher;
 import com.github.tix320.skimp.api.exception.ExceptionUtils;
 import com.github.tix320.skimp.api.generator.IDGenerator;
 import com.github.tix320.skimp.api.object.None;
@@ -326,7 +323,7 @@ public abstract class RPCProtocol implements Protocol {
 				if (subscription == null) {
 					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
 				}
-				subscription.unsubscribe();
+				subscription.cancel();
 				break;
 			case SUBSCRIPTION_COMPLETED:
 				RemoteSubscriptionPublisher remoteSubscriptionPublisher = remoteSubscriptionPublishers.remove(
@@ -711,7 +708,7 @@ public abstract class RPCProtocol implements Protocol {
 		}
 	}
 
-	private final class DummyObservable implements Observable<Object> {
+	private final class DummyObservable extends Observable<Object> {
 
 		private final Observable<Object> observable;
 
@@ -727,23 +724,23 @@ public abstract class RPCProtocol implements Protocol {
 
 		@Override
 		public void subscribe(Subscriber<? super Object> subscriber) {
-			observable.subscribe(new Subscriber<>() {
+			observable.subscribe(new Subscriber<>(subscriber.getSignalManager()) {
 				@Override
-				public boolean onSubscribe(Subscription subscription) {
-					return subscriber.onSubscribe(subscription);
+				public void onSubscribe(Subscription subscription) {
+					 subscriber.setSubscription(subscription);
 				}
 
 				@Override
-				public boolean onPublish(Object item) {
-					return subscriber.onPublish(item);
+				public void onNext(Object item) {
+					subscriber.publish(item);
 				}
 
 				@Override
-				public void onComplete(CompletionType completionType) {
+				public void onComplete(Completion completion) {
 					remoteSubscriptionPublishers.remove(responseKey);
 					requestMetadataByResponseKey.remove(responseKey);
-					subscriber.onComplete(completionType);
-					if (completionType == CompletionType.UNSUBSCRIPTION) {
+					subscriber.complete(completion);
+					if (completion instanceof Unsubscription) {
 						Headers headers = Headers.builder()
 								.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 								.header(RPCHeaders.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.UNSUBSCRIBE)
@@ -758,7 +755,7 @@ public abstract class RPCProtocol implements Protocol {
 		}
 	}
 
-	private static final class RealSubscriber implements Subscriber<Object> {
+	private static final class RealSubscriber extends FlexibleSubscriber<Object> {
 
 		private final long responseKey;
 		private final TransferSender transferSender;
@@ -773,13 +770,13 @@ public abstract class RPCProtocol implements Protocol {
 		}
 
 		@Override
-		public boolean onSubscribe(Subscription subscription) {
+		public void onSubscribe(Subscription subscription) {
 			subscriptionAdder.add(responseKey, subscription);
-			return true;
+			subscription.request(Long.MAX_VALUE);
 		}
 
 		@Override
-		public boolean onPublish(Object item) {
+		public void onNext(Object item) {
 			Headers headers = Headers.builder()
 					.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 					.header(RPCHeaders.RESPONSE_KEY, responseKey)
@@ -791,13 +788,11 @@ public abstract class RPCProtocol implements Protocol {
 			Transfer transferToSend = new StaticTransfer(headers, content);
 
 			transferSender.send(transferToSend);
-
-			return true;
 		}
 
 		@Override
-		public void onComplete(CompletionType completionType) {
-			if (completionType == CompletionType.SOURCE_COMPLETED) {
+		public void onComplete(Completion completion) {
+			if (completion instanceof SourceCompletion) {
 				Headers headers = Headers.builder()
 						.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 						.header(RPCHeaders.RESPONSE_KEY, responseKey)

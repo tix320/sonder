@@ -5,8 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
-import com.github.tix320.kiwi.api.reactive.observable.Subscription;
+import com.github.tix320.kiwi.observable.Subscription;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,8 +25,10 @@ public class RPCObservableTest extends BaseTest {
 
 		List<Integer> list = new ArrayList<>();
 		AtomicReference<Subscription> subscriptionHolder = new AtomicReference<>();
-		rpcService.numbers()
-				.subscribe(Subscriber.<Integer>builder().onSubscribe(subscriptionHolder::set).onPublish(list::add));
+		rpcService.numbers().subscribe(subscription -> {
+			subscriptionHolder.set(subscription);
+			subscription.request(Long.MAX_VALUE);
+		}, list::add);
 
 		Thread.sleep(300);
 		ServerEndpoint.publisher.publish(4);
@@ -46,7 +47,7 @@ public class RPCObservableTest extends BaseTest {
 		List<Integer> lastExpected = List.of(4, 5, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 		assertEquals(lastExpected, list);
 
-		subscriptionHolder.get().unsubscribe();
+		subscriptionHolder.get().cancel();
 		Thread.sleep(500);
 		ServerEndpoint.publisher.publish(6);
 		Thread.sleep(500);

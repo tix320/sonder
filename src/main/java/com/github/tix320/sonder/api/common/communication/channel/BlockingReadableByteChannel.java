@@ -8,9 +8,9 @@ import java.nio.channels.ReadableByteChannel;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
-import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
+import com.github.tix320.kiwi.observable.Observable;
+import com.github.tix320.kiwi.publisher.Publisher;
+import com.github.tix320.kiwi.publisher.SimplePublisher;
 import com.github.tix320.skimp.api.object.None;
 import com.github.tix320.sonder.internal.common.communication.channel.AbstractCloseableChannel;
 
