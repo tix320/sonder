@@ -1,0 +1,118 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+    id("io.github.gradle-nexus.publish-plugin") version "2.0.0"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api 'com.github.tix320:kiwi:2.4.0'
+
+    api 'com.fasterxml.jackson.core:jackson-core:2.12.1'
+    api 'com.fasterxml.jackson.core:jackson-databind:2.12.1'
+    api 'com.fasterxml.jackson.core:jackson-annotations:2.12.1'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.7.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.7.1'
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(26))
+    }
+    withSourcesJar()
+    withJavadocJar()
+}
+
+test {
+    useJUnitPlatform()
+
+    testLogging {
+        events "failed"
+        exceptionFormat = "full"
+    }
+}
+
+javadoc {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+group = 'com.github.tix320'
+version = '3.0.1'
+
+sonatypeUsername = findProperty("sonatypeUsername")
+sonatypePassword = findProperty("sonatypePassword")
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            groupId = 'com.github.tix320'
+            artifactId = 'sonder'
+
+            pom {
+                name = 'Sonder'
+                description = 'TCP client-server library'
+                url = 'https://github.com/tix320/sonder'
+                licenses {
+                    license {
+                        name = 'Apache License 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'tix320'
+                        name = 'Tigran Sargsyan'
+                        email = 'tixtix320@gmail.com'
+                        timezone = 'UTC+4'
+                    }
+                }
+                scm {
+                    url = 'https://github.com/tix320/sonder'
+                    connection = 'scm:git:https://github.com/tix320/sonder'
+                    developerConnection = 'scm:git:https://github.com/tix320/sonder'
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "ossrh"
+            url = version.endsWith('SNAPSHOT')
+                    ? 'https://central.sonatype.com/repository/maven-snapshots/'
+                    : 'https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/'
+            credentials {
+                username = sonatypeUsername
+                password = sonatypePassword
+            }
+        }
+    }
+}
+
+nexusPublishing {
+    repositories {
+        sonatype {
+            nexusUrl.set(uri("https://ossrh-staging-api.central.sonatype.com/service/local/"))
+            snapshotRepositoryUrl.set(uri("https://central.sonatype.com/repository/maven-snapshots/"))
+            username = sonatypeUsername
+            password = sonatypePassword
+        }
+    }
+}
+
+signing {
+    sign publishing.publications.mavenJava
+}
+
+tasks.register("printVersion") {
+    doLast {
+        println(project.version)
+    }
+}
