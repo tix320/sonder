@@ -1,7 +1,7 @@
 package com.github.tix320.sonder.api.client.event;
 
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.skimp.api.object.None;
+import com.github.tix320.kiwi.observable.Observable;
+import com.github.tix320.skimp.object.None;
 import com.github.tix320.sonder.api.client.ConnectionState;
 
 public interface Events {

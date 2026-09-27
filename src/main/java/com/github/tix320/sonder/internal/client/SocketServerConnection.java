@@ -8,13 +8,13 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.property.Property;
-import com.github.tix320.kiwi.api.reactive.property.StateProperty;
-import com.github.tix320.skimp.api.exception.ExceptionUtils;
-import com.github.tix320.skimp.api.thread.LoopThread;
-import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
-import com.github.tix320.skimp.api.thread.Threads;
+import com.github.tix320.kiwi.observable.Observable;
+import com.github.tix320.kiwi.property.Property;
+import com.github.tix320.kiwi.property.StateProperty;
+import com.github.tix320.skimp.exception.ExceptionUtils;
+import com.github.tix320.skimp.thread.LoopThread;
+import com.github.tix320.skimp.thread.LoopThread.BreakLoopException;
+import com.github.tix320.skimp.thread.Threads;
 import com.github.tix320.sonder.api.client.ConnectionState;
 import com.github.tix320.sonder.api.common.communication.channel.EmptyReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.channel.FiniteReadableByteChannel;
@@ -95,7 +95,7 @@ public final class SocketServerConnection {
 
 		if (changed) {
 			workers.shutdown();
-			thread.stop();
+			thread.interrupt();
 			sonderProtocolChannel.close();
 		}
 	}
@@ -105,7 +105,7 @@ public final class SocketServerConnection {
 	}
 
 	private LoopThread createLoopThread() {
-		return Threads.createLoopThread(() -> {
+		return Threads.loop(() -> {
 			try {
 				ReceivedPack receivedPack = sonderProtocolChannel.tryRead();
 				CountDownLatch latch = new CountDownLatch(1);
@@ -165,7 +165,7 @@ public final class SocketServerConnection {
 			boolean changed = this.state.compareAndSetValue(ConnectionState.CONNECTED, ConnectionState.IDLE);
 			if (changed) {
 				try {
-					thread.stop();
+					thread.interrupt();
 					sonderProtocolChannel.close();
 				} catch (IOException ignored) {
 				}

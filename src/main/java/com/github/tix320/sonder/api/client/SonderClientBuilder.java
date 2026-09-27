@@ -4,7 +4,7 @@ import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.github.tix320.skimp.api.interval.Interval;
+import com.github.tix320.skimp.interval.Interval;
 import com.github.tix320.sonder.api.common.communication.Protocol;
 
 /**

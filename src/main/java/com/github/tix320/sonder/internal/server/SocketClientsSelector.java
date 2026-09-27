@@ -11,13 +11,13 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
-import com.github.tix320.kiwi.api.reactive.publisher.SimplePublisher;
-import com.github.tix320.skimp.api.exception.ExceptionUtils;
-import com.github.tix320.skimp.api.generator.IDGenerator;
-import com.github.tix320.skimp.api.thread.LoopThread.BreakLoopException;
-import com.github.tix320.skimp.api.thread.Threads;
+import com.github.tix320.kiwi.observable.Observable;
+import com.github.tix320.kiwi.publisher.Publisher;
+import com.github.tix320.kiwi.publisher.SimplePublisher;
+import com.github.tix320.skimp.exception.ExceptionUtils;
+import com.github.tix320.skimp.generator.IDGenerator;
+import com.github.tix320.skimp.thread.LoopThread.BreakLoopException;
+import com.github.tix320.skimp.thread.Threads;
 import com.github.tix320.sonder.api.common.Client;
 import com.github.tix320.sonder.api.common.communication.channel.BlockingReadableByteChannel;
 import com.github.tix320.sonder.api.common.communication.channel.EmptyReadableByteChannel;
@@ -159,7 +159,7 @@ public final class SocketClientsSelector implements Closeable {
 
 	private void runLoop() {
 		Selector selector = this.selector;
-		Threads.createLoopThread(() -> {
+		Threads.loop(() -> {
 			try {
 				selector.select();
 

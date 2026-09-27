@@ -1,7 +1,7 @@
 package com.github.tix320.sonder.internal.common.rpc.protocol;
 
 
-import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
+import com.github.tix320.kiwi.publisher.MonoPublisher;
 import com.github.tix320.sonder.internal.common.rpc.service.OriginMethod;
 
 /**

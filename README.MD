@@ -8,7 +8,7 @@ implemented over NIO encapsulating hard work of selectors and some byte-level pa
 ## Requirements
 
 ```
-Java 11 or higher.
+Java 26 or higher.
 ```
 
 ## Maven Dependency
@@ -18,7 +18,7 @@ Java 11 or higher.
 <dependency>
 	<groupId>com.github.tix320</groupId>
 	<artifactId>sonder</artifactId>
-	<version>2.2.1</version>
+	<version>4.0.0</version>
 </dependency>
 ```
 
@@ -35,7 +35,7 @@ package com.github.tix320.sonder.readme;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
-import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.kiwi.observable.MonoObservable;
 import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;

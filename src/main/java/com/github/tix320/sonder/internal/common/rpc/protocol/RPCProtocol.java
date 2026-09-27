@@ -18,16 +18,19 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.github.tix320.kiwi.api.reactive.observable.CompletionType;
-import com.github.tix320.kiwi.api.reactive.observable.Observable;
-import com.github.tix320.kiwi.api.reactive.observable.Subscriber;
-import com.github.tix320.kiwi.api.reactive.observable.Subscription;
-import com.github.tix320.kiwi.api.reactive.publisher.BufferedPublisher;
-import com.github.tix320.kiwi.api.reactive.publisher.MonoPublisher;
-import com.github.tix320.kiwi.api.reactive.publisher.Publisher;
-import com.github.tix320.skimp.api.exception.ExceptionUtils;
-import com.github.tix320.skimp.api.generator.IDGenerator;
-import com.github.tix320.skimp.api.object.None;
+import com.github.tix320.kiwi.observable.Completion;
+import com.github.tix320.kiwi.observable.MinorSubscriber;
+import com.github.tix320.kiwi.observable.Observable;
+import com.github.tix320.kiwi.observable.SourceCompletion;
+import com.github.tix320.kiwi.observable.Subscriber;
+import com.github.tix320.kiwi.observable.Subscription;
+import com.github.tix320.kiwi.observable.Unsubscription;
+import com.github.tix320.kiwi.publisher.MonoPublisher;
+import com.github.tix320.kiwi.publisher.Publisher;
+import com.github.tix320.kiwi.publisher.ReplayPublisher;
+import com.github.tix320.skimp.exception.ExceptionUtils;
+import com.github.tix320.skimp.generator.IDGenerator;
+import com.github.tix320.skimp.object.None;
 import com.github.tix320.sonder.api.common.communication.*;
 import com.github.tix320.sonder.api.common.communication.Headers.HeadersBuilder;
 import com.github.tix320.sonder.api.common.rpc.RPCRemoteException;
@@ -227,7 +230,7 @@ public abstract class RPCProtocol implements Protocol {
 
 				requestMetadataByResponseKey.put(responseKey, new RequestMetadata(null, method));
 
-				BufferedPublisher<Object> dummyPublisher = Publisher.buffered();
+				ReplayPublisher<Object> dummyPublisher = Publisher.buffered();
 				remoteSubscriptionPublishers.put(responseKey,
 						new RemoteSubscriptionPublisher(dummyPublisher, method.getReturnJavaType()));
 
@@ -326,7 +329,7 @@ public abstract class RPCProtocol implements Protocol {
 				if (subscription == null) {
 					throw new IllegalStateException(String.format("Subscription not found for key %s", responseKey));
 				}
-				subscription.unsubscribe();
+				subscription.cancel();
 				break;
 			case SUBSCRIPTION_COMPLETED:
 				RemoteSubscriptionPublisher remoteSubscriptionPublisher = remoteSubscriptionPublishers.remove(
@@ -711,7 +714,7 @@ public abstract class RPCProtocol implements Protocol {
 		}
 	}
 
-	private final class DummyObservable implements Observable<Object> {
+	private final class DummyObservable extends Observable<Object> {
 
 		private final Observable<Object> observable;
 
@@ -727,23 +730,23 @@ public abstract class RPCProtocol implements Protocol {
 
 		@Override
 		public void subscribe(Subscriber<? super Object> subscriber) {
-			observable.subscribe(new Subscriber<>() {
+			observable.subscribe(subscriber.fork(new MinorSubscriber<Object, Object>() {
 				@Override
-				public boolean onSubscribe(Subscription subscription) {
-					return subscriber.onSubscribe(subscription);
+				protected void onSubscribe(Subscription subscription) {
+					subscriber.setSubscription(subscription);
 				}
 
 				@Override
-				public boolean onPublish(Object item) {
-					return subscriber.onPublish(item);
+				protected void onNext(Object item) {
+					subscriber.publish(item);
 				}
 
 				@Override
-				public void onComplete(CompletionType completionType) {
+				protected void onComplete(Completion completion) {
 					remoteSubscriptionPublishers.remove(responseKey);
 					requestMetadataByResponseKey.remove(responseKey);
-					subscriber.onComplete(completionType);
-					if (completionType == CompletionType.UNSUBSCRIPTION) {
+					subscriber.complete(completion);
+					if (completion instanceof Unsubscription) {
 						Headers headers = Headers.builder()
 								.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 								.header(RPCHeaders.SUBSCRIPTION_ACTION_TYPE, SubscriptionActionType.UNSUBSCRIBE)
@@ -754,11 +757,18 @@ public abstract class RPCProtocol implements Protocol {
 						transferSender.send(transfer);
 					}
 				}
-			});
+
+				@Override
+				protected void onError(Throwable error) {
+					remoteSubscriptionPublishers.remove(responseKey);
+					requestMetadataByResponseKey.remove(responseKey);
+					subscriber.completeWithError(error);
+				}
+			}));
 		}
 	}
 
-	private static final class RealSubscriber implements Subscriber<Object> {
+	private static final class RealSubscriber extends Subscriber<Object> {
 
 		private final long responseKey;
 		private final TransferSender transferSender;
@@ -773,13 +783,13 @@ public abstract class RPCProtocol implements Protocol {
 		}
 
 		@Override
-		public boolean onSubscribe(Subscription subscription) {
+		protected void onSubscribe(Subscription subscription) {
 			subscriptionAdder.add(responseKey, subscription);
-			return true;
+			subscription.requestUnbounded();
 		}
 
 		@Override
-		public boolean onPublish(Object item) {
+		protected void onNext(Object item) {
 			Headers headers = Headers.builder()
 					.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 					.header(RPCHeaders.RESPONSE_KEY, responseKey)
@@ -791,13 +801,11 @@ public abstract class RPCProtocol implements Protocol {
 			Transfer transferToSend = new StaticTransfer(headers, content);
 
 			transferSender.send(transferToSend);
-
-			return true;
 		}
 
 		@Override
-		public void onComplete(CompletionType completionType) {
-			if (completionType == CompletionType.SOURCE_COMPLETED) {
+		protected void onComplete(Completion completion) {
+			if (completion instanceof SourceCompletion) {
 				Headers headers = Headers.builder()
 						.header(RPCHeaders.TRANSFER_TYPE, TransferType.SUBSCRIPTION_RESULT)
 						.header(RPCHeaders.RESPONSE_KEY, responseKey)

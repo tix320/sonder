@@ -5,10 +5,10 @@ import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.github.tix320.skimp.api.exception.ExceptionUtils;
-import com.github.tix320.skimp.api.interval.Interval;
-import com.github.tix320.skimp.api.interval.IntervalRepeater;
-import com.github.tix320.skimp.api.object.None;
+import com.github.tix320.skimp.exception.ExceptionUtils;
+import com.github.tix320.skimp.interval.Interval;
+import com.github.tix320.skimp.interval.IntervalRepeater;
+import com.github.tix320.skimp.object.None;
 import com.github.tix320.sonder.api.client.event.Events;
 import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.common.communication.Headers;
@@ -73,7 +73,7 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 			connection.connect();
 
 		} else {
-			connection.state().conditionalSubscribe(connectionState -> {
+			connection.state().takeWhile(connectionState -> {
 				switch (connectionState) {
 					case IDLE:
 						protocols().forEach(ClientSideProtocol::reset);
@@ -95,7 +95,7 @@ public final class SonderClient extends SonderSide<ClientSideProtocol> {
 				}
 
 				return true;
-			});
+			}).subscribe(ignored -> {});
 
 		}
 	}

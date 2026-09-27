@@ -3,7 +3,7 @@ package com.github.tix320.sonder.readme;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
-import com.github.tix320.kiwi.api.reactive.observable.MonoObservable;
+import com.github.tix320.kiwi.observable.MonoObservable;
 import com.github.tix320.sonder.api.client.SonderClient;
 import com.github.tix320.sonder.api.client.rpc.ClientRPCProtocol;
 import com.github.tix320.sonder.api.common.rpc.Endpoint;
