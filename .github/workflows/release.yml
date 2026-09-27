@@ -19,6 +19,9 @@ jobs:
           distribution: 'temurin'
           java-version: '26'
 
+      - name: Grant Execute Permission for Gradle
+        run: chmod +x gradlew
+
       - name: Extract Last Version Tag
         id: previoustag
         uses: oprypin/find-latest-tag@v1
